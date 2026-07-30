@@ -9,7 +9,10 @@ import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
   resolveLine, norm, uid, slug,
 } from "./lib/store.js";
-import { computeShopping, mealCost, portionCost, money, today, daysSince, STALE_DAYS } from "./lib/calc.js";
+import {
+  computeShopping, mealCost, portionCost, unitPrice, packCost, activeOffer, offerLabel,
+  offerExpired, groupByStore, money, today, daysSince, STALE_DAYS,
+} from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
 import { readReceipt } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
@@ -60,6 +63,16 @@ function flash(kind, text) {
 
 const ingredient = (id) => state.db.ingredients.find((i) => i.id === id);
 
+const isShut = (which, name) => (state.settings[which] || []).includes(name);
+
+async function toggleShut(which, name) {
+  const list = state.settings[which] || [];
+  const next = list.includes(name) ? list.filter((n) => n !== name) : [...list, name];
+  state.settings = { ...state.settings, [which]: next };
+  await saveSettings(state.settings);
+  draw();
+}
+
 function patchIngredient(id, changes) {
   commit((db) => {
     const i = db.ingredients.findIndex((x) => x.id === id);
@@ -69,10 +82,32 @@ function patchIngredient(id, changes) {
 
 /* --------------------------------- views ------------------------------- */
 
+/* Identify a field across a rebuild, so focus and caret survive it. */
+function fieldKey(el) {
+  if (!el || !el.dataset || !el.dataset.act) return null;
+  const d = el.dataset;
+  return [d.act, d.id || "", d.field || "", d.i || "", d.key || "", d.which || ""].join("|");
+}
+
 function draw() {
   state.calc = computeShopping(state.db);
   const sheetScroll = document.querySelector(".sheet") ? document.querySelector(".sheet").scrollTop : null;
   const pageScroll = window.scrollY;
+
+  // A rebuild replaces every node, so remember where the cursor was.
+  // Without this, tabbing from one number field to the next loses focus.
+  const active = document.activeElement;
+  const focusKey = active && root.contains(active) ? fieldKey(active) : null;
+  let selStart = null;
+  let selEnd = null;
+  if (focusKey) {
+    try {
+      selStart = active.selectionStart;
+      selEnd = active.selectionEnd;
+    } catch (err) {
+      /* number and date inputs refuse selection access in some browsers */
+    }
+  }
 
   root.innerHTML = [
     viewMasthead(),
@@ -88,6 +123,20 @@ function draw() {
   if (sheetScroll !== null) {
     const s = document.querySelector(".sheet");
     if (s) s.scrollTop = sheetScroll;
+  }
+
+  if (focusKey) {
+    const again = [...root.querySelectorAll("[data-act]")].find((el) => fieldKey(el) === focusKey);
+    if (again) {
+      again.focus();
+      if (selStart !== null && again.setSelectionRange) {
+        try {
+          again.setSelectionRange(selStart, selEnd);
+        } catch (err) {
+          /* not a text-like input */
+        }
+      }
+    }
   }
 }
 
@@ -127,35 +176,50 @@ function viewList() {
   const pct = state.db.budget > 0 ? Math.min(1, c.total / state.db.budget) : 0;
   const [whole, pence] = money(c.total).split(".");
 
-  const stale = c.staleCount
-    ? `<div class="warn"><strong>${c.staleCount}</strong> ${c.staleCount === 1 ? "price is" : "prices are"}
-       over ${STALE_DAYS} days old. Shoot your next receipt to refresh them.</div>`
-    : "";
+  const notes = [];
+  if (c.staleCount)
+    notes.push(`<div class="warn"><strong>${c.staleCount}</strong> ${
+      c.staleCount === 1 ? "price is" : "prices are"
+    } over ${STALE_DAYS} days old. Shoot your next receipt to refresh them.</div>`);
+  if (c.expiredCount)
+    notes.push(`<div class="warn"><strong>${c.expiredCount}</strong> ${
+      c.expiredCount === 1 ? "offer has" : "offers have"
+    } passed the end date, so full price is being counted.</div>`);
 
   const body = c.lines.length
     ? c.stores
-        .map(
-          (store) => `<section class="card">
-        <div class="row" style="margin-bottom:4px">
-          <span class="eyebrow grow">${esc(store.name)}</span>
+        .map((store) => {
+          const shut = isShut("collapsedList", store.name);
+          return `<section class="card">
+        <div class="row head" data-act="toggleStore" data-which="collapsedList" data-store="${esc(store.name)}">
+          <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
+          <span class="eyebrow grow">${esc(store.name)} &middot; ${store.lines.length} item${
+            store.lines.length === 1 ? "" : "s"
+          }</span>
           <span class="num muted">£${money(store.total)}</span>
         </div>
-        ${store.lines.map(ticket).join("")}
-      </section>`
-        )
+        ${shut ? "" : store.lines.map(ticket).join("")}
+      </section>`;
+        })
         .join("")
-    : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or reduce stock on Items.</div>`;
+    : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or add something by hand from Items.</div>`;
 
   return `
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn solid grow" data-act="openReceipt">Read a receipt</button>
       <button class="btn grow" data-act="openScan">Scan an item</button>
     </div>
-    ${stale}
+    ${notes.join("")}
     ${body}
     <div class="till">
       <div class="line"><span class="lbl">Total</span><span class="leader"></span>
         <span class="big">£${whole}.<em>${pence}</em></span></div>
+      ${
+        c.saving > 0.004
+          ? `<div class="line" style="margin-top:2px"><span class="lbl">Offers save</span>
+             <span class="leader"></span><span class="num" style="font-size:13px">£${money(c.saving)}</span></div>`
+          : ""
+      }
       <div class="bar${over ? " over" : ""}"><span style="width:${Math.round(pct * 100)}%"></span></div>
       <div class="row" style="margin-top:8px">
         <span class="lbl grow">${
@@ -172,18 +236,28 @@ function viewList() {
 function ticket(l) {
   const [w, p] = money(l.cost).split(".");
   const bits = [`${l.packs} pack${l.packs === 1 ? "" : "s"} @ £${money(l.ing.pricePerPack)}`];
+  if (l.offer) bits.push(l.offer);
   if (l.ing.packLabel) bits.push(esc(l.ing.packLabel));
+  if (l.extra) bits.push(`${l.extra} by hand`);
   if (l.leftover > 0.001) bits.push(`${trim2(l.leftover)} left over`);
+
   return `<div class="ticket">
     <div class="grow">
       <div class="name trunc">${l.stale ? '<span class="dot"></span>' : ""}${esc(l.ing.name)}</div>
-      <div class="meta">${bits.join(" · ")}</div>
+      <div class="meta">${bits.join(" &middot; ")}</div>
+      ${l.saving > 0.004 ? `<div class="meta save">saves £${money(l.saving)}</div>` : ""}
     </div>
     <span class="leader"></span>
     <div style="text-align:right">
       <div class="price">£${w}.<em>${p}</em></div>
-      <button class="btn small ghost" style="margin-top:3px" data-act="bought" data-id="${l.ing.id}"
-        data-packs="${l.packs}">Got it</button>
+      <div class="row" style="gap:4px;margin-top:3px;justify-content:flex-end">
+        ${
+          l.extra
+            ? `<button class="btn small ghost" data-act="clearExtra" data-id="${l.ing.id}" title="Remove the hand-added packs">&times;</button>`
+            : ""
+        }
+        <button class="btn small ghost" data-act="bought" data-id="${l.ing.id}" data-packs="${l.packs}">Got it</button>
+      </div>
     </div>
   </div>`;
 }
@@ -285,79 +359,165 @@ function viewMeals() {
 
 /* ---- items ---- */
 
+function offerEditor(ing) {
+  const o = ing.offer || {};
+  const kind = o.kind || "";
+  const opt = (v, label) => `<option value="${v}"${kind === v ? " selected" : ""}>${label}</option>`;
+
+  let fields = "";
+  if (kind === "loyalty") {
+    fields = `<label class="field"><span class="eyebrow">Card price £ per pack</span>
+      <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}"
+        data-act="setOfferField" data-id="${ing.id}" data-field="price"></label>`;
+  } else if (kind === "multibuy") {
+    fields = `<div class="grid2">
+      <label class="field"><span class="eyebrow">Buy this many</span>
+        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}"
+          data-act="setOfferField" data-id="${ing.id}" data-field="qty"></label>
+      <label class="field"><span class="eyebrow">For a total of £</span>
+        <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}"
+          data-act="setOfferField" data-id="${ing.id}" data-field="price"></label></div>`;
+  } else if (kind === "xfory") {
+    fields = `<div class="grid2">
+      <label class="field"><span class="eyebrow">Take this many</span>
+        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}"
+          data-act="setOfferField" data-id="${ing.id}" data-field="qty"></label>
+      <label class="field"><span class="eyebrow">Pay for this many</span>
+        <input class="inp mono" type="number" step="1" min="1" value="${o.pay || ""}"
+          data-act="setOfferField" data-id="${ing.id}" data-field="pay"></label></div>`;
+  }
+
+  const live = activeOffer(ing);
+  const expired = offerExpired(ing);
+
+  return `<div style="border:1px solid var(--rule);padding:9px;margin-bottom:8px;background:#fff">
+    <label class="field" style="margin-bottom:${kind ? "8px" : "0"}">
+      <span class="eyebrow">Offer</span>
+      <select class="inp" data-act="setOfferKind" data-id="${ing.id}">
+        ${opt("", "None, full price")}
+        ${opt("loyalty", "Loyalty card price")}
+        ${opt("multibuy", "N for a fixed price")}
+        ${opt("xfory", "Buy N, pay for fewer")}
+      </select></label>
+    ${fields}
+    ${
+      kind
+        ? `<label class="field" style="margin-top:8px"><span class="eyebrow">Offer ends, optional</span>
+           <input class="inp mono" type="date" value="${o.ends || ""}"
+             data-act="setOfferField" data-id="${ing.id}" data-field="ends"></label>`
+        : ""
+    }
+    ${
+      expired
+        ? `<p class="muted stale" style="margin:6px 0 0">Ended ${esc(o.ends)}, so full price is being used.</p>`
+        : live
+        ? `<p class="muted" style="margin:6px 0 0">Counting as ${esc(offerLabel(ing))}. Three packs would cost £${money(
+            packCost(ing, 3)
+          )} instead of £${money(3 * (Number(ing.pricePerPack) || 0))}.</p>`
+        : kind
+        ? `<p class="muted" style="margin:6px 0 0">Fill the numbers in and the offer starts counting.</p>`
+        : ""
+    }
+  </div>`;
+}
+
 function viewItems() {
   const c = state.calc;
   const open = state.sheet && state.sheet.kind === "item" ? state.sheet.id : null;
   const stores = [...new Set(state.db.ingredients.map((i) => i.store).filter(Boolean))];
 
-  const cards = state.db.ingredients
-    .map((ing) => {
-      const age = daysSince(ing.priceUpdated);
-      const stale = age > STALE_DAYS;
-      const head = `<div class="row" data-act="openItem" data-id="${ing.id}">
-        <div class="grow">
-          <div class="trunc" style="font-weight:700">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
-          <div class="muted num">${esc(ing.store || "no store")} · ${ing.portionsPerPack}/pack · £${money(
-        portionCost(ing)
-      )} a portion</div>
+  const card = (ing) => {
+    const age = daysSince(ing.priceUpdated);
+    const stale = age > STALE_DAYS;
+    const extra = Number(ing.extraPacks) || 0;
+    const live = activeOffer(ing);
+
+    const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
+      <div class="grow">
+        <div class="trunc" style="font-weight:700">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
+        <div class="muted num">${ing.portionsPerPack}/pack &middot; £${money(portionCost(ing))} a portion${
+      live ? ` &middot; ${esc(offerLabel(ing))}` : ""
+    }${extra ? ` &middot; ${extra} on the list` : ""}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="num" style="font-weight:700">£${money(ing.pricePerPack)}</div>
+        <div class="muted num${stale ? " stale" : ""}">${ing.priceUpdated ? age + "d ago" : "never set"}</div>
+      </div>
+      <button class="btn small ghost" data-act="addToList" data-id="${ing.id}" title="Add a pack to the shopping list">+</button>
+    </div>`;
+
+    if (ing.id !== open) return `<section class="card">${head}</section>`;
+
+    const codes = (ing.barcodes || []).length
+      ? (ing.barcodes || [])
+          .map(
+            (b) => `<span class="pill on" style="margin:0 4px 4px 0">${esc(b)}
+             <button class="btn small ghost" style="border:0;padding:0 0 0 4px" data-act="delBarcode"
+               data-id="${ing.id}" data-code="${esc(b)}">&times;</button></span>`
+          )
+          .join("")
+      : `<span class="muted">none yet</span>`;
+
+    return `<section class="card">${head}
+      <div style="border-top:1px solid var(--rule);margin-top:10px;padding-top:10px">
+        <label class="field" style="margin-bottom:8px"><span class="eyebrow">Item name</span>
+          <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
+        <div class="grid2" style="margin-bottom:8px">
+          <label class="field"><span class="eyebrow">Base price £ per pack</span>
+            <input class="inp mono" type="number" step="0.01" min="0" value="${ing.pricePerPack}"
+              data-act="setPrice" data-id="${ing.id}"></label>
+          <label class="field"><span class="eyebrow">Portions per pack</span>
+            <input class="inp mono" type="number" step="0.5" min="0" value="${ing.portionsPerPack}"
+              data-act="setNumber" data-id="${ing.id}" data-field="portionsPerPack"></label>
         </div>
-        <div style="text-align:right">
-          <div class="num" style="font-weight:700">£${money(ing.pricePerPack)}</div>
-          <div class="muted num${stale ? " stale" : ""}">${ing.priceUpdated ? age + "d ago" : "never set"}</div>
+        ${offerEditor(ing)}
+        <div class="grid2" style="margin-bottom:8px">
+          <label class="field"><span class="eyebrow">Store</span>
+            <input class="inp" list="fb-stores" value="${esc(ing.store || "")}"
+              data-act="setField" data-id="${ing.id}" data-field="store"></label>
+          <label class="field"><span class="eyebrow">In stock (packs)</span>
+            <input class="inp mono" type="number" step="0.25" min="0" value="${ing.stockPacks}"
+              data-act="setNumber" data-id="${ing.id}" data-field="stockPacks"></label>
         </div>
+        <label class="field" style="margin-bottom:8px"><span class="eyebrow">Pack size note</span>
+          <input class="inp" placeholder="500g" value="${esc(ing.packLabel || "")}"
+            data-act="setField" data-id="${ing.id}" data-field="packLabel"></label>
+        <div class="row" style="margin-bottom:8px">
+          <span class="eyebrow grow">On the list by hand</span>
+          <button class="btn small ghost" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
+          <span class="num" style="min-width:22px;text-align:center;font-weight:700">${extra}</span>
+          <button class="btn small ghost" data-act="addToList" data-id="${ing.id}">+</button>
+        </div>
+        <div style="margin-bottom:8px">
+          <span class="eyebrow" style="display:block;margin-bottom:4px">Barcodes</span>
+          <div style="margin-bottom:6px">${codes}</div>
+          <button class="btn small" data-act="addBarcode" data-id="${ing.id}">Scan a barcode</button>
+        </div>
+        <div class="row">
+          <span class="muted grow">Needs ${trim2(c.need[ing.id] || 0)} portions this fortnight</span>
+          <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
+        </div>
+      </div></section>`;
+  };
+
+  const groups = groupByStore(state.db.ingredients)
+    .map((g) => {
+      const shut = isShut("collapsedItems", g.name);
+      const holding = g.items.filter((i) => Number(i.extraPacks) > 0).length;
+      return `<div class="group">
+        <div class="row head grouphead" data-act="toggleStore" data-which="collapsedItems" data-store="${esc(g.name)}">
+          <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
+          <span class="eyebrow grow">${esc(g.name)} &middot; ${g.items.length} item${g.items.length === 1 ? "" : "s"}${
+        holding ? ` &middot; ${holding} on the list` : ""
+      }</span>
+        </div>
+        ${shut ? "" : g.items.map(card).join("")}
       </div>`;
-
-      if (ing.id !== open) return `<section class="card">${head}</section>`;
-
-      const codes = (ing.barcodes || []).length
-        ? (ing.barcodes || [])
-            .map(
-              (b) =>
-                `<span class="pill on" style="margin:0 4px 4px 0">${esc(b)}
-                 <button class="btn small ghost" style="border:0;padding:0 0 0 4px" data-act="delBarcode"
-                   data-id="${ing.id}" data-code="${esc(b)}">×</button></span>`
-            )
-            .join("")
-        : `<span class="muted">none yet</span>`;
-
-      return `<section class="card">${head}
-        <div style="border-top:1px solid var(--rule);margin-top:10px;padding-top:10px">
-          <label class="field" style="margin-bottom:8px"><span class="eyebrow">Item name</span>
-            <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
-          <div class="grid2" style="margin-bottom:8px">
-            <label class="field"><span class="eyebrow">Price per pack £</span>
-              <input class="inp mono" type="number" step="0.01" min="0" value="${ing.pricePerPack}"
-                data-act="setPrice" data-id="${ing.id}"></label>
-            <label class="field"><span class="eyebrow">Portions per pack</span>
-              <input class="inp mono" type="number" step="0.5" min="0" value="${ing.portionsPerPack}"
-                data-act="setNumber" data-id="${ing.id}" data-field="portionsPerPack"></label>
-          </div>
-          <div class="grid2" style="margin-bottom:8px">
-            <label class="field"><span class="eyebrow">Store</span>
-              <input class="inp" list="fb-stores" value="${esc(ing.store || "")}"
-                data-act="setField" data-id="${ing.id}" data-field="store"></label>
-            <label class="field"><span class="eyebrow">In stock (packs)</span>
-              <input class="inp mono" type="number" step="0.25" min="0" value="${ing.stockPacks}"
-                data-act="setNumber" data-id="${ing.id}" data-field="stockPacks"></label>
-          </div>
-          <label class="field" style="margin-bottom:8px"><span class="eyebrow">Pack size note</span>
-            <input class="inp" placeholder="500g" value="${esc(ing.packLabel || "")}"
-              data-act="setField" data-id="${ing.id}" data-field="packLabel"></label>
-          <div style="margin-bottom:8px">
-            <span class="eyebrow" style="display:block;margin-bottom:4px">Barcodes</span>
-            <div style="margin-bottom:6px">${codes}</div>
-            <button class="btn small" data-act="addBarcode" data-id="${ing.id}">Scan a barcode</button>
-          </div>
-          <div class="row">
-            <span class="muted grow">Needs ${trim2(c.need[ing.id] || 0)} portions this fortnight</span>
-            <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
-          </div>
-        </div></section>`;
     })
     .join("");
 
-  return `${cards}
-    <datalist id="fb-stores">${stores.map((s) => `<option value="${esc(s)}"></option>`).join("")}</datalist>
+  return `${groups}
+    <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
     <button class="btn wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
 }
 
@@ -414,10 +574,18 @@ function sheetReceipt(s) {
             value="${r.price}" data-act="setRowPrice" data-i="${i}" aria-label="Unit price">
         </div>
         <select class="inp" style="margin-top:5px" data-act="setRowTarget" data-i="${i}">${picker(r.targetId)}</select>
+        ${
+          r.targetId === "__new__"
+            ? `<label class="field" style="margin-top:5px"><span class="eyebrow">Name for the new item</span>
+               <input class="inp" value="${esc(r.newName)}" data-act="setRowName" data-i="${i}"></label>`
+            : ""
+        }
         <div class="row" style="margin-top:5px">
           <span class="why grow">${r.barcode ? "barcode " + esc(r.barcode) : esc(r.why)}${
               r.qty > 1 ? ` · ${r.qty} bought` : ""
             }</span>
+          <button class="pill${r.offer ? " on" : ""}" data-act="toggleRowOffer" data-i="${i}"
+            title="Was this an offer price?">offer price</button>
           <button class="btn small ghost" data-act="scanRow" data-i="${i}">${
               r.barcode ? "Rescan" : "Scan barcode"
             }</button>
@@ -433,7 +601,8 @@ function sheetReceipt(s) {
       ready ? "" : " disabled"
     }>Update ${ready} price${ready === 1 ? "" : "s"}</button>
     <p class="muted">Confirming a line teaches the app that receipt wording, so it matches itself next time.
-    Scanning binds the barcode too, which is what makes in-store scanning work later.</p>`);
+    Scanning binds the barcode too, which is what makes in-store scanning work later.
+    Lines marked <strong>offer price</strong> are saved as the loyalty price and leave the base price alone.</p>`);
   }
 
   return shell(
@@ -618,6 +787,8 @@ function receiptRow(line) {
     confident: res.confident,
     use: !!res.id,
     barcode: "",
+    offer: line.offer === true,
+    newName: titleise(line.name),
   };
 }
 
@@ -654,7 +825,7 @@ function applyReceipt() {
 
       if (target === "__new__") {
         const made = newIngredient(s.store || (db.ingredients[0] && db.ingredients[0].store));
-        made.name = titleise(r.raw);
+        made.name = (r.newName || "").trim() || titleise(r.raw);
         made.id = slug(made.name) + "-" + uid().slice(1, 4);
         db.ingredients.push(made);
         target = made.id;
@@ -666,7 +837,14 @@ function applyReceipt() {
       const idx = db.ingredients.findIndex((i) => i.id === target);
       if (idx < 0) continue;
       const ing = { ...db.ingredients[idx] };
-      ing.pricePerPack = r.price;
+      // An offer price must not overwrite the base price, or the base price
+      // drifts down every time a promotion runs and never comes back up.
+      if (r.offer) {
+        ing.offer = { kind: "loyalty", price: r.price, ends: "" };
+        if (!ing.pricePerPack) ing.pricePerPack = r.price;
+      } else {
+        ing.pricePerPack = r.price;
+      }
       ing.priceUpdated = today();
       if (s.store) ing.store = s.store;
       ing.aliases = [...new Set([...(ing.aliases || []), alias])];
@@ -773,7 +951,43 @@ const actions = {
   bought: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
-    patchIngredient(ing.id, { stockPacks: (Number(ing.stockPacks) || 0) + Number(el.dataset.packs) });
+    patchIngredient(ing.id, {
+      stockPacks: (Number(ing.stockPacks) || 0) + Number(el.dataset.packs),
+      extraPacks: 0,
+    });
+  },
+
+  toggleStore: (el) => toggleShut(el.dataset.which, el.dataset.store),
+  addToList: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (ing) patchIngredient(ing.id, { extraPacks: (Number(ing.extraPacks) || 0) + 1 });
+  },
+  lessExtra: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (ing) patchIngredient(ing.id, { extraPacks: Math.max(0, (Number(ing.extraPacks) || 0) - 1) });
+  },
+  clearExtra: (el) => patchIngredient(el.dataset.id, { extraPacks: 0 }),
+
+  setOfferKind: (el) => {
+    const kind = el.value;
+    if (!kind) {
+      patchIngredient(el.dataset.id, { offer: null });
+      return;
+    }
+    const ing = ingredient(el.dataset.id);
+    const prev = (ing && ing.offer) || {};
+    const seed = { kind, ends: prev.ends || "" };
+    if (kind === "loyalty") seed.price = prev.price || 0;
+    if (kind === "multibuy") { seed.qty = prev.qty || 2; seed.price = prev.price || 0; }
+    if (kind === "xfory") { seed.qty = prev.qty || 3; seed.pay = prev.pay || 2; }
+    patchIngredient(el.dataset.id, { offer: seed });
+  },
+  setOfferField: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (!ing || !ing.offer) return;
+    const field = el.dataset.field;
+    const value = field === "ends" ? el.value : Number(el.value) || 0;
+    patchIngredient(ing.id, { offer: { ...ing.offer, [field]: value } });
   },
 
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
@@ -890,6 +1104,17 @@ const actions = {
       };
       setSheet({ ...state.sheet, rows });
     });
+  },
+  setRowName: (el) => {
+    const rows = state.sheet.rows.slice();
+    rows[Number(el.dataset.i)] = { ...rows[Number(el.dataset.i)], newName: el.value };
+    state.sheet = { ...state.sheet, rows };
+  },
+  toggleRowOffer: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], offer: !rows[i].offer };
+    setSheet({ ...state.sheet, rows });
   },
   applyReceipt: () => applyReceipt(),
 
