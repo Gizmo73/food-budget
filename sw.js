@@ -1,7 +1,7 @@
 /* Offline shell. Supermarket signal is unreliable, and scanning must work
    without it. Bump CACHE when you change any file, or the old copy sticks. */
 
-const CACHE = "fortnight-shop-v1";
+const CACHE = "fortnight-shop-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -44,7 +44,17 @@ self.addEventListener("fetch", (e) => {
           .catch(() => {});
         return hit;
       }
-      return fetch(e.request).catch(() => caches.match("./index.html"));
+      // Not cached yet. Fetch it, keep a copy, and fall back to the shell offline.
+      // This is how the vendored barcode decoder gets stored on browsers that need it.
+      return fetch(e.request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match("./index.html"));
     })
   );
 });
