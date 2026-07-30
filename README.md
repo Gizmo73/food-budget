@@ -27,9 +27,21 @@ Matching gets better every shop, because confirming a line saves that receipt's 
 
 So the first receipt needs the most tapping and later ones need almost none. This is why the barcode step during receipt review is worth doing even though it is optional: it builds the barcode library that makes in-store scanning work.
 
+**Offers** are recorded per item on the Items tab, and there are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
+
+Base price and offer price are kept apart on purpose. A loyalty price applies to every pack, so it feeds portion costs and meal costs. A multibuy depends on how many packs you buy, so it only affects the shopping list total. A meal is not cheaper because you bought three.
+
+That separation is also why receipt lines marked **offer price** are saved as the loyalty price and leave the base price untouched. Without it, the base price would drift down every time a promotion ran and never come back up.
+
 **Barcodes** are the in-store update. Scan an item, type the shelf price, done. The app tells you what changed since last time.
 
 Anything older than 14 days gets a red dot and a banner, so a stale price never quietly costs a shop.
+
+## Adding things by hand
+
+Not everything is a meal ingredient. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping moves those packs into stock and clears the hand-added count.
+
+Both the shopping list and the Items tab group by store, and each store heading collapses. That state is remembered per device rather than synced, since it is a view preference rather than data.
 
 ## What syncs and what does not
 
@@ -56,6 +68,7 @@ app.js                  state, rendering, actions
 lib/calc.js             shopping maths, ported from the spreadsheet
 lib/store.js            IndexedDB, seed data, receipt line matching
 lib/scan.js             live barcode scanning
+lib/vendor/             wasm barcode decoder, only loaded by Firefox and Safari
 lib/vision.js           receipt reading, Gemini or Claude
 lib/sync.js             GitHub contents API
 sw.js                   offline cache
@@ -68,12 +81,14 @@ No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled a
 
 - **Bump `CACHE` in `sw.js`** whenever you change a file, or the service worker keeps serving the old copy.
 - **Scanning needs HTTPS**, which Pages gives you. It will not work over plain HTTP or `file://`.
-- **Barcode decoding** uses the browser's own `BarcodeDetector`. Chrome on Android has it. Safari does not, and falls back to typing the number.
+- **Firefox on Android is fine.** It needs the fallback decoder, which downloads itself on first scan. Nothing to configure.
+- **Barcode decoding** uses the browser's own `BarcodeDetector` where it exists, which means Chromium browsers. Firefox and Safari have no such API, so the app lazily loads a vendored wasm decoder from `lib/vendor/` the first time you scan. That is a one-off megabyte, cached by the service worker afterwards, and it makes no third-party requests. Decoding is a little slower than native, so hold the barcode steady for an extra beat.
 - **Model names** are editable in Settings. If receipt accuracy disappoints on crumpled thermal paper, try a larger model.
 - **Multi-buy and loyalty prices** come through as the amount actually charged, which is usually what you want for budgeting but will look oddly low if you later buy the item at full price.
 
 ## Known limits
 
 - One meal per day. Add breakfast and lunch by making them separate meals and extending `plan` beyond 14 entries.
+- The app does not suggest buying more to reach a multibuy threshold. It shows the offer terms on the line and leaves the decision to you.
 - Pack sizes are assumed stable. If a product shrinks, update Portions per pack by hand.
 - Loose produce sold by weight fits awkwardly into a portions-per-pack model. Treat a typical purchase as one pack.
