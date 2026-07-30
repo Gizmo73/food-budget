@@ -7,7 +7,7 @@
 
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
-  resolveLine, norm, uid, slug, canonicalStore, storeNames,
+  resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, unitPrice, packCost, activeOffer, offerLabel,
@@ -119,6 +119,7 @@ function draw() {
     viewSheet(),
   ].join("");
 
+  root.dataset.booted = "1";
   window.scrollTo(0, pageScroll);
   if (sheetScroll !== null) {
     const s = document.querySelector(".sheet");
@@ -846,7 +847,7 @@ function applyReceipt() {
         const made = newIngredient(s.store || (db.ingredients[0] && db.ingredients[0].store));
         made.name = (r.newName || "").trim() || titleise(r.raw);
         made.portionsPerPack = Math.max(0.5, Number(r.newPortions) || 1);
-        made.id = slug(made.name) + "-" + uid().slice(1, 4);
+        made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
         db.ingredients.push(made);
         target = made.id;
         created += 1;
@@ -1237,7 +1238,18 @@ root.addEventListener("change", dispatch);
 /* --------------------------------- boot -------------------------------- */
 
 (async function boot() {
-  state.db = await loadDb();
-  state.settings = await loadSettings();
-  draw();
+  try {
+    state.db = await loadDb();
+    state.settings = await loadSettings();
+    draw();
+  } catch (err) {
+    // Storage can fail outright in private windows with strict settings.
+    // Say so plainly rather than leaving the page on "Loading."
+    root.dataset.booted = "1";
+    root.innerHTML =
+      `<div class="wrap"><div class="err"><strong>Could not open local storage.</strong><br>` +
+      `${esc(err && err.message ? err.message : String(err))}</div>` +
+      `<p class="muted">This usually means the browser is blocking site data. ` +
+      `Private windows and strict cookie settings both do it.</p></div>`;
+  }
 })();
