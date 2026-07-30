@@ -185,6 +185,14 @@ function viewList() {
     notes.push(`<div class="warn"><strong>${c.expiredCount}</strong> ${
       c.expiredCount === 1 ? "offer has" : "offers have"
     } passed the end date, so full price is being counted.</div>`);
+  if (c.problems.length)
+    notes.push(`<div class="err">${c.problems
+      .map((i) => esc(i.name))
+      .join(", ")} ${c.problems.length === 1 ? "is" : "are"} needed by a planned meal but ${
+      c.problems.length === 1 ? "has" : "have"
+    } no portions per pack, so ${
+      c.problems.length === 1 ? "it is" : "they are"
+    } missing from this list. Set it to 1 on the Items tab if the pack is not divided into servings.</div>`);
 
   const body = c.lines.length
     ? c.stores
@@ -435,7 +443,11 @@ function viewItems() {
     const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
       <div class="grow">
         <div class="trunc" style="font-weight:700">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
-        <div class="muted num">${ing.portionsPerPack}/pack &middot; £${money(portionCost(ing))} a portion${
+        <div class="muted num">${
+      Number(ing.portionsPerPack) > 0
+        ? `${ing.portionsPerPack}/pack`
+        : '<span class="stale">portions not set</span>'
+    } &middot; £${money(portionCost(ing))} a portion${
       live ? ` &middot; ${esc(offerLabel(ing))}` : ""
     }${extra ? ` &middot; ${extra} on the list` : ""}</div>
       </div>
@@ -576,8 +588,14 @@ function sheetReceipt(s) {
         <select class="inp" style="margin-top:5px" data-act="setRowTarget" data-i="${i}">${picker(r.targetId)}</select>
         ${
           r.targetId === "__new__"
-            ? `<label class="field" style="margin-top:5px"><span class="eyebrow">Name for the new item</span>
-               <input class="inp" value="${esc(r.newName)}" data-act="setRowName" data-i="${i}"></label>`
+            ? `<div class="grid2" style="margin-top:5px">
+                 <label class="field"><span class="eyebrow">Name</span>
+                   <input class="inp" value="${esc(r.newName)}" data-act="setRowName" data-i="${i}"></label>
+                 <label class="field"><span class="eyebrow">Portions per pack</span>
+                   <input class="inp mono" type="number" step="0.5" min="0.5" value="${r.newPortions}"
+                     data-act="setRowPortions" data-i="${i}"></label>
+               </div>
+               <p class="why" style="margin:3px 0 0">Leave it at 1 for anything you do not divide into servings, like water or kitchen roll.</p>`
             : ""
         }
         <div class="row" style="margin-top:5px">
@@ -789,6 +807,7 @@ function receiptRow(line) {
     barcode: "",
     offer: line.offer === true,
     newName: titleise(line.name),
+    newPortions: 1,
   };
 }
 
@@ -826,6 +845,7 @@ function applyReceipt() {
       if (target === "__new__") {
         const made = newIngredient(s.store || (db.ingredients[0] && db.ingredients[0].store));
         made.name = (r.newName || "").trim() || titleise(r.raw);
+        made.portionsPerPack = Math.max(0.5, Number(r.newPortions) || 1);
         made.id = slug(made.name) + "-" + uid().slice(1, 4);
         db.ingredients.push(made);
         target = made.id;
@@ -1108,6 +1128,12 @@ const actions = {
   setRowName: (el) => {
     const rows = state.sheet.rows.slice();
     rows[Number(el.dataset.i)] = { ...rows[Number(el.dataset.i)], newName: el.value };
+    state.sheet = { ...state.sheet, rows };
+  },
+  setRowPortions: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], newPortions: Math.max(0.5, Number(el.value) || 1) };
     state.sheet = { ...state.sheet, rows };
   },
   toggleRowOffer: (el) => {
