@@ -1,5 +1,6 @@
 # Fortnight Shop
 
+
 A portion-based meal planner and food budget for UK shopping. Static site, no build step, no server. Prices are captured from receipts and barcodes rather than scraped, so nothing breaks when a supermarket changes its website.
 
 Ported from the Meal_Planner spreadsheet. The maths is identical: portions needed across 14 days, minus what is in stock, rounded up to whole packs, grouped by store. The seeded data reproduces the spreadsheet's £12.60 total exactly.
