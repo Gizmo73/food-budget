@@ -10,7 +10,7 @@ import {
   resolveLine, norm, uid, slug,
 } from "./lib/store.js";
 import { computeShopping, mealCost, portionCost, money, today, daysSince, STALE_DAYS } from "./lib/calc.js";
-import { scanSupported, startScan, decodeStill } from "./lib/scan.js";
+import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
 import { readReceipt } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
 
@@ -503,8 +503,12 @@ function sheetSettings(s) {
       <button class="btn grow" data-act="restoreBackup">Restore</button>
       <button class="btn danger" data-act="resetAll">Reset</button>
     </div>
-    <p class="muted">Scanning needs the camera. ${
-      scanSupported() ? "This browser supports it." : "This browser does not, so type barcodes by hand."
+    <p class="muted">Scanning needs camera access. ${
+      !scanSupported()
+        ? "This browser has no camera access, so type barcodes by hand."
+        : "BarcodeDetector" in window
+        ? "Your browser decodes barcodes natively."
+        : "Your browser has no built-in decoder, so the app loads its own the first time you scan. About a megabyte, cached afterwards, then it works offline like everything else."
     }</p>`
   );
 }
@@ -558,6 +562,9 @@ async function openCamera(title, onCode) {
       note.className = "err";
       note.textContent = err.message;
       el.querySelector(".sheet").prepend(note);
+    },
+    (status) => {
+      hint.textContent = status;
     }
   );
   if (cam) cam.handle = handle;
