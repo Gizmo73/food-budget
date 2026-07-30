@@ -10,8 +10,8 @@ import {
   resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames,
 } from "./lib/store.js";
 import {
-  computeShopping, mealCost, portionCost, unitPrice, packCost, activeOffer, offerLabel,
-  offerExpired, groupByStore, money, today, daysSince, STALE_DAYS,
+  computeShopping, mealCost, portionCost, activeOffer, offerLabel,
+  offerExpired, offerMeaning, groupByStore, money, today, daysSince, STALE_DAYS,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
 import { readReceipt } from "./lib/vision.js";
@@ -420,9 +420,7 @@ function offerEditor(ing) {
       expired
         ? `<p class="muted stale" style="margin:6px 0 0">Ended ${esc(o.ends)}, so full price is being used.</p>`
         : live
-        ? `<p class="muted" style="margin:6px 0 0">Counting as ${esc(offerLabel(ing))}. Three packs would cost £${money(
-            packCost(ing, 3)
-          )} instead of £${money(3 * (Number(ing.pricePerPack) || 0))}.</p>`
+        ? `<p class="muted" style="margin:6px 0 0">${esc(offerMeaning(ing))}</p>`
         : kind
         ? `<p class="muted" style="margin:6px 0 0">Fill the numbers in and the offer starts counting.</p>`
         : ""
@@ -603,12 +601,31 @@ function sheetReceipt(s) {
           <span class="why grow">${r.barcode ? "barcode " + esc(r.barcode) : esc(r.why)}${
               r.qty > 1 ? ` · ${r.qty} bought` : ""
             }</span>
-          <button class="pill${r.offer ? " on" : ""}" data-act="toggleRowOffer" data-i="${i}"
-            title="Was this an offer price?">offer price</button>
           <button class="btn small ghost" data-act="scanRow" data-i="${i}">${
               r.barcode ? "Rescan" : "Scan barcode"
             }</button>
         </div>
+        <div class="row" style="margin-top:5px">
+          <span class="eyebrow" style="white-space:nowrap">Paid</span>
+          <select class="inp grow" data-act="setRowOfferKind" data-i="${i}">
+            <option value="none"${r.offerKind === "none" ? " selected" : ""}>Full price</option>
+            <option value="loyalty"${r.offerKind === "loyalty" ? " selected" : ""}>Card price, any quantity</option>
+            <option value="multibuy"${r.offerKind === "multibuy" ? " selected" : ""}>Multibuy, needs several</option>
+          </select>
+        </div>
+        ${
+          r.offerKind === "multibuy"
+            ? `<div class="row" style="margin-top:5px">
+                 <span class="eyebrow" style="white-space:nowrap">Deal</span>
+                 <input class="inp mono" style="width:58px;text-align:right" type="number" step="1" min="2"
+                   value="${r.offerQty}" data-act="setRowOfferQty" data-i="${i}" aria-label="Packs in the deal">
+                 <span class="eyebrow">for £</span>
+                 <input class="inp mono grow" type="number" step="0.01" min="0"
+                   value="${r.offerTotal || ""}" data-act="setRowOfferTotal" data-i="${i}" aria-label="Total for the deal">
+               </div>
+               <p class="why" style="margin:3px 0 0">The base price is left alone, since a multibuy does not tell us what one pack costs.</p>`
+            : ""
+        }
       </div>`
           )
           .join("") +
@@ -621,7 +638,7 @@ function sheetReceipt(s) {
     }>Update ${ready} price${ready === 1 ? "" : "s"}</button>
     <p class="muted">Confirming a line teaches the app that receipt wording, so it matches itself next time.
     Scanning binds the barcode too, which is what makes in-store scanning work later.
-    Lines marked <strong>offer price</strong> are saved as the loyalty price and leave the base price alone.</p>`);
+    A <strong>card price</strong> applies to every pack, a <strong>multibuy</strong> only once you buy enough. Both leave the base price alone.</p>`);
   }
 
   return shell(
@@ -806,7 +823,9 @@ function receiptRow(line) {
     confident: res.confident,
     use: !!res.id,
     barcode: "",
-    offer: line.offer === true,
+    offerKind: line.offerKind || "none",
+    offerQty: Number(line.offerQty) || 3,
+    offerTotal: Number(line.offerTotal) || 0,
     newName: titleise(line.name),
     newPortions: 1,
   };
@@ -860,9 +879,16 @@ function applyReceipt() {
       const ing = { ...db.ingredients[idx] };
       // An offer price must not overwrite the base price, or the base price
       // drifts down every time a promotion runs and never comes back up.
-      if (r.offer) {
+      // The kind matters: a card price applies to a single pack, a multibuy
+      // does not, so storing a multibuy as a card price understates singles.
+      if (r.offerKind === "loyalty") {
         ing.offer = { kind: "loyalty", price: r.price, ends: "" };
         if (!ing.pricePerPack) ing.pricePerPack = r.price;
+      } else if (r.offerKind === "multibuy" && r.offerQty > 1 && r.offerTotal > 0) {
+        ing.offer = { kind: "multibuy", qty: r.offerQty, price: r.offerTotal, ends: "" };
+        // With no base price on record the deal rate is the only number we
+        // have. It shows in the editor so it can be corrected.
+        if (!ing.pricePerPack) ing.pricePerPack = r.offerTotal / r.offerQty;
       } else {
         ing.pricePerPack = r.price;
       }
@@ -1153,10 +1179,22 @@ const actions = {
     rows[i] = { ...rows[i], newPortions: Math.max(0.5, Number(el.value) || 1) };
     state.sheet = { ...state.sheet, rows };
   },
-  toggleRowOffer: (el) => {
+  setRowOfferKind: (el) => {
     const rows = state.sheet.rows.slice();
     const i = Number(el.dataset.i);
-    rows[i] = { ...rows[i], offer: !rows[i].offer };
+    rows[i] = { ...rows[i], offerKind: el.value };
+    setSheet({ ...state.sheet, rows });
+  },
+  setRowOfferQty: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], offerQty: Math.max(2, Number(el.value) || 2) };
+    setSheet({ ...state.sheet, rows });
+  },
+  setRowOfferTotal: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], offerTotal: Number(el.value) || 0 };
     setSheet({ ...state.sheet, rows });
   },
   applyReceipt: () => applyReceipt(),
