@@ -516,7 +516,7 @@ function viewItems() {
         ${offerEditor(ing)}
         <div class="grid2" style="margin-bottom:8px">
           <label class="field"><span class="eyebrow">Store</span>
-            <input class="inp" list="fb-stores" value="${esc(ing.store || "")}"
+            <input class="inp" list="fb-stores" value="${esc(ing.store || "")}" placeholder="Not set"
               data-act="setField" data-id="${ing.id}" data-field="store"></label>
           <label class="field"><span class="eyebrow">In stock (packs)</span>
             <input class="inp mono" type="number" step="0.25" min="0" value="${ing.stockPacks}"
@@ -552,7 +552,7 @@ function viewItems() {
           <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
           <span class="eyebrow grow">${esc(g.name)} &middot; ${g.items.length} item${g.items.length === 1 ? "" : "s"}${
         holding ? ` &middot; ${holding} on the list` : ""
-      }</span>
+      }${g.name === "Unassigned" ? " &middot; set a store to file these" : ""}</span>
         </div>
         ${shut ? "" : g.items.map(card).join("")}
       </div>`;
@@ -622,7 +622,8 @@ function sheetScanned(s) {
                  data-act="setScanPortions"></label>
            </div>
            <label class="field" style="margin-bottom:8px"><span class="eyebrow">Store</span>
-             <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" data-act="setScanStore">
+             <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="Leave blank to sort later"
+               data-act="setScanStore">
              <datalist id="fb-scan-stores">${stores
                .map((st) => `<option value="${esc(st)}"></option>`)
                .join("")}</datalist></label>`
@@ -959,7 +960,8 @@ function applyReceipt() {
       let target = r.targetId;
 
       if (target === "__new__") {
-        const made = newIngredient(s.store || (db.ingredients[0] && db.ingredients[0].store));
+        // The receipt genuinely tells us the store, so that one is not a guess.
+        const made = newIngredient(s.store);
         made.name = (r.newName || "").trim() || titleise(r.raw);
         made.portionsPerPack = Math.max(0.5, Number(r.newPortions) || 1);
         made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
@@ -1064,14 +1066,13 @@ const actions = {
   openScan: () =>
     openCamera("Scan an item", (code) => {
       const hit = state.db.ingredients.find((i) => (i.barcodes || []).includes(code));
-      const stores = storeNames(state.db.ingredients);
       setSheet({
         kind: "scanned",
         code,
         targetId: hit ? hit.id : "",
         name: "",
         portions: 1,
-        store: stores[0] || "Tesco",
+        store: "",
         price: hit ? String(hit.pricePerPack || "") : "",
         err: "",
       });
@@ -1199,8 +1200,7 @@ const actions = {
     setSheet(open ? null : { kind: "item", id });
   },
   addItem: async () => {
-    const stores = storeNames(state.db.ingredients);
-    const made = newIngredient(stores[0]);
+    const made = newIngredient();
     made.id = uniqueId(made.name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
     await revealItem(made.id);
