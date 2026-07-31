@@ -7,10 +7,10 @@
 
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
-  resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames,
+  resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames, cleanOffer,
 } from "./lib/store.js";
 import {
-  computeShopping, mealCost, portionCost, activeOffer, offerLabel,
+  computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
   offerExpired, offerMeaning, groupByStore, money, today, daysSince, STALE_DAYS,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
@@ -400,41 +400,40 @@ function viewMeals() {
 
 /* ---- items ---- */
 
-function offerEditor(ing) {
-  const o = ing.offer || {};
+/* Shared by the Items tab and the scan sheet. Takes a plain
+   { pricePerPack, offer } shape so it works before an item exists. */
+function offerEditor(subject, acts) {
+  const o = subject.offer || {};
   const kind = o.kind || "";
+  const attrs = `data-act="${acts.kind}"${acts.id ? ` data-id="${acts.id}"` : ""}`;
+  const field = (name) => `data-act="${acts.field}"${acts.id ? ` data-id="${acts.id}"` : ""} data-field="${name}"`;
   const opt = (v, label) => `<option value="${v}"${kind === v ? " selected" : ""}>${label}</option>`;
 
   let fields = "";
   if (kind === "loyalty") {
     fields = `<label class="field"><span class="eyebrow">Card price £ per pack</span>
-      <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}"
-        data-act="setOfferField" data-id="${ing.id}" data-field="price"></label>`;
+      <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}" ${field("price")}></label>`;
   } else if (kind === "multibuy") {
     fields = `<div class="grid2">
       <label class="field"><span class="eyebrow">Buy this many</span>
-        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}"
-          data-act="setOfferField" data-id="${ing.id}" data-field="qty"></label>
+        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}" ${field("qty")}></label>
       <label class="field"><span class="eyebrow">For a total of £</span>
-        <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}"
-          data-act="setOfferField" data-id="${ing.id}" data-field="price"></label></div>`;
+        <input class="inp mono" type="number" step="0.01" min="0" value="${o.price || ""}" ${field("price")}></label></div>`;
   } else if (kind === "xfory") {
     fields = `<div class="grid2">
       <label class="field"><span class="eyebrow">Take this many</span>
-        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}"
-          data-act="setOfferField" data-id="${ing.id}" data-field="qty"></label>
+        <input class="inp mono" type="number" step="1" min="2" value="${o.qty || ""}" ${field("qty")}></label>
       <label class="field"><span class="eyebrow">Pay for this many</span>
-        <input class="inp mono" type="number" step="1" min="1" value="${o.pay || ""}"
-          data-act="setOfferField" data-id="${ing.id}" data-field="pay"></label></div>`;
+        <input class="inp mono" type="number" step="1" min="1" value="${o.pay || ""}" ${field("pay")}></label></div>`;
   }
 
-  const live = activeOffer(ing);
-  const expired = offerExpired(ing);
+  const live = activeOffer(subject);
+  const expired = offerExpired(subject);
 
   return `<div style="border:1px solid var(--rule);padding:9px;margin-bottom:8px;background:#fff">
     <label class="field" style="margin-bottom:${kind ? "8px" : "0"}">
       <span class="eyebrow">Offer</span>
-      <select class="inp" data-act="setOfferKind" data-id="${ing.id}">
+      <select class="inp" ${attrs}>
         ${opt("", "None, full price")}
         ${opt("loyalty", "Loyalty card price")}
         ${opt("multibuy", "N for a fixed price")}
@@ -444,15 +443,14 @@ function offerEditor(ing) {
     ${
       kind
         ? `<label class="field" style="margin-top:8px"><span class="eyebrow">Offer ends, optional</span>
-           <input class="inp mono" type="date" value="${o.ends || ""}"
-             data-act="setOfferField" data-id="${ing.id}" data-field="ends"></label>`
+           <input class="inp mono" type="date" value="${o.ends || ""}" ${field("ends")}></label>`
         : ""
     }
     ${
       expired
         ? `<p class="muted stale" style="margin:6px 0 0">Ended ${esc(o.ends)}, so full price is being used.</p>`
         : live
-        ? `<p class="muted" style="margin:6px 0 0">${esc(offerMeaning(ing))}</p>`
+        ? `<p class="muted" style="margin:6px 0 0">${esc(offerMeaning(subject))}</p>`
         : kind
         ? `<p class="muted" style="margin:6px 0 0">Fill the numbers in and the offer starts counting.</p>`
         : ""
@@ -513,7 +511,7 @@ function viewItems() {
             <input class="inp mono" type="number" step="0.5" min="0" value="${ing.portionsPerPack}"
               data-act="setNumber" data-id="${ing.id}" data-field="portionsPerPack"></label>
         </div>
-        ${offerEditor(ing)}
+        ${offerEditor(ing, { kind: "setOfferKind", field: "setOfferField", id: ing.id })}
         <div class="grid2" style="margin-bottom:8px">
           <label class="field"><span class="eyebrow">Store</span>
             <input class="inp" list="fb-stores" value="${esc(ing.store || "")}" placeholder="Not set"
@@ -575,70 +573,6 @@ function viewSheet() {
   return "";
 }
 
-/* Scanning opens this rather than sending you to the Items tab, where a
-   collapsed store group or a long list would hide the new item completely. */
-function sheetScanned(s) {
-  const known = s.targetId ? ingredient(s.targetId) : null;
-  const stores = storeNames(state.db.ingredients);
-
-  const picker = [`<option value=""${s.targetId ? "" : " selected"}>A new item</option>`]
-    .concat(
-      state.db.ingredients.map(
-        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)} (£${money(
-          i.pricePerPack
-        )})</option>`
-      )
-    )
-    .join("");
-
-  const delta =
-    known && Number(s.price) > 0 && Math.abs(Number(s.price) - known.pricePerPack) > 0.004
-      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(known.pricePerPack)}, so that is ${
-          Number(s.price) > known.pricePerPack ? "up" : "down"
-        } £${money(Math.abs(Number(s.price) - known.pricePerPack))}.</p>`
-      : "";
-
-  return shell(
-    known ? esc(known.name) : "New barcode",
-    known
-      ? "Type what the shelf says and it is saved against this item."
-      : "This barcode is new. Pick the item it belongs to, or fill in a new one.",
-    `
-    ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
-      <input class="inp mono" value="${esc(s.code)}" data-act="setScanCode"></label>
-
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is</span>
-      <select class="inp" data-act="setScanTarget">${picker}</select></label>
-
-    ${
-      known
-        ? ""
-        : `<div class="grid2" style="margin-bottom:8px">
-             <label class="field"><span class="eyebrow">Name</span>
-               <input class="inp" value="${esc(s.name)}" placeholder="Chicken Korma" data-act="setScanName"></label>
-             <label class="field"><span class="eyebrow">Portions per pack</span>
-               <input class="inp mono" type="number" step="0.5" min="0.5" value="${s.portions}"
-                 data-act="setScanPortions"></label>
-           </div>
-           <label class="field" style="margin-bottom:8px"><span class="eyebrow">Store</span>
-             <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="Leave blank to sort later"
-               data-act="setScanStore">
-             <datalist id="fb-scan-stores">${stores
-               .map((st) => `<option value="${esc(st)}"></option>`)
-               .join("")}</datalist></label>`
-    }
-
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shelf price £ per pack</span>
-      <input class="inp mono" type="number" step="0.01" min="0" inputmode="decimal"
-        value="${s.price}" placeholder="0.00" data-act="setScanPrice"></label>
-    ${delta}
-
-    <button class="btn solid wide" data-act="saveScan">Save price</button>
-    <p class="muted">Saving binds this barcode, so next time the scan comes straight here.</p>`
-  );
-}
-
 function shell(title, blurb, inner) {
   return `<div class="scrim" data-act="closeSheet"><div class="sheet" data-stop="1">
     <button class="btn small ghost close" data-act="closeSheet">Close</button>
@@ -696,7 +630,7 @@ function sheetReceipt(s) {
         }
         <div class="row" style="margin-top:5px">
           <span class="why grow">${r.barcode ? "barcode " + esc(r.barcode) : esc(r.why)}${
-              r.qty > 1 ? ` · ${r.qty} bought` : ""
+              r.qty > 1 ? ` &middot; ${r.qty} bought` : ""
             }</span>
           <button class="btn small ghost" data-act="scanRow" data-i="${i}">${
               r.barcode ? "Rescan" : "Scan barcode"
@@ -742,6 +676,107 @@ function sheetReceipt(s) {
     "Read a receipt",
     "Photograph the whole receipt flat, in good light. Nothing changes until you confirm.",
     inner.join("")
+  );
+}
+
+/* Scanning opens this rather than sending you to the Items tab, where a
+   collapsed store group or a long list would hide the new item completely.
+
+   The whole sheet is a transaction: everything is edited in sheet state and
+   nothing touches the item until you save. An abandoned scan halfway down an
+   aisle therefore leaves no half-finished edits behind. */
+function sheetScanned(s) {
+  const known = s.targetId ? ingredient(s.targetId) : null;
+  const stores = storeNames(state.db.ingredients);
+  const base = Number(s.price) || 0;
+  const bought = Number(s.bought) || 0;
+
+  const picker = [`<option value=""${s.targetId ? "" : " selected"}>A new item</option>`]
+    .concat(
+      state.db.ingredients.map(
+        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)} (£${money(
+          i.pricePerPack
+        )})</option>`
+      )
+    )
+    .join("");
+
+  const delta =
+    known && base > 0 && Math.abs(base - known.pricePerPack) > 0.004
+      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(known.pricePerPack)}, so that is ${
+          base > known.pricePerPack ? "up" : "down"
+        } £${money(Math.abs(base - known.pricePerPack))}.</p>`
+      : "";
+
+  // what the packs in the trolley actually cost, deal included
+  const spend = bought > 0 ? packCost({ pricePerPack: base, offer: s.offer }, bought) : 0;
+  const full = bought * base;
+  const stockNow = known ? Number(known.stockPacks) || 0 : 0;
+
+  return shell(
+    known ? esc(known.name) : "New barcode",
+    known
+      ? "Update the price, record an offer, and add what you put in the trolley."
+      : "This barcode is new. Fill it in and it is saved when you tap the button.",
+    `
+    ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
+      <input class="inp mono" value="${esc(s.code)}" data-act="setScanCode"></label>
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is</span>
+      <select class="inp" data-act="setScanTarget">${picker}</select></label>
+
+    ${
+      known
+        ? ""
+        : `<div class="grid2" style="margin-bottom:8px">
+             <label class="field"><span class="eyebrow">Name</span>
+               <input class="inp" value="${esc(s.name)}" placeholder="Chicken Korma" data-act="setScanName"></label>
+             <label class="field"><span class="eyebrow">Portions per pack</span>
+               <input class="inp mono" type="number" step="0.5" min="0.5" value="${s.portions}"
+                 data-act="setScanPortions"></label>
+           </div>
+           <label class="field" style="margin-bottom:8px"><span class="eyebrow">Store</span>
+             <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="Leave blank to sort later"
+               data-act="setScanStore">
+             <datalist id="fb-scan-stores">${stores
+               .map((st) => `<option value="${esc(st)}"></option>`)
+               .join("")}</datalist></label>`
+    }
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shelf price £ per pack</span>
+      <input class="inp mono" type="number" step="0.01" min="0" inputmode="decimal"
+        value="${s.price}" placeholder="0.00" data-act="setScanPrice"></label>
+    ${delta}
+
+    ${offerEditor({ pricePerPack: base, offer: s.offer }, { kind: "setScanOfferKind", field: "setScanOfferField" })}
+
+    <div style="border:1px solid var(--rule);padding:9px;margin-bottom:10px;background:#fff">
+      <div class="row">
+        <div class="grow">
+          <span class="eyebrow" style="display:block">In the trolley</span>
+          <span class="muted">${
+            known ? `${stockNow} pack${stockNow === 1 ? "" : "s"} in stock now` : "Nothing in stock yet"
+          }</span>
+        </div>
+        <button class="btn small ghost" data-act="lessScanBought">&minus;</button>
+        <span class="num" style="min-width:26px;text-align:center;font-weight:700;font-size:16px">${bought}</span>
+        <button class="btn small ghost" data-act="moreScanBought">+</button>
+      </div>
+      ${
+        bought > 0
+          ? `<p class="muted" style="margin:7px 0 0">That is £${money(spend)}${
+              full - spend > 0.004 ? `, saving £${money(full - spend)} on the offer` : ""
+            }. Stock goes to ${stockNow + bought} on save.</p>`
+          : `<p class="muted" style="margin:7px 0 0">Leave at 0 to record the price only.</p>`
+      }
+    </div>
+
+    <button class="btn solid wide" data-act="saveScan">${
+      bought > 0 ? `Save and add ${bought} to stock` : "Save price"
+    }</button>
+    <p class="muted">Saving binds this barcode, so next time the scan comes straight here.
+    Anything added to stock comes off what the shopping list says to buy.</p>`
   );
 }
 
@@ -889,6 +924,23 @@ document.addEventListener("click", (e) => {
     if (cb) cb(value);
   }
 });
+
+/* Load an item into scan-sheet state. Offers are copied rather than
+   referenced, so editing the sheet does not mutate the item before saving. */
+function scanState(code, hit) {
+  return {
+    kind: "scanned",
+    code: code || "",
+    targetId: hit ? hit.id : "",
+    name: "",
+    portions: 1,
+    store: "",
+    price: hit ? String(hit.pricePerPack || "") : "",
+    offer: hit && hit.offer ? { ...hit.offer } : null,
+    bought: 0,
+    err: "",
+  };
+}
 
 /* ------------------------------- receipts ------------------------------ */
 
@@ -1066,41 +1118,51 @@ const actions = {
   openScan: () =>
     openCamera("Scan an item", (code) => {
       const hit = state.db.ingredients.find((i) => (i.barcodes || []).includes(code));
-      setSheet({
-        kind: "scanned",
-        code,
-        targetId: hit ? hit.id : "",
-        name: "",
-        portions: 1,
-        store: "",
-        price: hit ? String(hit.pricePerPack || "") : "",
-        err: "",
-      });
+      setSheet(scanState(code, hit));
     }),
 
   setScanCode: (el) => {
     const code = el.value.trim();
     const hit = state.db.ingredients.find((i) => (i.barcodes || []).includes(code));
-    setSheet({
-      ...state.sheet,
-      code,
-      targetId: hit ? hit.id : state.sheet.targetId,
-      price: hit ? String(hit.pricePerPack || "") : state.sheet.price,
-    });
+    if (hit && hit.id !== state.sheet.targetId) {
+      setSheet({ ...scanState(code, hit), bought: state.sheet.bought });
+      return;
+    }
+    setSheet({ ...state.sheet, code });
   },
   setScanTarget: (el) => {
     const hit = el.value ? ingredient(el.value) : null;
-    setSheet({
-      ...state.sheet,
-      targetId: el.value,
-      price: hit ? String(hit.pricePerPack || "") : state.sheet.price,
-    });
+    // pull that item's price and offer in, so you are editing what it really has
+    setSheet({ ...scanState(state.sheet.code, hit), bought: state.sheet.bought });
   },
   setScanName: (el) => setSheet({ ...state.sheet, name: el.value }),
   setScanPortions: (el) => setSheet({ ...state.sheet, portions: Math.max(0.5, Number(el.value) || 1) }),
   setScanStore: (el) =>
     setSheet({ ...state.sheet, store: canonicalStore(el.value, storeNames(state.db.ingredients)) }),
   setScanPrice: (el) => setSheet({ ...state.sheet, price: el.value }),
+
+  setScanOfferKind: (el) => {
+    const kind = el.value;
+    if (!kind) {
+      setSheet({ ...state.sheet, offer: null });
+      return;
+    }
+    const prev = state.sheet.offer || {};
+    const next = { kind, ends: prev.ends || "" };
+    if (kind === "loyalty") next.price = prev.price || 0;
+    if (kind === "multibuy") { next.qty = prev.qty || 2; next.price = prev.price || 0; }
+    if (kind === "xfory") { next.qty = prev.qty || 3; next.pay = prev.pay || 2; }
+    setSheet({ ...state.sheet, offer: next });
+  },
+  setScanOfferField: (el) => {
+    if (!state.sheet.offer) return;
+    const field = el.dataset.field;
+    const value = field === "ends" ? el.value : Number(el.value) || 0;
+    setSheet({ ...state.sheet, offer: { ...state.sheet.offer, [field]: value } });
+  },
+  moreScanBought: () => setSheet({ ...state.sheet, bought: (Number(state.sheet.bought) || 0) + 1 }),
+  lessScanBought: () =>
+    setSheet({ ...state.sheet, bought: Math.max(0, (Number(state.sheet.bought) || 0) - 1) }),
 
   saveScan: () => {
     const s = state.sheet;
@@ -1109,6 +1171,9 @@ const actions = {
       setSheet({ ...s, err: "Type the shelf price first." });
       return;
     }
+    const bought = Math.max(0, Number(s.bought) || 0);
+    const offer = cleanOffer(s.offer);
+
     if (s.targetId) {
       const ing = ingredient(s.targetId);
       if (!ing) return;
@@ -1116,15 +1181,23 @@ const actions = {
       patchIngredient(ing.id, {
         pricePerPack: price,
         priceUpdated: today(),
+        offer,
+        stockPacks: (Number(ing.stockPacks) || 0) + bought,
+        // buying it settles whatever was on the list by hand
+        extraPacks: bought > 0 ? 0 : ing.extraPacks,
         barcodes: [...new Set([...(ing.barcodes || []), s.code].filter(Boolean))],
       });
       state.sheet = null;
       const delta = price - before;
+      const moved =
+        Math.abs(delta) > 0.004 ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}` : "";
       flash(
         "ok",
-        `${ing.name} now £${money(price)}${
-          Math.abs(delta) > 0.004 ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}` : ""
-        }.`
+        bought > 0
+          ? `${ing.name} now £${money(price)}${moved}. ${bought} pack${
+              bought === 1 ? "" : "s"
+            } added to stock.`
+          : `${ing.name} now £${money(price)}${moved}.`
       );
       return;
     }
@@ -1139,11 +1212,18 @@ const actions = {
     made.portionsPerPack = Math.max(0.5, Number(s.portions) || 1);
     made.pricePerPack = price;
     made.priceUpdated = today();
+    made.offer = offer;
+    made.stockPacks = bought;
     made.barcodes = s.code ? [s.code] : [];
     made.id = uniqueId(name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
     state.sheet = null;
-    flash("ok", `${made.name} added at £${money(price)}.`);
+    flash(
+      "ok",
+      bought > 0
+        ? `${made.name} added at £${money(price)}, ${bought} in stock.`
+        : `${made.name} added at £${money(price)}.`
+    );
   },
 
   bought: (el) => {
