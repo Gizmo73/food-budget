@@ -20,7 +20,7 @@ import { pull, push } from "./lib/sync.js";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const root = document.getElementById("app");
 
-const state = { db: null, settings: null, tab: "list", sheet: null, flash: null, calc: null };
+const state = { db: null, settings: null, tab: "list", sheet: null, flash: null, calc: null, reveal: null };
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -64,6 +64,24 @@ function flash(kind, text) {
 const ingredient = (id) => state.db.ingredients.find((i) => i.id === id);
 
 const isShut = (which, name) => (state.settings[which] || []).includes(name);
+
+/* A new item is useless if you cannot see it. Expand its store group, open it,
+   and scroll it into view, otherwise a collapsed group swallows it silently. */
+async function revealItem(id) {
+  const ing = state.db.ingredients.find((i) => i.id === id);
+  const store = (ing && ing.store) || "Unassigned";
+  const shut = state.settings.collapsedItems || [];
+  if (shut.some((n) => n.toLowerCase() === store.toLowerCase())) {
+    state.settings = {
+      ...state.settings,
+      collapsedItems: shut.filter((n) => n.toLowerCase() !== store.toLowerCase()),
+    };
+    await saveSettings(state.settings);
+  }
+  state.tab = "items";
+  state.reveal = id;
+  setSheet({ kind: "item", id });
+}
 
 async function toggleShut(which, name) {
   const list = state.settings[which] || [];
@@ -124,6 +142,20 @@ function draw() {
   if (sheetScroll !== null) {
     const s = document.querySelector(".sheet");
     if (s) s.scrollTop = sheetScroll;
+  }
+
+  if (state.reveal) {
+    const card = root.querySelector(`[data-scroll="${state.reveal}"]`);
+    if (card) {
+      if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
+      const nameField = card.querySelector('[data-field="name"]');
+      if (nameField) {
+        nameField.focus();
+        if (nameField.select) nameField.select();
+      }
+    }
+    state.reveal = null;
+    return;
   }
 
   if (focusKey) {
@@ -457,7 +489,7 @@ function viewItems() {
       <button class="btn small ghost" data-act="addToList" data-id="${ing.id}" title="Add a pack to the shopping list">+</button>
     </div>`;
 
-    if (ing.id !== open) return `<section class="card">${head}</section>`;
+    if (ing.id !== open) return `<section class="card" data-scroll="${ing.id}">${head}</section>`;
 
     const codes = (ing.barcodes || []).length
       ? (ing.barcodes || [])
@@ -469,7 +501,7 @@ function viewItems() {
           .join("")
       : `<span class="muted">none yet</span>`;
 
-    return `<section class="card">${head}
+    return `<section class="card" data-scroll="${ing.id}">${head}
       <div style="border-top:1px solid var(--rule);margin-top:10px;padding-top:10px">
         <label class="field" style="margin-bottom:8px"><span class="eyebrow">Item name</span>
           <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
@@ -539,7 +571,71 @@ function viewSheet() {
   if (!s) return "";
   if (s.kind === "receipt") return sheetReceipt(s);
   if (s.kind === "settings") return sheetSettings(s);
+  if (s.kind === "scanned") return sheetScanned(s);
   return "";
+}
+
+/* Scanning opens this rather than sending you to the Items tab, where a
+   collapsed store group or a long list would hide the new item completely. */
+function sheetScanned(s) {
+  const known = s.targetId ? ingredient(s.targetId) : null;
+  const stores = storeNames(state.db.ingredients);
+
+  const picker = [`<option value=""${s.targetId ? "" : " selected"}>A new item</option>`]
+    .concat(
+      state.db.ingredients.map(
+        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)} (£${money(
+          i.pricePerPack
+        )})</option>`
+      )
+    )
+    .join("");
+
+  const delta =
+    known && Number(s.price) > 0 && Math.abs(Number(s.price) - known.pricePerPack) > 0.004
+      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(known.pricePerPack)}, so that is ${
+          Number(s.price) > known.pricePerPack ? "up" : "down"
+        } £${money(Math.abs(Number(s.price) - known.pricePerPack))}.</p>`
+      : "";
+
+  return shell(
+    known ? esc(known.name) : "New barcode",
+    known
+      ? "Type what the shelf says and it is saved against this item."
+      : "This barcode is new. Pick the item it belongs to, or fill in a new one.",
+    `
+    ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
+      <input class="inp mono" value="${esc(s.code)}" data-act="setScanCode"></label>
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is</span>
+      <select class="inp" data-act="setScanTarget">${picker}</select></label>
+
+    ${
+      known
+        ? ""
+        : `<div class="grid2" style="margin-bottom:8px">
+             <label class="field"><span class="eyebrow">Name</span>
+               <input class="inp" value="${esc(s.name)}" placeholder="Chicken Korma" data-act="setScanName"></label>
+             <label class="field"><span class="eyebrow">Portions per pack</span>
+               <input class="inp mono" type="number" step="0.5" min="0.5" value="${s.portions}"
+                 data-act="setScanPortions"></label>
+           </div>
+           <label class="field" style="margin-bottom:8px"><span class="eyebrow">Store</span>
+             <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" data-act="setScanStore">
+             <datalist id="fb-scan-stores">${stores
+               .map((st) => `<option value="${esc(st)}"></option>`)
+               .join("")}</datalist></label>`
+    }
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shelf price £ per pack</span>
+      <input class="inp mono" type="number" step="0.01" min="0" inputmode="decimal"
+        value="${s.price}" placeholder="0.00" data-act="setScanPrice"></label>
+    ${delta}
+
+    <button class="btn solid wide" data-act="saveScan">Save price</button>
+    <p class="muted">Saving binds this barcode, so next time the scan comes straight here.</p>`
+  );
 }
 
 function shell(title, blurb, inner) {
@@ -968,32 +1064,86 @@ const actions = {
   openScan: () =>
     openCamera("Scan an item", (code) => {
       const hit = state.db.ingredients.find((i) => (i.barcodes || []).includes(code));
-      if (!hit) {
-        state.tab = "items";
-        const made = newIngredient(state.db.ingredients[0] && state.db.ingredients[0].store);
-        made.barcodes = [code];
-        commit((db) => db.ingredients.push(made));
-        setSheet({ kind: "item", id: made.id });
-        flash("ok", "New barcode. Name it and set the price.");
-        return;
-      }
-      const value = prompt(`${hit.name}\nShelf price per pack in pounds:`, String(hit.pricePerPack || ""));
-      if (value === null) return;
-      const price = Number(value);
-      if (!Number.isFinite(price) || price <= 0) {
-        flash("err", "That price did not look like a number.");
-        return;
-      }
-      const before = hit.pricePerPack;
-      patchIngredient(hit.id, { pricePerPack: price, priceUpdated: today() });
+      const stores = storeNames(state.db.ingredients);
+      setSheet({
+        kind: "scanned",
+        code,
+        targetId: hit ? hit.id : "",
+        name: "",
+        portions: 1,
+        store: stores[0] || "Tesco",
+        price: hit ? String(hit.pricePerPack || "") : "",
+        err: "",
+      });
+    }),
+
+  setScanCode: (el) => {
+    const code = el.value.trim();
+    const hit = state.db.ingredients.find((i) => (i.barcodes || []).includes(code));
+    setSheet({
+      ...state.sheet,
+      code,
+      targetId: hit ? hit.id : state.sheet.targetId,
+      price: hit ? String(hit.pricePerPack || "") : state.sheet.price,
+    });
+  },
+  setScanTarget: (el) => {
+    const hit = el.value ? ingredient(el.value) : null;
+    setSheet({
+      ...state.sheet,
+      targetId: el.value,
+      price: hit ? String(hit.pricePerPack || "") : state.sheet.price,
+    });
+  },
+  setScanName: (el) => setSheet({ ...state.sheet, name: el.value }),
+  setScanPortions: (el) => setSheet({ ...state.sheet, portions: Math.max(0.5, Number(el.value) || 1) }),
+  setScanStore: (el) =>
+    setSheet({ ...state.sheet, store: canonicalStore(el.value, storeNames(state.db.ingredients)) }),
+  setScanPrice: (el) => setSheet({ ...state.sheet, price: el.value }),
+
+  saveScan: () => {
+    const s = state.sheet;
+    const price = Number(s.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      setSheet({ ...s, err: "Type the shelf price first." });
+      return;
+    }
+    if (s.targetId) {
+      const ing = ingredient(s.targetId);
+      if (!ing) return;
+      const before = ing.pricePerPack;
+      patchIngredient(ing.id, {
+        pricePerPack: price,
+        priceUpdated: today(),
+        barcodes: [...new Set([...(ing.barcodes || []), s.code].filter(Boolean))],
+      });
+      state.sheet = null;
       const delta = price - before;
       flash(
         "ok",
-        `${hit.name} now £${money(price)}${
-          Math.abs(delta) > 0.001 ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}` : ""
+        `${ing.name} now £${money(price)}${
+          Math.abs(delta) > 0.004 ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}` : ""
         }.`
       );
-    }),
+      return;
+    }
+
+    const name = (s.name || "").trim();
+    if (!name) {
+      setSheet({ ...s, err: "Give the new item a name." });
+      return;
+    }
+    const made = newIngredient(s.store);
+    made.name = name;
+    made.portionsPerPack = Math.max(0.5, Number(s.portions) || 1);
+    made.pricePerPack = price;
+    made.priceUpdated = today();
+    made.barcodes = s.code ? [s.code] : [];
+    made.id = uniqueId(name, state.db.ingredients.map((i) => i.id));
+    commit((db) => db.ingredients.push(made));
+    state.sheet = null;
+    flash("ok", `${made.name} added at £${money(price)}.`);
+  },
 
   bought: (el) => {
     const ing = ingredient(el.dataset.id);
@@ -1048,10 +1198,12 @@ const actions = {
     const open = state.sheet && state.sheet.kind === "item" && state.sheet.id === id;
     setSheet(open ? null : { kind: "item", id });
   },
-  addItem: () => {
-    const made = newIngredient(state.db.ingredients[0] && state.db.ingredients[0].store);
+  addItem: async () => {
+    const stores = storeNames(state.db.ingredients);
+    const made = newIngredient(stores[0]);
+    made.id = uniqueId(made.name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
-    setSheet({ kind: "item", id: made.id });
+    await revealItem(made.id);
   },
   delItem: (el) => {
     const id = el.dataset.id;
