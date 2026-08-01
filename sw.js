@@ -1,7 +1,13 @@
 /* Offline shell. Supermarket signal is unreliable, and scanning must work
    without it. Bump CACHE when you change any file, or the old copy sticks. */
 
-const CACHE = "fortnight-shop-next-v1";
+/* This build is meant to be served alongside the live app, in a subfolder of
+   the same site. Caches are per origin, not per folder, so the two installs
+   can see each other's. Sweeping "everything that is not mine" would then have
+   each one wipe the other every time it updated, and both would look broken
+   offline for no reason. Only caches under this prefix are ever deleted. */
+const PREFIX = "fortnight-shop-next-";
+const CACHE = `${PREFIX}v1`;
 const SHELL = [
   "./",
   "./index.html",
@@ -24,7 +30,11 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(
+          keys.filter((k) => k !== CACHE && k.startsWith(PREFIX)).map((k) => caches.delete(k))
+        )
+      )
       .then(() => self.clients.claim())
   );
 });
