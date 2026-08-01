@@ -17,6 +17,12 @@ Ported from the Meal_Planner spreadsheet. The maths is identical: portions neede
 
 **Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices and quantities, and each line is matched to one of your items. You confirm before anything changes.
 
+**A receipt is dated evidence, not the current truth.** The date is read off the photo, shown beside the store and editable if the model misread it, and it is the date recorded against every price on that receipt. So entering a shop a week late no longer outranks corrections you made in between. Any line whose item has been updated since that date is switched off automatically and labelled **old price**, naming what changed and when; tick it back on if you disagree. Correcting the date brings those lines back.
+
+The comparison is by day, not to the minute. A receipt photographed this afternoon and a price you fixed this morning are treated as equal standing, because a receipt carries no time of day and inventing one would only produce false alarms.
+
+**A line that matches nothing now defaults to being added as a new item**, rather than to being ignored. Ignoring was the safe-looking default and the wrong one: it quietly dropped everything you had not recorded yet.
+
 A confirmed line also puts stock in, since a receipt is proof you bought the thing. Each line carries an **Into stock** figure in portions, worked out from the quantity on the receipt times that item's portions per pack, with ± stepping a whole pack at a time. It is editable because a receipt often cannot tell your items apart: three yoghurts on one line may be three flavours you keep separately, so knock that line down to one pack and put the others where they belong. Set it to 0 to record the price and nothing else. Pointing a line at a different item re-derives the figure, because portions are a different size on a different item.
 
 Matching gets better every shop, because confirming a line saves that receipt's wording as an alias:
@@ -73,6 +79,20 @@ The meal plan is the one thing that cannot merge sensibly, since two different f
 Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
 
 Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
+
+## When things were last updated
+
+Every item carries a **Last updated** stamp, shown in its editor. Two shapes of stamp exist on purpose:
+
+| Source | Recorded as | Why |
+|---|---|---|
+| An edit by hand | the minute it was made | So two changes on one day still have an order |
+| A shelf scan | the minute it was made | Same, and you are standing at the shelf |
+| A receipt | the day printed on it | A receipt genuinely does not know the time |
+
+That ordering is what stops an old receipt overwriting a correction, and it is also what decides who wins when two phones have both changed the same item: whoever priced it most recently.
+
+The price stamp and the last-updated stamp are separate. Renaming an item or fixing its portions per pack updates the item without pretending the price was rechecked, so the red stale-price dot still means what it says.
 
 ## Portions per pack
 

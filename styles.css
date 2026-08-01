@@ -92,7 +92,6 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .ticket .name { font-weight:600; font-size:15px; }
 .ticket .meta { font-size:12px; color:var(--ink-2); font-family:var(--mono); margin-top:1px; }
 .ticket .price { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:17px; font-weight:700; white-space:nowrap; }
-.ticket .price em { font-style:normal; background:var(--accent); color:var(--on-accent); padding:0 3px; border-radius:3px; }
 .leader { flex:1; border-bottom:1px dotted var(--outline); margin:0 2px 6px; min-width:12px; }
 .ticket .meta.save { color:var(--ok); font-weight:700; font-family:var(--sans); }
 
@@ -108,7 +107,6 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .till .line { display:flex; align-items:baseline; gap:8px; }
 .till .lbl { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; opacity:0.75; }
 .till .big { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:32px; font-weight:700; letter-spacing:-0.02em; }
-.till .big em { font-style:normal; color:var(--accent); }
 .till .leader { border-bottom:1px dotted currentColor; opacity:0.4; }
 .bar { height:6px; background:rgba(128,128,128,0.35); margin-top:12px; border-radius:var(--r-full); overflow:hidden; }
 .bar span { display:block; height:100%; background:var(--accent); border-radius:var(--r-full); }

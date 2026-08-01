@@ -13,7 +13,8 @@ import {
 import {
   computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
   offerExpired, offerMeaning, groupByStore, searchItems, ukTime, ago,
-  money, today, daysSince, STALE_DAYS, stockPortions, stockPacks, packPortions,
+  money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
+  stockPortions, stockPacks, packPortions,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -65,6 +66,10 @@ const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const trim2 = (n) => String(Math.round(n * 100) / 100);
+
+/* A stamp is either a receipt's day or an edit's minute. Showing "01 Aug,
+   01:00" for a receipt would be inventing a time it never had. */
+const stampText = (iso) => (String(iso).length > 10 ? ukTime(iso) : dayOf(iso));
 
 function titleise(raw) {
   return String(raw)
@@ -130,10 +135,13 @@ async function toggleShut(which, name) {
   draw();
 }
 
+/* Every edit made by hand lands here, so this is the one place that has to
+   record when it happened. A receipt writes its own stamp instead, because
+   what matters there is the day the receipt was printed. */
 function patchIngredient(id, changes) {
   commit((db) => {
     const i = db.ingredients.findIndex((x) => x.id === id);
-    if (i >= 0) db.ingredients[i] = { ...db.ingredients[i], ...changes };
+    if (i >= 0) db.ingredients[i] = { ...db.ingredients[i], updatedAt: now(), ...changes };
   });
 }
 
@@ -246,7 +254,6 @@ function viewList() {
   const c = state.calc;
   const over = c.total > state.db.budget;
   const pct = state.db.budget > 0 ? Math.min(1, c.total / state.db.budget) : 0;
-  const [whole, pence] = money(c.total).split(".");
 
   const notes = [];
   if (c.staleCount)
@@ -308,7 +315,7 @@ function viewList() {
     ${body}
     <div class="till">
       <div class="line"><span class="lbl">Total</span><span class="leader"></span>
-        <span class="big">£${whole}.<em>${pence}</em></span></div>
+        <span class="big">£${money(c.total)}</span></div>
       ${
         c.saving > 0.004
           ? `<div class="line" style="margin-top:2px"><span class="lbl">Offers save</span>
@@ -330,7 +337,6 @@ function viewList() {
 }
 
 function ticket(l) {
-  const [w, p] = money(l.cost).split(".");
   const bits = [`${l.packs} pack${l.packs === 1 ? "" : "s"} @ £${money(l.ing.pricePerPack)}`];
   if (l.offer) bits.push(l.offer);
   if (l.ing.packLabel) bits.push(esc(l.ing.packLabel));
@@ -347,7 +353,7 @@ function ticket(l) {
     </div>
     <span class="leader"></span>
     <div style="text-align:right">
-      <div class="price">£${w}.<em>${p}</em></div>
+      <div class="price">£${money(l.cost)}</div>
       <div class="row" style="gap:4px;margin-top:3px;justify-content:flex-end">
         ${
           l.extra
@@ -632,6 +638,19 @@ function viewItems() {
           <div style="margin-bottom:8px">${codes}</div>
           <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}">Scan a barcode</button>
         </div>
+        <div style="margin-bottom:10px">
+          <span class="eyebrow" style="display:block;margin-bottom:4px">Last updated</span>
+          <span class="muted num">${
+            ing.updatedAt
+              ? `${esc(stampText(ing.updatedAt))} &middot; ${esc(ago(ing.updatedAt))}`
+              : "not since this item was made"
+          }</span>
+          ${
+            ing.priceUpdated && dayOf(ing.priceUpdated) !== dayOf(ing.updatedAt)
+              ? `<br><span class="muted num">price ${esc(ago(ing.priceUpdated))}</span>`
+              : ""
+          }
+        </div>
         <div class="row">
           <span class="muted grow">Needs ${trim2(c.need[ing.id] || 0)} portions this fortnight</span>
           <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
@@ -743,8 +762,18 @@ function sheetReceipt(s) {
     ${s.busy ? "Reading the receipt…" : s.rows ? "Photograph another receipt" : "Photograph the receipt"}</button>`);
 
   if (s.rows && s.rows.length) {
-    inner.push(`<label class="field" style="margin:12px 0 8px"><span class="eyebrow">Store on this receipt</span>
-      <input class="inp" value="${esc(s.store || "")}" placeholder="Tesco" data-act="setReceiptStore"></label>`);
+    const old = s.rows.filter((r) => r.outdated).length;
+    inner.push(`<div class="grid2" style="margin:12px 0 8px">
+      <label class="field"><span class="eyebrow">Store on this receipt</span>
+        <input class="inp" value="${esc(s.store || "")}" placeholder="Tesco" data-act="setReceiptStore"></label>
+      <label class="field"><span class="eyebrow">Date on this receipt</span>
+        <input class="inp mono" type="date" value="${esc(dayOf(s.date))}" data-act="setReceiptDate"></label>
+    </div>
+    <p class="muted" style="margin:-2px 0 8px">${
+      s.dateRead ? "Read off the receipt" : "Not legible on the photo, so today is assumed"
+    }. Prices are recorded as of this date, and lines are switched off where the item has been updated since.${
+      old ? ` <strong>${old} line${old === 1 ? "" : "s"} older than what you already have.</strong>` : ""
+    }</p>`);
 
     const picker = (sel) =>
       [`<option value=""${sel ? "" : " selected"}>Ignore this line</option>`,
@@ -783,9 +812,15 @@ function sheetReceipt(s) {
             : ""
         }
         <div class="row" style="margin-top:5px">
-          <span class="why grow">${r.barcode ? "barcode " + esc(r.barcode) : esc(r.why)}${
-              r.qty > 1 ? ` &middot; ${r.qty} bought` : ""
-            }</span>
+          <span class="why grow">${
+              r.outdated
+                ? `<strong class="stale">old price</strong> &middot; ${esc(
+                    ingredient(r.targetId) ? ingredient(r.targetId).name : "this item"
+                  )} was updated after ${esc(dayOf(s.date))}`
+                : r.barcode
+                ? "barcode " + esc(r.barcode)
+                : esc(r.why)
+            }${r.qty > 1 ? ` &middot; ${r.qty} bought` : ""}</span>
           <button class="btn small ghost" data-act="scanRow" data-i="${i}">${
               r.barcode ? "Rescan" : "Scan barcode"
             }</button>
@@ -1311,14 +1346,18 @@ const filePicker = (() => {
 
 function receiptRow(line) {
   const res = resolveLine(line, state.db.ingredients);
+  // No match means a thing you have not recorded yet, and adding it is nearly
+  // always what you want. Ignoring it silently loses the shop.
+  const unmatched = !res.id;
   return {
     raw: line.name,
     price: Number(line.unitPrice) || 0,
     qty: Number(line.qty) || 1,
-    targetId: res.id,
-    why: res.why,
+    targetId: unmatched ? "__new__" : res.id,
+    why: unmatched ? "nothing matched, so it will be added" : res.why,
     confident: res.confident,
-    use: !!res.id,
+    use: true,
+    outdated: false,
     barcode: "",
     offerKind: line.offerKind || "none",
     offerQty: Number(line.offerQty) || 3,
@@ -1330,6 +1369,26 @@ function receiptRow(line) {
     stockAdd: 0,
     stockTouched: false,
   };
+}
+
+/* A receipt is evidence of a price on the day it was printed, not today. An
+   older receipt must never walk back a price corrected since, so any line
+   whose item was updated after the receipt date is switched off, with the
+   reason shown rather than the line quietly vanishing.
+
+   The comparison is by day. A receipt from this afternoon and a correction
+   made this morning are treated as equal standing, because a receipt carries
+   no time and guessing one would only annoy. */
+function refreshRows(rows, date) {
+  return rows.map((r) => {
+    const ing = r.targetId && r.targetId !== "__new__" ? ingredient(r.targetId) : null;
+    const outdated = !!(ing && isEarlierDay(date, ing.priceUpdated));
+    if (outdated === r.outdated) return r;
+    // Only lines whose standing actually changed are touched, so a line
+    // switched off by hand stays off. Correcting the date, though, removes the
+    // reason this line was switched off, so it comes back on with it.
+    return { ...r, outdated, use: outdated ? false : !!r.targetId };
+  });
 }
 
 /* One pack's worth of portions for whatever a receipt line points at. */
@@ -1363,14 +1422,16 @@ async function shootReceipt() {
     setSheet({ ...state.sheet, busy: true, err: "" });
     try {
       const out = await readReceipt(state.settings, file);
-      const rows = out.lines.map(receiptRow);
+      // an unreadable date falls back to today, which flags nothing as old
+      const date = out.date || today();
       setSheet({
         kind: "receipt",
         busy: false,
-        err: rows.length ? "" : "No product lines came back. Try a flatter photo with the whole receipt in frame.",
+        err: out.lines.length ? "" : "No product lines came back. Try a flatter photo with the whole receipt in frame.",
         store: canonicalStore(out.store, storeNames(state.db.ingredients)),
-        date: out.date || "",
-        rows,
+        date,
+        dateRead: !!out.date,
+        rows: refreshRows(out.lines.map(receiptRow), date),
       });
     } catch (err) {
       setSheet({ ...state.sheet, busy: false, err: err.message });
@@ -1380,6 +1441,9 @@ async function shootReceipt() {
 
 function applyReceipt() {
   const s = state.sheet;
+  // the day on the receipt, not today, or a shop entered a week late would
+  // outrank every correction made in between
+  const stamp = dayOf(s.date) || today();
   const rows = s.rows.filter((r) => r.use && r.targetId && r.price > 0);
   let created = 0;
   let updated = 0;
@@ -1396,6 +1460,7 @@ function applyReceipt() {
         const made = newIngredient(s.store);
         made.name = (r.newName || "").trim() || titleise(r.raw);
         made.portionsPerPack = Math.max(0.5, Number(r.newPortions) || 1);
+        made.updatedAt = stamp;
         made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
         db.ingredients.push(made);
         target = made.id;
@@ -1432,7 +1497,8 @@ function applyReceipt() {
         stocked += add;
         stockedItems += 1;
       }
-      ing.priceUpdated = today();
+      ing.priceUpdated = stamp;
+      ing.updatedAt = stamp;
       if (s.store) ing.store = s.store;
       ing.aliases = [...new Set([...(ing.aliases || []), alias])];
       if (r.barcode) ing.barcodes = [...new Set([...(ing.barcodes || []), r.barcode])];
@@ -1699,7 +1765,7 @@ const actions = {
       const added = bought * packPortions(ing);
       patchIngredient(ing.id, {
         pricePerPack: price,
-        priceUpdated: today(),
+        priceUpdated: now(),
         offer,
         stockPortions: stockPortions(ing) + added,
         // buying it settles whatever was on the list by hand
@@ -1730,7 +1796,8 @@ const actions = {
     made.name = name;
     made.portionsPerPack = Math.max(0.5, Number(s.portions) || 1);
     made.pricePerPack = price;
-    made.priceUpdated = today();
+    made.priceUpdated = now();
+    made.updatedAt = now();
     made.offer = offer;
     made.stockPortions = bought * made.portionsPerPack;
     made.barcodes = s.code ? [s.code] : [];
@@ -1903,7 +1970,7 @@ const actions = {
   setNumber: (el) =>
     patchIngredient(el.dataset.id, { [el.dataset.field]: Math.max(0, Number(el.value) || 0) }),
   setPrice: (el) =>
-    patchIngredient(el.dataset.id, { pricePerPack: Number(el.value) || 0, priceUpdated: today() }),
+    patchIngredient(el.dataset.id, { pricePerPack: Number(el.value) || 0, priceUpdated: now() }),
   addBarcode: (el) => {
     const id = el.dataset.id;
     openCamera("Scan a barcode", (code) => {
@@ -1973,6 +2040,10 @@ const actions = {
   shootReceipt: () => shootReceipt(),
   setReceiptStore: (el) =>
     setSheet({ ...state.sheet, store: canonicalStore(el.value, storeNames(state.db.ingredients)) }),
+  setReceiptDate: (el) => {
+    const date = el.value || today();
+    setSheet({ ...state.sheet, date, dateRead: true, rows: refreshRows(state.sheet.rows, date) });
+  },
   toggleRow: (el) => {
     const rows = state.sheet.rows.slice();
     rows[Number(el.dataset.i)] = { ...rows[Number(el.dataset.i)], use: el.checked };
@@ -1996,7 +2067,8 @@ const actions = {
       stockAdd: 0,
       stockTouched: false,
     };
-    setSheet({ ...state.sheet, rows });
+    // the item they just chose may itself be newer than this receipt
+    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date) });
   },
   scanRow: (el) => {
     const i = Number(el.dataset.i);
