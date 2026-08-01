@@ -242,8 +242,9 @@ function viewMasthead() {
   const c = state.calc;
   return `<header class="masthead"><div class="row">
     <div class="grow">
-      <h1>Fortnight Shop</h1>
-      <p>${c.plannedMeals} of ${c.totalSlots} meals planned &middot; ${state.db.ingredients.length} items</p>
+      <h1>Fortnight Shop <span class="pill on" style="vertical-align:middle">test</span></h1>
+      <p>${c.plannedMeals} of ${c.totalSlots} meals planned &middot; ${state.db.ingredients.length} items
+        &middot; separate data from the live app</p>
     </div>
     <button class="btn small ghost" data-act="openSettings">Settings</button>
   </div></header>`;
