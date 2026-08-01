@@ -1,7 +1,7 @@
 /* Offline shell. Supermarket signal is unreliable, and scanning must work
    without it. Bump CACHE when you change any file, or the old copy sticks. */
 
-const CACHE = "fortnight-shop-v13";
+const CACHE = "fortnight-shop-v14";
 const SHELL = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const SHELL = [
   "./lib/calc.js",
   "./lib/store.js",
   "./lib/scan.js",
+  "./lib/qr.js",
   "./lib/vision.js",
   "./lib/sync.js",
 ];

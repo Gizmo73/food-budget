@@ -8,7 +8,7 @@ Ported from the Meal_Planner spreadsheet. The maths is identical: portions neede
 
 1. **Publish the app.** Copy these files into your Pages repo, either at the root or in a subfolder like `/shop/`. Push. Everything is relative-pathed, so a subfolder is fine.
 2. **Create a private repo for the data.** Call it `shop-data`. Leave it empty. Private repos are free and unlimited, and Pages never needs to read it.
-3. **Make a token.** GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: only `shop-data`. Permissions: Contents → Read and write. Nothing else. Copy the token.
+3. **Make a token.** GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: only `shop-data`. Permissions: Contents → Read and write. Nothing else. **Set the expiry to the longest offered**, because the default is 30 days and syncing simply stops when it lapses. Copy the token.
 4. **Get a Gemini key** from Google AI Studio if you do not already have one. The free tier covers a receipt a week many times over.
 5. **Open the site on your phone**, tap Settings, fill in the owner, repo and token, paste the Gemini key, then tap **Push to repo**. That creates `prices.json` on the first push.
 6. **Add to Home screen** from the Chrome menu. It then runs full screen and works offline.
@@ -45,7 +45,17 @@ Anything older than 14 days gets a red dot and a banner, so a stale price never 
 
 ## Sharing with someone else
 
-Two people can use one shared price list. On GitHub, open the `shop-data` repo, go to **Settings → Collaborators**, and invite them. They then create their own fine-grained token the same way you did, open the same app URL, and enter the same owner and repo with their own token. Put a name in the **Your name** field on both devices and the commit log records who pushed what.
+Two people can use one shared price list, and there are two ways in.
+
+**The invite code** is the short one. On the phone that is already set up, tap **Settings → Invite someone**. That produces a QR code and a text code carrying the database details and the token. On the other phone, **Settings → Enter an invite**, scan it or paste it, done. They need no GitHub account, no token and no invite to the repo, and joining merges their list into yours rather than replacing either.
+
+Be clear about what that code is: **a key to your list**. Anyone holding it can read and change your prices until you change the token on GitHub. Show it to the person in front of you rather than leaving it in a chat that lives forever. One token then serves everybody, so removing one person means issuing a new token and re-inviting whoever stays.
+
+Attribution survives it anyway. Who did what comes from the **Your name** field on each device, not from the token, so a shared token still produces "Sam saved 10 minutes ago" and a commit log naming them.
+
+**Their own token** is the longer way, and the only reason to prefer it is revoking one person without disturbing the other. On GitHub, open the `shop-data` repo, go to **Settings → Collaborators**, and invite them. They then create their own fine-grained token the same way you did, open the same app URL, and enter the same owner and repo with their own token. **Set the expiry to the longest GitHub offers**: the default is 30 days, and when it lapses the app simply stops saving, reporting only that the token was rejected.
+
+The QR code is generated on the device by `lib/qr.js`, written for this app rather than pulled from a library or an image service, because the code being drawn contains a token with write access and it should never leave the phone.
 
 **Pull merges, it does not overwrite.** That matters, because otherwise whoever pushed second would wipe the other's work. The rules:
 
@@ -124,7 +134,8 @@ styles.css              shelf-edge ticket design system
 app.js                  state, rendering, actions
 lib/calc.js             shopping maths, ported from the spreadsheet
 lib/store.js            IndexedDB, seed data, receipt line matching
-lib/scan.js             live barcode scanning
+lib/scan.js             live barcode and QR scanning
+lib/qr.js               QR encoder for invite codes
 lib/vendor/             wasm barcode decoder, only loaded by Firefox and Safari
 lib/vision.js           receipt reading, Gemini or Claude
 lib/sync.js             GitHub contents API

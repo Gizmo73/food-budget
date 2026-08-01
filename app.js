@@ -8,14 +8,15 @@
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
   resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames, cleanOffer,
-  mergeSnapshots, SLOTS,
+  mergeSnapshots, makeInvite, readInvite, SLOTS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
   offerExpired, offerMeaning, groupByStore, searchItems, ukTime, ago,
   money, today, daysSince, STALE_DAYS, stockPortions, stockPacks, packPortions,
 } from "./lib/calc.js";
-import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
+import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
+import { qrSvg } from "./lib/qr.js";
 import { readReceipt } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
 
@@ -696,6 +697,8 @@ function viewSheet() {
   if (s.kind === "settings") return sheetSettings(s);
   if (s.kind === "scanned") return sheetScanned(s);
   if (s.kind === "help") return sheetHelp();
+  if (s.kind === "invite") return sheetInvite(s);
+  if (s.kind === "join") return sheetJoin(s);
   return "";
 }
 
@@ -1035,12 +1038,87 @@ function sheetSettings(s) {
     ${flag("autoMerge", "Merge on opening", "Pick up the other person's changes automatically.")}
     ${flag("warnOnLeave", "Save when leaving", "Update the database as you close or switch away.")}
 
-    <button class="btn tonal wide" style="margin-bottom:10px" data-act="openHelp">How to share with someone</button>
+    <h3>Share this list</h3>
+    <div class="row" style="gap:8px;margin-bottom:8px">
+      <button class="btn tonal grow" data-act="openInvite"${configured ? "" : " disabled"}>Invite someone</button>
+      <button class="btn tonal grow" data-act="openJoin">Enter an invite</button>
+    </div>
+    <p class="muted" style="margin:0 0 10px">${
+      configured
+        ? "An invite hands over this database and its token, so their phone needs no GitHub account."
+        : "Connect a database below first, then you can invite someone with one code."
+    }</p>
+
+    <button class="btn ghost wide" style="margin-bottom:10px" data-act="openHelp">The long way, with their own token</button>
 
     <button class="btn ghost wide head" data-act="toggleRepoBox">
       <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
     </button>
     ${repoBox}`
+  );
+}
+
+/* One code carries the database details and the token, so joining is a scan
+   rather than a GitHub morning. The warning is not boilerplate: this really
+   does hand over write access, and it belongs next to the code itself. */
+function sheetInvite(s) {
+  let code = "";
+  let err = "";
+  try {
+    code = makeInvite(state.settings);
+  } catch (e) {
+    err = e.message;
+  }
+
+  if (err) {
+    return shell(
+      "Invite someone",
+      "Nothing to share yet.",
+      `<div class="err">${esc(err)}</div>
+       <button class="btn tonal wide" data-act="openSettings">Back to settings</button>`
+    );
+  }
+
+  return shell(
+    "Invite someone",
+    "One code is all they need. No GitHub account, no token, no waiting for an invite to be accepted.",
+    `
+    ${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}
+    <div style="border:1px solid var(--rule);padding:12px;margin-bottom:10px;background:#fff">
+      ${qrSvg(code, { label: "Invite code" })}
+    </div>
+    <p class="muted" style="margin-top:0">On their phone: <strong>Settings</strong>, then
+    <strong>Enter an invite</strong>, then <strong>Scan the code</strong>.</p>
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or send them this</span>
+      <textarea class="inp mono" style="height:78px" readonly spellcheck="false"
+        data-act="selectInvite">${esc(code)}</textarea></label>
+    <button class="btn tonal wide" style="margin-bottom:10px" data-act="copyInvite">Copy the code</button>
+
+    <p class="muted"><strong>This code is a key to your list.</strong> Anyone holding it can read and
+    change your prices, and it works until you change the token on GitHub. Show it to the person in
+    front of you rather than posting it somewhere it will sit forever.</p>
+    <button class="btn ghost wide" data-act="openSettings">Back to settings</button>`
+  );
+}
+
+function sheetJoin(s) {
+  return shell(
+    "Enter an invite",
+    "Scan the code on the other phone, or paste one you were sent.",
+    `
+    ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
+    ${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}
+    <button class="btn solid wide" style="margin-bottom:10px" data-act="scanInvite">Scan the code</button>
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or paste the code</span>
+      <textarea class="inp mono" style="height:78px" placeholder="FS1." spellcheck="false"
+        data-act="setJoinCode">${esc(s.code || "")}</textarea></label>
+    <button class="btn tonal wide" data-act="applyJoin">Join this list</button>
+    <p class="muted">Joining replaces whichever database this phone was pointed at, and pulls their
+    list in. Nothing you have is thrown away: the two are merged, and the higher stock count wins.</p>
+    <label class="field" style="margin-top:6px"><span class="eyebrow">Your name, so they can see who changed what</span>
+      <input class="inp" value="${esc(state.settings.person)}" placeholder="Sam"
+        data-act="setSetting" data-key="person"></label>`
   );
 }
 
@@ -1050,11 +1128,13 @@ function sheetHelp() {
   const repo = esc(set.repo || "shop-data");
 
   return shell(
-    "Sharing with someone",
+    "Sharing the long way",
     "About ten minutes for them, most of it waiting for GitHub.",
     `
-    <p class="muted">You both use the same database, so prices, items and stock stay in step.
-    They need a free GitHub account first.</p>
+    <p class="muted"><strong>Only do this if they need their own token.</strong> For a phone in the
+    same room, <strong>Invite someone</strong> on the settings screen does the whole job with one
+    code and no GitHub account. This way is for when you want each person's access revocable
+    separately, at the cost of the setup below.</p>
 
     <h3>1. Invite them</h3>
     <ol>
@@ -1102,7 +1182,9 @@ function sheetHelp() {
       <li><strong>Their changes missing:</strong> they need to tap Update database, or leave Save when leaving on.</li>
     </ul>
 
-    <p class="muted">Removing someone: take them off Collaborators on GitHub, and their token stops working.</p>
+    <p class="muted">Removing someone: take them off Collaborators on GitHub, and their token stops
+    working. If instead you shared a code from <strong>Invite someone</strong>, that one token is the
+    key for everybody, so revoking means making a new token on GitHub and re-inviting whoever stays.</p>
     <button class="btn tonal wide" style="margin-top:10px" data-act="openSettings">Back to settings</button>`
   );
 }
@@ -1120,22 +1202,29 @@ function closeCamera() {
   }
 }
 
-async function openCamera(title, onCode) {
+async function openCamera(title, onCode, opts = {}) {
   closeCamera();
+  const qr = opts.formats === QR_FORMATS;
   const el = document.createElement("div");
   el.className = "scrim";
   el.innerHTML = `<div class="sheet">
     <button class="btn small ghost close" data-cam="close">Close</button>
     <h2>${esc(title)}</h2>
-    <p class="muted" style="margin-top:0">Hold the barcode inside the frame.</p>
+    <p class="muted" style="margin-top:0">${
+      qr ? "Point this phone at the code on the other one." : "Hold the barcode inside the frame."
+    }</p>
     <div class="scanner">
       <video playsinline muted></video><div class="reticle"></div>
-      <div class="hint">Looking for a barcode</div>
+      <div class="hint">${qr ? "Looking for a code" : "Looking for a barcode"}</div>
       <button class="btn small torch" data-cam="torch">Light</button>
     </div>
-    <label class="field"><span class="eyebrow">Or type the number</span>
-      <input class="inp mono" inputmode="numeric" placeholder="5010000000000" data-cam="manual"></label>
-    <button class="btn solid wide" style="margin-top:8px" data-cam="useManual">Use this number</button>
+    <label class="field"><span class="eyebrow">${qr ? "Or paste the code" : "Or type the number"}</span>
+      <input class="inp mono"${qr ? "" : ' inputmode="numeric"'} placeholder="${
+      qr ? "FS1." : "5010000000000"
+    }" data-cam="manual"></label>
+    <button class="btn solid wide" style="margin-top:8px" data-cam="useManual">${
+      qr ? "Use this code" : "Use this number"
+    }</button>
   </div>`;
   document.body.appendChild(el);
   cam = { el, handle: null, onCode, torchOn: false };
@@ -1144,7 +1233,8 @@ async function openCamera(title, onCode) {
   const handle = await startScan(
     el.querySelector("video"),
     (code) => {
-      hint.textContent = code;
+      // an invite code is far too long to splash across the hint line
+      hint.textContent = code.length > 24 ? code.slice(0, 24) + "\u2026" : code;
       if (navigator.vibrate) navigator.vibrate(40);
       const cb = cam && cam.onCode;
       closeCamera();
@@ -1159,7 +1249,8 @@ async function openCamera(title, onCode) {
     },
     (status) => {
       hint.textContent = status;
-    }
+    },
+    opts.formats
   );
   if (cam) cam.handle = handle;
 }
@@ -1412,6 +1503,65 @@ async function acceptIncoming(quiet) {
   if (!quiet) draw();
 }
 
+/* Take an invite. The joiner usually has a list of their own already, so this
+   merges rather than replaces, on the same rules as any other pull. */
+async function joinList(code) {
+  let invite;
+  try {
+    invite = readInvite(code);
+  } catch (err) {
+    setSheet({ ...state.sheet, err: err.message, msg: "" });
+    return;
+  }
+
+  setSheet({ ...state.sheet, err: "", msg: "Connecting…" });
+  const before = state.settings;
+  state.settings = {
+    ...before,
+    owner: invite.owner,
+    repo: invite.repo,
+    path: invite.path,
+    branch: invite.branch,
+    token: invite.token,
+    // a different database entirely, so what this device last saw means nothing
+    lastPull: "",
+    lastPush: "",
+  };
+  await saveSettings(state.settings);
+
+  try {
+    const { db } = await pull(state.settings);
+    if (!db) {
+      setSheet({
+        ...state.sheet,
+        err: "",
+        msg: "Connected, but there is no list there yet. Ask them to tap Update database, then try again.",
+      });
+      return;
+    }
+
+    const { db: merged, notes } = mergeSnapshots(state.db, db);
+    state.db = merged;
+    await saveDb(state.db);
+    state.settings = { ...state.settings, lastPull: new Date().toISOString() };
+    await saveSettings(state.settings);
+
+    const bits = [];
+    if (notes.added) bits.push(`${notes.added} item${notes.added === 1 ? "" : "s"} picked up`);
+    if (notes.updated) bits.push(`${notes.updated} price${notes.updated === 1 ? "" : "s"} newer than yours`);
+    state.sheet = null;
+    flash(
+      "ok",
+      `Joined ${invite.from ? invite.from + "'s" : "the shared"} list${bits.length ? `: ${bits.join(", ")}` : ""}.`
+    );
+  } catch (err) {
+    // put the old connection back rather than stranding them on a broken one
+    state.settings = before;
+    await saveSettings(state.settings);
+    setSheet({ ...state.sheet, err: `${err.message} Nothing was changed.`, msg: "" });
+  }
+}
+
 async function pullNow() {
   setSheet({ ...state.sheet, msg: "Pulling…", err: false });
   try {
@@ -1640,6 +1790,28 @@ const actions = {
     draw();
   },
   openHelp: () => setSheet({ kind: "help" }),
+
+  openInvite: () => setSheet({ kind: "invite", msg: "" }),
+  openJoin: () => setSheet({ kind: "join", code: "", err: "", msg: "" }),
+  selectInvite: () => {},
+  copyInvite: async () => {
+    try {
+      await navigator.clipboard.writeText(makeInvite(state.settings));
+      setSheet({ ...state.sheet, msg: "Copied. Paste it straight into a message to them." });
+    } catch (err) {
+      setSheet({ ...state.sheet, msg: "Copy blocked. Press and hold the code above to select it." });
+    }
+  },
+  setJoinCode: (el) => {
+    state.sheet = { ...state.sheet, code: el.value };
+  },
+  scanInvite: () =>
+    openCamera(
+      "Scan an invite",
+      (code) => setSheet({ kind: "join", code, err: "", msg: "" }),
+      { formats: QR_FORMATS }
+    ),
+  applyJoin: () => joinList(state.sheet.code),
   addToList: (el) => {
     const ing = ingredient(el.dataset.id);
     if (ing) patchIngredient(ing.id, { extraPacks: (Number(ing.extraPacks) || 0) + 1 });
