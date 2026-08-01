@@ -6,7 +6,7 @@
 const DB_NAME = "fortnight-shop-next";
 const STORE = "kv";
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SLOTS = [
   { key: "breakfast", label: "Breakfast", short: "B" },
@@ -66,22 +66,37 @@ export function uniqueId(name, taken) {
   return `${root}-${n}`;
 }
 
-/* -------------------------------- sources ------------------------------- */
+/* ------------------------------- products ------------------------------- */
 
-/* A source is identified by its shop. That is not laziness: it makes the id
-   the same on every device, so two people who both add Asda to the cheddar
-   end up with one Asda source rather than two that merge into a mess. It also
-   states the rule plainly, that one item has at most one price per shop. Two
-   genuinely different cheddars in the same shop are two items. */
-export const sourceKey = (store) => storeKey(store) || "unassigned";
+/* Two levels, and the difference is the whole point.
 
-export function newSource(store, fields = {}) {
+   An ingredient is what a recipe asks for: "Cheddar". A product is a thing you
+   can actually put in a trolley: Cathedral City at Tesco, the Asda own brand,
+   Tesco Finest. One ingredient holds many products, and two of them can be in
+   the same shop, because Cathedral City and Tesco Finest are both cheddar and
+   both at Tesco.
+
+   Stock lives on the product, not the ingredient. That is forced rather than
+   chosen: a meal is allowed to demand one specific product, and if stock sat
+   on the ingredient the app could not tell whether the block in the fridge is
+   the one that meal wants. The ingredient's stock is the sum of its products',
+   so pooling still works for the usual case of "any cheddar will do". */
+
+/* Ids are derived from the name and shop rather than random, so two devices
+   that both add Cathedral City at Tesco agree on one product instead of
+   merging into two. */
+export const productKey = (name, store) =>
+  `${slug(name || "item")}-${storeKey(store) || "unassigned"}`;
+
+export function newProduct(name, store, fields = {}) {
   return {
-    id: sourceKey(store),
+    id: productKey(name, store),
+    name: name || "",
     store: store || "",
     pricePerPack: 0,
     // 1 is the safe default: a pack is one use unless you say otherwise
     portionsPerPack: 1,
+    stockPortions: 0,
     packLabel: "",
     barcodes: [],
     offer: null,
@@ -90,14 +105,39 @@ export function newSource(store, fields = {}) {
   };
 }
 
-/* Add or replace a source on an item, keeping one per shop. */
-export function withSource(ing, source) {
-  const others = (ing.sources || []).filter((s) => s.id !== source.id);
-  return { ...ing, sources: [...others, source] };
+/* Add or replace a product on an ingredient, matched by id. */
+export function withProduct(ing, product) {
+  const others = (ing.products || []).filter((p) => p.id !== product.id);
+  return { ...ing, products: [...others, product] };
 }
 
-export const findSourceByBarcode = (ing, code) =>
-  (ing.sources || []).find((s) => (s.barcodes || []).includes(code)) || null;
+export const findProductByBarcode = (ing, code) =>
+  (ing.products || []).find((p) => (p.barcodes || []).includes(code)) || null;
+
+/* Which ingredient and product a barcode belongs to, across the whole list. */
+export function findByBarcode(ingredients, code) {
+  if (!code) return null;
+  for (const ing of ingredients || []) {
+    const product = findProductByBarcode(ing, code);
+    if (product) return { ing, product };
+  }
+  return null;
+}
+
+/* Receipts and shelves name products, not ingredients: "TESCO FINEST MATURE
+   CHEDDAR 320G". Strip the shop and the pack size and what is left is close
+   to the product's own name, which is what the app should suggest. */
+export function tidyProductName(raw) {
+  let name = String(raw || "").trim();
+  name = name.replace(
+    /^(tesco|asda|aldi|lidl|morrisons|iceland|sainsbury'?s|co-?op|waitrose|m&s|b&m)\b\s*/i,
+    ""
+  );
+  name = name.replace(/\b(\d+(?:\.\d+)?\s*x\s*)?\d+(?:\.\d+)?\s*(kg|g|ml|cl|litres?|ltr|l)\b\.?/gi, " ");
+  name = name.replace(/\b\d+\s*(pk|pack)\b/gi, " ");
+  name = name.replace(/\s+/g, " ").trim().replace(/\s+\d+$/, "").trim();
+  return name || String(raw || "").trim();
+}
 
 /* --------------------------- receipt line keys -------------------------- */
 
@@ -110,24 +150,27 @@ const STOP = new Set([
 export const norm = (s) =>
   String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 
-/* Resolve a receipt line to an ingredient.
-   Order matters: a barcode is certain, a saved alias is near certain,
-   a fuzzy name match is only a suggestion.
+/* Resolve a receipt line to an ingredient, and to a product where the
+   evidence allows one.
 
-   Matching is to the ingredient, never to the shop. That is what stops a
-   second Cheddar appearing the first time you buy it somewhere else: the line
-   finds the cheddar you already have, and the shop it came from becomes
-   another source on it. */
+   Matching is to the ingredient first, never straight to the shop. That is
+   what stops a second Cheddar appearing the first time you buy it somewhere
+   else: the line finds the cheddar you already have, and the thing you bought
+   becomes another product under it. */
 export function resolveLine(line, ingredients) {
   const key = norm(line.name);
 
   if (line.barcode) {
-    const hit = ingredients.find((i) => findSourceByBarcode(i, line.barcode));
-    if (hit) return { id: hit.id, why: "barcode", confident: true };
+    const hit = findByBarcode(ingredients, line.barcode);
+    if (hit) {
+      return { id: hit.ing.id, productId: hit.product.id, why: "barcode", confident: true };
+    }
   }
 
   const alias = ingredients.find((i) => (i.aliases || []).includes(key));
-  if (alias) return { id: alias.id, why: "seen on a previous receipt", confident: true };
+  if (alias) {
+    return { id: alias.id, productId: "", why: "seen on a previous receipt", confident: true };
+  }
 
   const tokens = key.split(" ").filter((t) => t && !STOP.has(t));
   let best = null;
@@ -145,8 +188,36 @@ export function resolveLine(line, ingredients) {
       best = ing;
     }
   }
-  if (best && bestScore >= 0.5) return { id: best.id, why: "name looks close", confident: false };
-  return { id: "", why: "no match yet", confident: false };
+  if (best && bestScore >= 0.5) {
+    return { id: best.id, productId: "", why: "name looks close", confident: false };
+  }
+  return { id: "", productId: "", why: "no match yet", confident: false };
+}
+
+/* Which product of an ingredient a shop's wording most likely means.
+   The name it prints is the strongest clue; failing that, if the shop sells
+   you only one of these, it is that one. Returns null for "something new". */
+export function resolveProduct(ing, store, rawName) {
+  const here = (ing.products || []).filter((p) => storeKey(p.store) === storeKey(store));
+  if (!here.length) return null;
+
+  /* Both sides get the same treatment before comparing. A product stored as
+     "Tesco Finest Mature" and a receipt shouting "TESCO FINEST MATURE 320G"
+     are the same thing, and only tidying one of them would miss that. */
+  const tidy = (text) => norm(tidyProductName(text));
+  const wanted = tidy(rawName);
+
+  const exact = here.find((p) => tidy(p.name) === wanted);
+  if (exact) return exact;
+
+  // every word of a product's name turning up in the wording is good enough
+  const contained = here.find((p) => {
+    const words = tidy(p.name).split(" ").filter(Boolean);
+    return words.length > 0 && words.every((w) => wanted.includes(w));
+  });
+  if (contained) return contained;
+
+  return here.length === 1 ? here[0] : null;
 }
 
 /* ------------------------------ store names ---------------------------- */
@@ -231,56 +302,68 @@ export function seed() {
   const ingredients = raw.map(([name, portionsPerPack, pricePerPack]) => ({
     id: slug(name),
     name,
-    stockPortions: 0,
     extraPacks: 0,
     aliases: [],
-    preferredSourceId: "",
+    preferredProductId: "",
     updatedAt: "",
-    sources: [newSource("Tesco", { portionsPerPack, pricePerPack })],
+    products: [newProduct(name, "Tesco", { portionsPerPack, pricePerPack })],
   }));
 
   const meals = [
     { id: "pie-and-mash", name: "Pie and Mash", items: [
-      { ingredientId: "pies", portions: 2 },
-      { ingredientId: "potatoes", portions: 0.25 },
-      { ingredientId: "gravy-granules", portions: 0.25 },
+      { ingredientId: "pies", productId: "", portions: 2 },
+      { ingredientId: "potatoes", productId: "", portions: 0.25 },
+      { ingredientId: "gravy-granules", productId: "", portions: 0.25 },
     ] },
     { id: "spaghetti-bolognese", name: "Spaghetti Bolognese", items: [
-      { ingredientId: "mince", portions: 0.5 },
-      { ingredientId: "pasta", portions: 0.5 },
-      { ingredientId: "passata", portions: 0.5 },
-      { ingredientId: "garlic", portions: 0.25 },
+      { ingredientId: "mince", productId: "", portions: 0.5 },
+      { ingredientId: "pasta", productId: "", portions: 0.5 },
+      { ingredientId: "passata", productId: "", portions: 0.5 },
+      { ingredientId: "garlic", productId: "", portions: 0.25 },
     ] },
     { id: "chicken-stir-fry", name: "Chicken Stir Fry", items: [
-      { ingredientId: "chicken", portions: 0.5 },
-      { ingredientId: "stir-fry-veg", portions: 0.5 },
-      { ingredientId: "soy-sauce", portions: 0.25 },
-      { ingredientId: "noodles", portions: 0.5 },
+      { ingredientId: "chicken", productId: "", portions: 0.5 },
+      { ingredientId: "stir-fry-veg", productId: "", portions: 0.5 },
+      { ingredientId: "soy-sauce", productId: "", portions: 0.25 },
+      { ingredientId: "noodles", productId: "", portions: 0.5 },
     ] },
   ];
 
-  const plan = Array.from({ length: 14 }, () => ({ breakfast: null, lunch: null, dinner: null }));
-  plan[0].dinner = "pie-and-mash";
-  plan[1].dinner = "spaghetti-bolognese";
-  plan[2].dinner = "pie-and-mash";
+  /* Seed data is handed straight to the app without going through migrate, so
+     it has to be written in the current shape: a slot holds one meal per
+     person. One person is planned, which keeps the spreadsheet's £12.60. */
+  const plan = Array.from({ length: 14 }, () => ({
+    breakfast: [null, null], lunch: [null, null], dinner: [null, null],
+  }));
+  plan[0].dinner = ["pie-and-mash", null];
+  plan[1].dinner = ["spaghetti-bolognese", null];
+  plan[2].dinner = ["pie-and-mash", null];
 
-  return { schema: SCHEMA_VERSION, ingredients, meals, plan, budget: 60, updatedAt: "" };
+  return {
+    schema: SCHEMA_VERSION,
+    ingredients,
+    meals,
+    plan,
+    people: ["Person 1", "Person 2"],
+    planStart: "",
+    budget: 60,
+    updatedAt: "",
+  };
 }
 
-export function newIngredient(store) {
+export function newIngredient(store, name = "New item") {
   return {
     id: uid(),
-    name: "New item",
-    stockPortions: 0,
+    name,
     extraPacks: 0,
     aliases: [],
-    preferredSourceId: "",
+    preferredProductId: "",
     updatedAt: "",
-    // One source from the start, because an item with nowhere to buy it cannot
-    // produce a pack count. Its store is blank unless we genuinely know it:
-    // guessing puts items in the wrong group, which is harder to spot than an
-    // obviously empty one.
-    sources: [newSource(store || "")],
+    // One product from the start, because an ingredient with nothing to buy
+    // cannot produce a pack count. Its shop is blank unless we genuinely know
+    // it: guessing files things in the wrong place, which is harder to spot
+    // than an obviously empty one.
+    products: [newProduct(name, store || "")],
   };
 }
 
@@ -318,38 +401,72 @@ function stockOf(i) {
   return packs * (pp > 0 ? pp : 1);
 }
 
-/* Price, pack size, offer and barcodes used to live on the item itself, which
-   is to say the item was a product rather than an ingredient. They now belong
-   to a source, so an older item becomes an item with exactly one, at whatever
-   shop it named. Nothing is lost and nothing needs re-entering; the second
-   source appears the first time you buy the thing somewhere else. */
-function sourcesFrom(i, fixStore) {
-  if (Array.isArray(i.sources) && i.sources.length) {
+/* Every shape this data has ever had, folded forward.
+
+   v4 and earlier  price, pack size, offer and barcodes sat on the item, which
+                   is to say an item was a product rather than an ingredient
+   v5              those moved to a source per shop, one shop one entry
+   v6              sources become named products, several allowed per shop,
+                   and stock moves down onto the product
+
+   Nothing needs re-entering at any step. A v4 item becomes an ingredient with
+   one product; a v5 source becomes a product named after its ingredient. */
+function productsFrom(i, fixStore) {
+  const named = (list, fallbackName) =>
+    list.map((p) => {
+      const store = fixStore(p.store);
+      const name = p.name || fallbackName || "Item";
+      return {
+        id: p.id && p.name ? p.id : productKey(name, store),
+        name,
+        store,
+        pricePerPack: Number(p.pricePerPack) || 0,
+        portionsPerPack: Number(p.portionsPerPack) || 0,
+        stockPortions: Math.max(0, Number(p.stockPortions) || 0),
+        packLabel: p.packLabel || "",
+        barcodes: Array.isArray(p.barcodes) ? p.barcodes : [],
+        offer: cleanOffer(p.offer),
+        priceUpdated: p.priceUpdated || "",
+      };
+    });
+
+  const dedupe = (list) => {
     const seen = new Set();
-    return i.sources
-      .map((s) => {
-        const store = fixStore(s.store);
-        return {
-          id: s.id || sourceKey(store),
-          store,
-          pricePerPack: Number(s.pricePerPack) || 0,
-          portionsPerPack: Number(s.portionsPerPack) || 0,
-          packLabel: s.packLabel || "",
-          barcodes: Array.isArray(s.barcodes) ? s.barcodes : [],
-          offer: cleanOffer(s.offer),
-          priceUpdated: s.priceUpdated || "",
-        };
-      })
-      // one source per shop, so a hand-edited file cannot produce two Asdas
-      .filter((s) => (seen.has(s.id) ? false : seen.add(s.id)));
+    return list.filter((p) => (seen.has(p.id) ? false : seen.add(p.id)));
+  };
+
+  if (Array.isArray(i.products) && i.products.length) {
+    return dedupe(named(i.products, i.name));
   }
 
+  /* v5: one source per shop, stock pooled on the ingredient. The stock has to
+     land somewhere, so it goes on the product the list would have sent you to,
+     which keeps the ingredient's total identical. */
+  if (Array.isArray(i.sources) && i.sources.length) {
+    const products = dedupe(named(i.sources, i.name));
+    const pooled = Math.max(0, Number(i.stockPortions) || 0);
+    if (pooled > 0) {
+      const pinned = products.find((p) => p.id === i.preferredSourceId);
+      const priced = products.filter((p) => p.pricePerPack > 0 && p.portionsPerPack > 0);
+      const holder =
+        pinned ||
+        (priced.length
+          ? priced.reduce((best, p) =>
+              p.pricePerPack / p.portionsPerPack < best.pricePerPack / best.portionsPerPack ? p : best
+            )
+          : products[0]);
+      holder.stockPortions += pooled;
+    }
+    return products;
+  }
+
+  /* v4 and earlier: everything was on the item */
   const store = fixStore(i.store);
   return [
-    newSource(store, {
-      id: sourceKey(store),
+    newProduct(i.name || "Item", store, {
       pricePerPack: Number(i.pricePerPack) || 0,
       portionsPerPack: Number(i.portionsPerPack) || 0,
+      stockPortions: stockOf(i),
       packLabel: i.packLabel || "",
       barcodes: Array.isArray(i.barcodes) ? i.barcodes : i.barcode ? [i.barcode] : [],
       offer: cleanOffer(i.offer),
@@ -362,19 +479,32 @@ function sourcesFrom(i, fixStore) {
    from an earlier version does not crash the app. */
 export function migrate(db) {
   if (!db || !Array.isArray(db.ingredients)) return seed();
-  // A day used to be a single meal id. It is now three slots, and an old
-  // single meal becomes that day's dinner.
+  const from = Number(db.schema) || 0;
+
+  /* A day used to be a single meal id, then three slots, and is now three
+     slots with a place for each person. Two people eating the same thing is
+     the normal case, so an older plan puts its meal in both places rather
+     than leaving one of them staring at an empty evening. */
+  const pair = (was) => {
+    if (Array.isArray(was)) return [was[0] || null, was[1] || null];
+    const one = typeof was === "string" ? was : null;
+    // before v6 a planned meal fed everybody, so it belongs to both
+    return from < 6 ? [one, one] : [one, null];
+  };
+
   const plan = Array.from({ length: 14 }, (_, i) => {
     const was = Array.isArray(db.plan) ? db.plan[i] : null;
-    if (was && typeof was === "object") {
-      return {
-        breakfast: was.breakfast || null,
-        lunch: was.lunch || null,
-        dinner: was.dinner || null,
-      };
+    if (was && typeof was === "object" && !Array.isArray(was)) {
+      return { breakfast: pair(was.breakfast), lunch: pair(was.lunch), dinner: pair(was.dinner) };
     }
-    return { breakfast: null, lunch: null, dinner: typeof was === "string" ? was : null };
+    return { breakfast: pair(null), lunch: pair(null), dinner: pair(typeof was === "string" ? was : null) };
   });
+
+  /* Portions used to describe a whole household. Now that a meal sits in one
+     person's slot it describes one serving, so halving keeps every total
+     identical while giving the number its new meaning. Done once, on the way
+     to v6, and the plan above puts the meal in both slots to match. */
+  const perPerson = (portions) => (from < 6 ? (Number(portions) || 0) / 2 : Number(portions) || 0);
 
   // Fold existing spelling variants together. The first spelling of each
   // store wins, so a vault that already says "Tesco" never becomes "TESCO".
@@ -385,7 +515,7 @@ export function migrate(db) {
   };
   for (const i of db.ingredients) {
     remember(i.store);
-    for (const src of i.sources || []) remember(src.store);
+    for (const p of i.products || i.sources || []) remember(p.store);
   }
   const fixStore = (name) => {
     const key = storeKey(name);
@@ -396,28 +526,38 @@ export function migrate(db) {
     budget: Number(db.budget) || 60,
     updatedAt: db.updatedAt || "",
     plan,
+    people: Array.isArray(db.people)
+      ? [String(db.people[0] || "Person 1"), String(db.people[1] || "Person 2")]
+      : ["Person 1", "Person 2"],
+    // empty until set, rather than guessing which fortnight you meant
+    planStart: typeof db.planStart === "string" ? db.planStart : "",
     meals: (db.meals || []).map((m) => ({
       id: m.id || uid(),
       name: m.name || "Meal",
-      items: (m.items || []).filter((it) => it && it.ingredientId),
+      items: (m.items || [])
+        .filter((it) => it && it.ingredientId)
+        .map((it) => ({
+          ingredientId: it.ingredientId,
+          // blank means any product of that ingredient will do
+          productId: it.productId || "",
+          portions: perPerson(it.portions),
+        })),
     })),
     ingredients: dedupeIds(db.ingredients).map((i) => {
-      const sources = sourcesFrom(i, fixStore);
+      const products = productsFrom(i, fixStore);
+      const pin = i.preferredProductId || i.preferredSourceId || "";
       return {
         id: i.id,
         name: i.name || "Item",
-        stockPortions: stockOf(i),
         extraPacks: Number(i.extraPacks) || 0,
         aliases: Array.isArray(i.aliases) ? i.aliases : [],
-        // a pin that points at a shop this item no longer has would silently
-        // fall back to cheapest, so drop it rather than leave it dangling
-        preferredSourceId: sources.some((s) => s.id === i.preferredSourceId)
-          ? i.preferredSourceId
-          : "",
+        // a pin pointing at something this ingredient no longer has would
+        // silently fall back to cheapest, so drop it rather than dangle
+        preferredProductId: products.some((p) => p.id === pin) ? pin : "",
         // an older snapshot has no record of edits, so the price stamp is the
         // best evidence of when the item was last touched
         updatedAt: i.updatedAt || i.priceUpdated || "",
-        sources,
+        products,
       };
     }),
   };
@@ -429,8 +569,9 @@ export function migrate(db) {
    last-write-wins loses whichever of them pushed first, so a pull merges.
 
    The rules are deliberately boring and explainable:
-     prices   per shop, whoever priced that shop most recently wins it
-     sources  the union, since a shop one of you found is real information
+     prices   per product, whoever priced that one most recently wins it
+     products the union, since something one of you found is real information
+     stock    per product, the higher of the two
      items    the union of both sides, nothing is dropped
      stock    the larger of the two, since a pack someone bought is real
               (in portions, both sides having been migrated above)
@@ -443,8 +584,8 @@ export function migrate(db) {
 /* One shop's price is one shop's business: the two lists are combined by
    shop, and only where both know a shop does the more recent stamp decide.
    An empty stamp means never priced, so any real date beats it. */
-function mergeSources(mine, theirs) {
-  const byId = new Map((mine || []).map((s) => [s.id, s]));
+function mergeProducts(mine, theirs) {
+  const byId = new Map((mine || []).map((p) => [p.id, p]));
   for (const t of theirs || []) {
     const m = byId.get(t.id);
     if (!m) {
@@ -454,7 +595,9 @@ function mergeSources(mine, theirs) {
     const winner = (t.priceUpdated || "") > (m.priceUpdated || "") ? t : m;
     byId.set(t.id, {
       ...winner,
-      // a barcode either of you scanned is worth keeping whoever won the price
+      // a pack someone bought is a physical fact, whoever won the price
+      stockPortions: Math.max(Number(m.stockPortions) || 0, Number(t.stockPortions) || 0),
+      // a barcode either of you scanned is worth keeping
       barcodes: [...new Set([...(m.barcodes || []), ...(t.barcodes || [])])],
     });
   }
@@ -483,9 +626,8 @@ export function mergeSnapshots(local, remote) {
 
     byId.set(t.id, {
       ...winner,
-      sources: mergeSources(m.sources, t.sources),
+      products: mergeProducts(m.products, t.products),
       // stock and hand-added packs are physical facts, so keep the higher count
-      stockPortions: Math.max(Number(m.stockPortions) || 0, Number(t.stockPortions) || 0),
       extraPacks: Math.max(Number(m.extraPacks) || 0, Number(t.extraPacks) || 0),
       aliases: [...new Set([...(m.aliases || []), ...(t.aliases || [])])],
       // the later edit is the truthful answer to "when was this last touched",
@@ -506,6 +648,8 @@ export function mergeSnapshots(local, remote) {
       budget: remoteNewer ? theirs.budget : mine.budget,
       updatedAt: new Date().toISOString(),
       plan: remoteNewer ? theirs.plan : mine.plan,
+      people: remoteNewer ? theirs.people : mine.people,
+      planStart: remoteNewer ? theirs.planStart : mine.planStart,
       meals,
       ingredients: [...byId.values()],
     },

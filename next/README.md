@@ -88,6 +88,23 @@ Opening the app checks the database and merges anything new automatically, namin
 
 Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
 
+## Ingredients, and the products under them
+
+**An ingredient is what a recipe asks for. A product is what you put in a trolley.** "Cheddar" is the ingredient; Cathedral City at Tesco, Tesco Finest at Tesco and the Asda own brand are three of its products. Two products may share a shop, because two of those are both cheddar and both Tesco.
+
+| On the ingredient | On each product |
+|---|---|
+| Name, aliases | Its own name, and the shop |
+| What meals ask for | Price per pack, portions per pack |
+| Hand-added packs | **Stock, in portions** |
+| | Pack size note, offer, barcodes |
+
+**Stock sits on the product**, because a meal is allowed to demand one specific one and the app has to be able to answer "have I got *that*". An ingredient's stock is the sum of its products', so "any cheddar will do" still pools exactly as it did.
+
+**A meal item can name a product, or not.** Blank is the useful default: the meal wants cheddar, any cheddar in the house counts, and the list buys the cheapest per portion. Name one and only that one satisfies it, so it goes on the list even with other cheddar in the fridge. Named demands are worked out first and eat their own product's stock, leaving whatever they cannot eat for the loose demand to use.
+
+**Scanning is two steps**: what kind of thing this is, then which one of them. A barcode names one exact product, so it binds there and nowhere else. **Receipts** do the same with the shop already known: the wording picks the ingredient, then the product at that shop by its printed name, or the only one you buy there, or something new with its name already tidied of the shop and the pack size.
+
 ## One ingredient, several shops
 
 **An item is an ingredient, not a product.** "Cheddar" is one thing you cook with; Tesco's and Aldi's are two places to buy it, at two prices, in two pack sizes. Those are its **sources**.
@@ -112,6 +129,16 @@ One item holds **at most one source per shop**, and a source's identity is its s
 Receipts print legal names: `TESCO STORES LTD`, `ASDA STORES LIMITED`. Those now fold onto the shop you already have. Left alone they used to make an untidy second heading; under sources they would split one shop's price into two, which is exactly what this is here to prevent.
 
 Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco one, and both survive rather than the later push winning.
+
+## The plan, and who is eating
+
+Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the arrow beside a slot gives the second person the first one's choice, which is most dinners.
+
+**Portions on a meal are for one person.** Plan it for both and it counts twice.
+
+Set a **start date** at the top and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so a fortnight starting on a Thursday says Thursday.
+
+Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
 ## When things were last updated
 
