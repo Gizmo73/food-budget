@@ -167,6 +167,8 @@ Both the shopping list and the Items tab group by store, and each store heading 
 
 `prices.json` holds items, meals, the plan and the budget. Tokens and API keys live in IndexedDB on the device and are never written into that file, so nothing secret can end up committed.
 
+The manual backup lists items in the same order the Items tab groups them: by the shop the list would send you to, alphabetical within each, anything unfiled first. It is read by people at least as often as it is pasted back, and a flat array in creation order is hard to check against a shopping trip. Restoring ignores the order entirely, so nothing depends on it.
+
 IndexedDB is the source of truth. Sync is a deliberate snapshot push, not a live database, because a commit per keystroke would be slow and would conflict across devices. Git history then gives you free price history: `git log -p prices.json` shows every price change you have ever made.
 
 If the remote copy is newer than your last pull, Push warns before overwriting. Last write wins otherwise, so pull before editing on a second device.
@@ -213,6 +215,11 @@ No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled a
 Light, dark or follow the system, under Settings. The theme is applied before first paint, so a dark-mode phone never flashes white on open.
 
 ## Finding things
+
+**Sort by shop or A to Z**, from the toggle at the top of the Items tab. Grouping by shop made sense when an item lived in exactly one; now that it can be sold in three, the heading it sits under is a judgement the app made rather than a fact, and hunting for cheese under whichever shop happens to be cheapest is worse than reading one list. A to Z drops the headings and names the shop on each line instead, so nothing is lost. The choice is remembered per device, like the collapsed groups, since it is a view preference rather than data.
+
+The shopping list still groups by shop always, because that is the order you walk round in.
+
 
 The Items tab has a search box that matches loosely: `chkkrm` finds Chicken Korma, and it searches store names, barcodes and remembered receipt wording as well as item names. Searching temporarily opens every store group that has a hit, and clearing it puts your collapsed groups back as they were.
 

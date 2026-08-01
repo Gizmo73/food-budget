@@ -606,6 +606,8 @@ export const DEFAULT_SETTINGS = {
   lastPull: "",
   lastPush: "",
   collapsedItems: [],
+  // "store" groups the Items tab by shop, "name" is one flat A to Z list
+  itemSort: "store",
   collapsedList: [],
   person: "",
   showRepo: false,
