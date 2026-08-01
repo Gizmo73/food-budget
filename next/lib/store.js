@@ -101,9 +101,23 @@ export function newProduct(name, store, fields = {}) {
     barcodes: [],
     offer: null,
     priceUpdated: "",
+    /* Nutrition is per portion, like everything else here. A label states it
+       per 100g, so the scan converts on the way in and you can correct it. */
+    kcal: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    nutritionUpdated: "",
     ...fields,
   };
 }
+
+/* The four macros, sanitised. Kept in one place because they travel together
+   through migration, merging and the label scan. */
+export const NUTRIENTS = ["kcal", "protein", "carbs", "fat"];
+
+export const cleanNutrition = (src) =>
+  Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, Number(src && src[k]) || 0)]));
 
 /* Add or replace a product on an ingredient, matched by id. */
 export function withProduct(ing, product) {
@@ -427,6 +441,8 @@ function productsFrom(i, fixStore) {
         barcodes: Array.isArray(p.barcodes) ? p.barcodes : [],
         offer: cleanOffer(p.offer),
         priceUpdated: p.priceUpdated || "",
+        ...cleanNutrition(p),
+        nutritionUpdated: p.nutritionUpdated || "",
       };
     });
 
@@ -593,12 +609,25 @@ function mergeProducts(mine, theirs) {
       continue;
     }
     const winner = (t.priceUpdated || "") > (m.priceUpdated || "") ? t : m;
+    /* Nutrition has its own clock. A shop trip updates the price and nothing
+       else, so the newer price must not drag a blank label back over one the
+       other phone actually read. */
+    const fed = NUTRIENTS.some((k) => Number(m[k]) > 0) ? m : null;
+    const theirFed = NUTRIENTS.some((k) => Number(t[k]) > 0) ? t : null;
+    const label =
+      fed && theirFed
+        ? (t.nutritionUpdated || "") > (m.nutritionUpdated || "")
+          ? t
+          : m
+        : fed || theirFed || m;
     byId.set(t.id, {
       ...winner,
       // a pack someone bought is a physical fact, whoever won the price
       stockPortions: Math.max(Number(m.stockPortions) || 0, Number(t.stockPortions) || 0),
       // a barcode either of you scanned is worth keeping
       barcodes: [...new Set([...(m.barcodes || []), ...(t.barcodes || [])])],
+      ...cleanNutrition(label),
+      nutritionUpdated: label.nutritionUpdated || "",
     });
   }
   return [...byId.values()];

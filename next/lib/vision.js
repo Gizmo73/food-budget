@@ -56,7 +56,57 @@ function parseJson(text) {
   };
 }
 
-async function viaGemini(settings, base64) {
+const NUTRITION_PROMPT = `You are reading the nutrition information panel on a UK food package.
+
+Return ONLY a JSON object, with no preamble and no markdown fences:
+{"name": string|null, "packSize": string|null, "servingSize": string|null, "servingsPerPack": number|null,
+ "per100": {"kcal": number, "protein": number, "carbs": number, "fat": number}|null,
+ "perServing": {"kcal": number, "protein": number, "carbs": number, "fat": number}|null}
+
+Rules:
+- The panel is a table. One column is per 100g or per 100ml. A second column, if present, is the serving, and it is not always headed "per serving": "per 1/2 pot (300g)", "per pack", "per biscuit" and "each" all mean the serving column.
+- Fill per100 only from the per 100g column, and perServing only from the serving column. Never copy one into the other, and use null for a column that is not printed.
+- IGNORE any column headed %RI, %RDA, "Reference intake" or "your RI". Those are percentages and adult daily targets, not the nutrition of this food. A row reading "Fat 1.2g 3.6g 5% 70g" has per100 fat 1.2 and perServing fat 3.6; 5 and 70 are not nutrition values.
+- kcal is energy in kilocalories, not kilojoules. A row reading "167kJ 40kcal" has kcal 40.
+- carbs means total carbohydrate, NOT the "of which sugars" line underneath it. fat means total fat, NOT "of which saturates". Take the parent row every time.
+- All four numbers are in grams except kcal. Strip units and return plain numbers.
+- packSize is the total weight or volume printed on the front of the pack, such as "600g" or "1.5kg".
+- servingSize is the weight of one serving, in grams, if it can be read anywhere: from the serving column heading such as "per 1/2 pot (300g)", or from a line like "Serving size 125g".
+- servingsPerPack is how many servings the pack says it holds, including footnotes such as "Contains 2 portions".
+- name is the product name if it is legible in the photograph.
+- If no nutrition panel is legible, return every field as null.`;
+
+function parseNutrition(text) {
+  const clean = String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("The model did not return JSON.");
+  const parsed = JSON.parse(clean.slice(start, end + 1));
+
+  /* A column the label does not print must stay missing. Coercing it to zeroes
+     would quietly claim the food has no calories. */
+  const column = (src) => {
+    if (!src || typeof src !== "object") return null;
+    const out = {
+      kcal: Math.max(0, Number(src.kcal) || 0),
+      protein: Math.max(0, Number(src.protein) || 0),
+      carbs: Math.max(0, Number(src.carbs) || 0),
+      fat: Math.max(0, Number(src.fat) || 0),
+    };
+    return Object.values(out).some((v) => v > 0) ? out : null;
+  };
+
+  return {
+    name: String(parsed.name || "").trim(),
+    packSize: String(parsed.packSize || "").trim(),
+    servingSize: String(parsed.servingSize || "").trim(),
+    servingsPerPack: Math.max(0, Number(parsed.servingsPerPack) || 0),
+    per100: column(parsed.per100),
+    perServing: column(parsed.perServing),
+  };
+}
+
+async function viaGemini(settings, base64, prompt = PROMPT, parse = parseJson) {
   const model = settings.geminiModel || "gemini-3.1-flash-lite-preview";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model
@@ -69,7 +119,7 @@ async function viaGemini(settings, base64) {
         {
           parts: [
             { inline_data: { mime_type: "image/jpeg", data: base64 } },
-            { text: PROMPT },
+            { text: prompt },
           ],
         },
       ],
@@ -84,10 +134,10 @@ async function viaGemini(settings, base64) {
   const candidate = (data.candidates || [])[0] || {};
   const parts = (candidate.content && candidate.content.parts) || [];
   const text = parts.map((p) => p.text || "").join("");
-  return parseJson(text);
+  return parse(text);
 }
 
-async function viaAnthropic(settings, base64) {
+async function viaAnthropic(settings, base64, prompt = PROMPT, parse = parseJson) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -104,7 +154,7 @@ async function viaAnthropic(settings, base64) {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } },
-            { type: "text", text: PROMPT },
+            { type: "text", text: prompt },
           ],
         },
       ],
@@ -119,10 +169,10 @@ async function viaAnthropic(settings, base64) {
     .filter((b) => b.type === "text")
     .map((b) => b.text)
     .join("\n");
-  return parseJson(text);
+  return parse(text);
 }
 
-export async function readReceipt(settings, file) {
+async function look(settings, file, prompt, parse) {
   const provider = settings.provider || "gemini";
   if (provider === "gemini" && !settings.geminiKey) {
     throw new Error("Add a Gemini API key in Settings first.");
@@ -131,5 +181,12 @@ export async function readReceipt(settings, file) {
     throw new Error("Add an Anthropic API key in Settings first.");
   }
   const base64 = await shrink(file);
-  return provider === "anthropic" ? viaAnthropic(settings, base64) : viaGemini(settings, base64);
+  return provider === "anthropic"
+    ? viaAnthropic(settings, base64, prompt, parse)
+    : viaGemini(settings, base64, prompt, parse);
 }
+
+export const readReceipt = (settings, file) => look(settings, file, PROMPT, parseJson);
+
+export const readNutrition = (settings, file) =>
+  look(settings, file, NUTRITION_PROMPT, parseNutrition);

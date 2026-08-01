@@ -140,6 +140,49 @@ Set a **start date** at the top and every row shows the date it falls on, which 
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
+## Calories and macros
+
+Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food, and the plan should say which one you actually ate.
+
+**The figures are per portion**, like the price and the stock. That is what lets the Food tab add up a day without any unit conversion.
+
+### Photographing the label
+
+The **Photograph the label** button on a product sends the panel to whichever provider you set up for receipts, and puts the answer in the four boxes for you to check before saving. Nothing is saved until you press save.
+
+A label is printed per 100g, so the app has to work out how big *your* portion is before it can fill anything in. It tries three things in order:
+
+| | Source | Trusted |
+|---|---|---|
+| 1 | Your **pack size note** divided by your **portions per pack** | Yes |
+| 2 | The **pack size printed on the label** divided by your portions per pack | Yes |
+| 3 | The **serving the label itself quotes** | Flagged for a look |
+
+The first two use your own portion count, so they are right by definition. The third is the pack's idea of a serving rather than yours, so those figures come back marked for checking.
+
+Worked example, from a 600g pot of soup labelled 40kcal per 100g and "contains 2 portions":
+
+- Pack size note `600g`, portions per pack `2` → a 300g portion → **120 kcal**, which is the 119 kcal the label prints for half a pot.
+- Same pack, but you eat the lot in one go: portions per pack `1` → **240 kcal**.
+
+That is the point of storing per portion. The same label gives a different answer depending on how you actually eat it, and only you know that.
+
+If the panel cannot be read, or there is no way to size a portion at all, nothing is filled in silently — the app says so and you can type the numbers in yourself. A hand-typed figure is stamped the same way a scanned one is, so it survives a merge with the other phone.
+
+### Nutrition is merged on its own clock
+
+A shop trip updates prices and nothing else. Merging by the price stamp alone would let a phone that had only done a shop drag its blank label over one the other phone had actually read. Nutrition therefore carries its own stamp and is merged separately: a filled-in label always beats a blank one, and between two filled-in ones the more recent reading wins.
+
+## The Food tab
+
+The same fortnight, the same two people, read a second way: what the meals add up to rather than what they cost.
+
+Each day lists both people separately with calories and the three macros, driven entirely by the meals on the Plan tab. Change a meal there and this moves with it. The card at the top averages **over the days that have meals on them**, not over all fourteen, since dividing nine planned days by fourteen would read as a crash diet.
+
+A red `*` beside a figure means at least one thing in that day has no nutrition filled in, so the true number is higher. It is deliberately not hidden: a half-filled day that looked complete would be worse than one that admits it.
+
+Calories stay off the Plan tab on purpose. Planning meals and counting them are two different jobs, and the plan was already six dropdowns a day.
+
 ## When things were last updated
 
 Every item carries a **Last updated** stamp, shown in its editor. Two shapes of stamp exist on purpose:

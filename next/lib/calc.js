@@ -192,6 +192,167 @@ export function itemPortionCost(ing, productId) {
   return productPortionCost(specific || chooseProduct(ing));
 }
 
+/* ----------------------------- nutrition -------------------------------- */
+
+/* Macros are held per portion, so the plan can add them up the same way it
+   adds up cost. Labels are printed per 100g, which is why the scan needs to
+   know how big a portion is before it can fill anything in. */
+
+export const NUTRIENTS = ["kcal", "protein", "carbs", "fat"];
+
+export const emptyNutrition = () => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 });
+
+export const addNutrition = (into, from, times = 1) => {
+  for (const k of NUTRIENTS) into[k] += (Number(from[k]) || 0) * times;
+  return into;
+};
+
+/* Grams in a pack, read off the pack size note. "1.5kg", "500 g", "6x125g"
+   and "2 x 1kg" all mean something; "1 litre" and "" do not, and return 0 so
+   callers can say they do not know rather than guess. */
+export function packGrams(product) {
+  const raw = String((product && product.packLabel) || "").toLowerCase();
+  if (!raw) return 0;
+  // a multipack states the count and the unit size: 6x125g is 750g
+  const multi = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g)\b/);
+  if (multi) {
+    const each = Number(multi[2]) * (multi[3] === "kg" ? 1000 : 1);
+    return Number(multi[1]) * each;
+  }
+  const one = raw.match(/(\d+(?:\.\d+)?)\s*(kg|g)\b/);
+  if (!one) return 0;
+  return Number(one[1]) * (one[2] === "kg" ? 1000 : 1);
+}
+
+/* How many grams one portion is, which is what turns a per-100g label into
+   per-portion figures. 0 means the pack size or the portion count is missing
+   and the conversion cannot be done. */
+export function gramsPerPortion(product) {
+  const grams = packGrams(product);
+  const pp = Number(product && product.portionsPerPack) || 0;
+  return grams > 0 && pp > 0 ? grams / pp : 0;
+}
+
+export const productNutrition = (product) =>
+  product ? cleanN(product) : emptyNutrition();
+
+const cleanN = (src) =>
+  Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, Number(src[k]) || 0)]));
+
+/* A product with nothing filled in is not the same as one that is genuinely
+   zero calories, and the nutrition page has to be able to say so. */
+export const hasNutrition = (product) =>
+  !!product && NUTRIENTS.some((k) => (Number(product[k]) || 0) > 0);
+
+/* Per portion for a meal item: the named product if it names one, otherwise
+   whatever the list would buy. Mirrors itemPortionCost exactly, so cost and
+   calories can never disagree about which product they are describing. */
+export function itemNutrition(ing, productId) {
+  if (!ing) return emptyNutrition();
+  const specific = productId ? productById(ing, productId) : null;
+  return productNutrition(specific || chooseProduct(ing));
+}
+
+export function mealNutrition(meal, byId) {
+  const total = emptyNutrition();
+  if (!meal) return total;
+  for (const it of meal.items) {
+    const ing = byId[it.ingredientId];
+    if (ing) addNutrition(total, itemNutrition(ing, it.productId), Number(it.portions) || 0);
+  }
+  return total;
+}
+
+/* Whether every ingredient in a meal has figures behind it. A meal that is
+   half filled in would otherwise read as a low calorie meal. */
+export function mealNutritionKnown(meal, byId) {
+  if (!meal || !meal.items.length) return true;
+  return meal.items.every((it) => {
+    const ing = byId[it.ingredientId];
+    if (!ing) return true;
+    if (!(Number(it.portions) || 0)) return true;
+    const specific = it.productId ? productById(ing, it.productId) : null;
+    return hasNutrition(specific || chooseProduct(ing));
+  });
+}
+
+/* A label is printed per 100g; the app stores per portion. The conversion
+   needs to know how big a portion is, and there are three ways to find out,
+   in descending order of trust. Returns 0 grams when there is no way at all,
+   so the caller can say so instead of inventing a portion. */
+export function labelBasis(product, out) {
+  const pp = Number(product && product.portionsPerPack) || 0;
+  const portions = pp > 0 ? trimNum(pp) : "";
+
+  // 1. the pack size you have already recorded, divided by your own portions
+  const mine = gramsPerPortion(product);
+  if (mine > 0) return { grams: mine, sure: true, why: `your pack size and ${portions} portions per pack` };
+
+  // 2. the pack size printed on the label, divided by your own portions
+  const printed = packGrams({ packLabel: out.packSize });
+  if (printed > 0 && pp > 0) {
+    return {
+      grams: printed / pp,
+      sure: true,
+      why: `${out.packSize} on the pack and ${portions} portions per pack`,
+    };
+  }
+
+  /* 3. the label's own serving. Worth less than the two above because it is
+        the pack's idea of a serving, not yours, so it is not marked sure and
+        the figures come back flagged for a look. */
+  const serving = packGrams({ packLabel: out.servingSize });
+  if (serving > 0) {
+    return { grams: serving, sure: false, why: `the ${out.servingSize} serving on the label` };
+  }
+
+  return { grams: 0, sure: false, why: "" };
+}
+
+const trimNum = (n) => String(Math.round(n * 100) / 100);
+
+/* What to put in the four boxes, and the sentence explaining where it came
+   from. warn marks a figure that needs a human eye. null means the photograph
+   gave us nothing usable at all. */
+export function labelToPortion(product, out) {
+  if (!out) return null;
+  const basis = labelBasis(product, out);
+
+  if (out.per100 && basis.grams > 0) {
+    const times = basis.grams / 100;
+    return {
+      values: Object.fromEntries(
+        NUTRIENTS.map((k) => [k, Math.round(out.per100[k] * times * 10) / 10])
+      ),
+      why: `per 100g on the label, scaled to a ${Math.round(basis.grams)}g portion using ${basis.why}`,
+      // sized by the pack's serving rather than your own portion count
+      warn: !basis.sure,
+    };
+  }
+
+  /* No way to size a portion. The label's own per-serving column is the only
+     honest fallback, and it is only right if your portion is its serving. */
+  if (out.perServing) {
+    return {
+      values: Object.fromEntries(NUTRIENTS.map((k) => [k, out.perServing[k]])),
+      why: out.servingSize
+        ? `the per serving column, for the ${out.servingSize} serving on the label`
+        : "the per serving column on the label",
+      warn: true,
+    };
+  }
+
+  if (out.per100) {
+    return {
+      values: Object.fromEntries(NUTRIENTS.map((k) => [k, out.per100[k]])),
+      why: "per 100g on the label, with no way to work out how big your portion is",
+      warn: true,
+    };
+  }
+
+  return null;
+}
+
 /* ------------------------------- stock --------------------------------- */
 
 /* Stock is counted in portions, not packs, because an opened pack is the
@@ -232,6 +393,15 @@ export function computeShopping(db) {
   const need = {};
   const needProduct = {};
   const dayCost = Array(db.plan.length).fill(0);
+  /* One set of macros per person per day. Built here rather than on the
+     nutrition page so it always describes the same plan the list was costed
+     from, and so a day can say when it is only partly known. */
+  const dayNutrition = Array.from({ length: db.plan.length }, () => [
+    emptyNutrition(),
+    emptyNutrition(),
+  ]);
+  const dayComplete = Array.from({ length: db.plan.length }, () => [true, true]);
+  const dayMeals = Array.from({ length: db.plan.length }, () => [0, 0]);
 
   let plannedMeals = 0;
 
@@ -240,10 +410,13 @@ export function computeShopping(db) {
       // each slot holds one meal per person
       const forSlot = day && day[slot];
       const chosen = Array.isArray(forSlot) ? forSlot : [forSlot];
-      chosen.forEach((mealId) => {
+      chosen.forEach((mealId, person) => {
         const meal = mealId ? mealById[mealId] : null;
         if (!meal) return;
         plannedMeals += 1;
+        const who = person === 1 ? 1 : 0;
+        dayMeals[idx][who] += 1;
+        if (!mealNutritionKnown(meal, byId)) dayComplete[idx][who] = false;
         meal.items.forEach(({ ingredientId, productId, portions }) => {
           const ing = byId[ingredientId];
           if (!ing) return;
@@ -255,6 +428,7 @@ export function computeShopping(db) {
             need[ingredientId] = (need[ingredientId] || 0) + p;
           }
           dayCost[idx] += itemPortionCost(ing, productId) * p;
+          addNutrition(dayNutrition[idx][who], itemNutrition(ing, productId), p);
         });
       });
     });
@@ -361,6 +535,18 @@ export function computeShopping(db) {
     problems,
     lines,
     dayCost,
+    dayNutrition,
+    dayComplete,
+    dayMeals,
+    /* One number for the tab: what a day averages across both of you, over the
+       days that have meals on them. Zero when nothing is planned or nothing
+       has nutrition behind it. */
+    dayKcal: (() => {
+      const fed = dayNutrition.filter((_, i) => dayMeals[i][0] || dayMeals[i][1]);
+      if (!fed.length) return 0;
+      const total = fed.reduce((a, d) => a + d[0].kcal + d[1].kcal, 0);
+      return Math.round(total / fed.length);
+    })(),
     total: lines.reduce((a, l) => a + l.cost, 0),
     saving: lines.reduce((a, l) => a + l.saving, 0),
     stores: [...stores.values()].sort((a, b) => b.total - a.total),

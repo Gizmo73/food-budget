@@ -17,10 +17,11 @@ import {
   ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
   stockPortions, stockPacks, packPortions, productStock,
   productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan,
+  NUTRIENTS, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion, labelToPortion,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
-import { readReceipt } from "./lib/vision.js";
+import { readReceipt, readNutrition } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -237,7 +238,9 @@ function draw() {
     viewMasthead(),
     `<div class="wrap">`,
     state.flash ? `<div class="${state.flash.kind === "err" ? "err" : "ok"}">${esc(state.flash.text)}</div>` : "",
-    { list: viewList, plan: viewPlan, meals: viewMeals, items: viewItems }[state.tab](),
+    ({ list: viewList, plan: viewPlan, food: viewFood, meals: viewMeals, items: viewItems }[
+      state.tab
+    ] || viewList)(),
     `</div>`,
     viewTabs(),
     viewSheet(),
@@ -296,6 +299,7 @@ function viewTabs() {
   const tabs = [
     ["list", "List", c.lines.length],
     ["plan", "Plan", c.plannedMeals],
+    ["food", "Food", c.dayKcal],
     ["meals", "Meals", state.db.meals.length],
     ["items", "Items", state.db.ingredients.length],
   ];
@@ -556,6 +560,115 @@ function viewPlan() {
     <div class="spacer"></div>`;
 }
 
+/* ---- food ---- */
+
+/* Calories and macros live on their own page so the plan stays a plan. It is
+   the same fortnight, the same two people and the same meals, read a second
+   way: what the choices add up to rather than what they cost. */
+function viewFood() {
+  const c = state.calc;
+  const people = state.db.people || ["Person 1", "Person 2"];
+  const start = state.db.planStart || "";
+  const days = state.db.plan.length;
+
+  const macros = (n) =>
+    `<span class="macro"><b>${Math.round(n.protein)}</b>P</span>
+     <span class="macro"><b>${Math.round(n.carbs)}</b>C</span>
+     <span class="macro"><b>${Math.round(n.fat)}</b>F</span>`;
+
+  const person = (idx, who) => {
+    const n = c.dayNutrition[idx][who];
+    const meals = c.dayMeals[idx][who];
+    const partial = !c.dayComplete[idx][who];
+    return `<div class="foodrow">
+      <span class="pname grow">${esc(people[who])}</span>
+      ${
+        meals
+          ? `<span class="kcal num">${Math.round(n.kcal)}<span class="unit"> kcal</span>${
+              partial ? '<span class="part" title="Some items have no nutrition filled in">*</span>' : ""
+            }</span>
+             <span class="macros">${macros(n)}</span>`
+          : `<span class="muted">nothing planned</span>`
+      }
+    </div>`;
+  };
+
+  const week = (w) => {
+    const idxs = Array.from({ length: 7 }, (_, i) => w * 7 + i).filter((i) => i < days);
+    const rows = idxs
+      .map((idx) => {
+        const when = planDate(start, idx);
+        const name = when ? WEEKDAYS[when.getDay()] : DAYS[idx % 7];
+        const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+        const both = c.dayNutrition[idx][0].kcal + c.dayNutrition[idx][1].kcal;
+        return `<div class="dayblock">
+          <div class="row">
+            <span class="dname grow">${name}${
+          dated ? ` <span class="muted num" style="font-weight:400">${esc(dated)}</span>` : ""
+        }</span>
+            <span class="cost">${both > 0 ? `${Math.round(both)} kcal` : ""}</span>
+          </div>
+          ${person(idx, 0)}${person(idx, 1)}
+        </div>`;
+      })
+      .join("");
+
+    return `<section class="card">
+      <div class="row" style="margin-bottom:6px"><span class="eyebrow grow">Week ${w + 1}</span></div>
+      ${rows}</section>`;
+  };
+
+  /* An average over the days that actually have meals on them. Dividing by
+     fourteen when only nine are planned would read as a crash diet. */
+  const average = (who) => {
+    const fed = Array.from({ length: days }, (_, i) => i).filter((i) => c.dayMeals[i][who] > 0);
+    if (!fed.length) return null;
+    const sum = fed.reduce((acc, i) => addNutrition(acc, c.dayNutrition[i][who]), emptyNutrition());
+    return {
+      days: fed.length,
+      ...Object.fromEntries(NUTRIENTS.map((k) => [k, sum[k] / fed.length])),
+    };
+  };
+
+  const averages = [0, 1]
+    .map((who) => {
+      const a = average(who);
+      return `<div class="foodrow">
+        <span class="pname grow">${esc(people[who])}</span>
+        ${
+          a
+            ? `<span class="kcal num">${Math.round(a.kcal)}<span class="unit"> kcal</span></span>
+               <span class="macros">${macros(a)}</span>`
+            : `<span class="muted">no meals planned</span>`
+        }
+      </div>`;
+    })
+    .join("");
+
+  const anyPartial = c.dayComplete.some((d) => !d[0] || !d[1]);
+  const blank = state.db.ingredients.filter((i) => productsOf(i).some((p) => !hasNutrition(p))).length;
+
+  const weeks = Array.from({ length: Math.ceil(days / 7) }, (_, w) => week(w)).join("");
+
+  return `<section class="card">
+      <div class="row" style="margin-bottom:6px">
+        <span class="eyebrow grow">Average a day</span>
+        <span class="muted">over the days with meals on them</span>
+      </div>
+      ${averages}
+    </section>
+    ${weeks}
+    ${
+      anyPartial
+        ? `<p class="muted">A <span class="part">*</span> means at least one thing in that day has no
+           nutrition filled in, so the real figure is higher. ${
+             blank ? `${blank} item${blank === 1 ? " is" : "s are"} still blank.` : ""
+           } Fill them in on the Items tab, or photograph the label.</p>`
+        : `<p class="muted">Driven by the meals on the Plan tab. Change a meal there and these move with it.</p>`
+    }
+    <div class="spacer"></div>`;
+}
+
 /* ---- meals ---- */
 
 function viewMeals() {
@@ -718,6 +831,50 @@ function offerEditor(subject, acts) {
   </div>`;
 }
 
+/* The four numbers, per portion, plus the shortcut of photographing the panel.
+   Kept below the price because it is reference data: you fill it in once and
+   then never look at it again, while the price changes every shop. */
+function nutritionEditor(ing, product) {
+  const per = gramsPerPortion(product);
+  const known = hasNutrition(product);
+  const box = (field, label, unit) =>
+    `<label class="field"><span class="eyebrow">${label}</span>
+      <input class="inp mono" type="number" step="0.1" min="0" value="${trim2(
+        Number(product[field]) || 0
+      )}" data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
+      product.id
+    )}" data-field="${field}" aria-label="${label} per portion${unit ? ` in ${unit}` : ""}"></label>`;
+
+  return `<div style="margin-bottom:8px">
+    <div class="row" style="margin-bottom:6px">
+      <span class="eyebrow grow">Nutrition, per portion</span>
+      <button class="btn small tonal" data-act="shootLabel" data-id="${ing.id}"
+        data-product="${esc(product.id)}">Scan the label</button>
+    </div>
+    <div class="grid2" style="margin-bottom:6px">${box("kcal", "Calories", "kcal")}${box(
+    "protein",
+    "Protein g",
+    "grams"
+  )}</div>
+    <div class="grid2" style="margin-bottom:6px">${box("carbs", "Carbs g", "grams")}${box(
+    "fat",
+    "Fat g",
+    "grams"
+  )}</div>
+    <p class="why" style="margin:0">${
+      known
+        ? `${esc(
+            product.nutritionUpdated ? `read ${ago(product.nutritionUpdated)}` : "entered by hand"
+          )}`
+        : "Not filled in yet, so meals using this will not count towards the day"
+    }${
+    per > 0
+      ? ` &middot; a portion is about ${trim2(Math.round(per))}g`
+      : " &middot; set the pack size note and portions per pack to convert a per 100g label"
+  }</p>
+  </div>`;
+}
+
 /* One product: a thing you can actually put in a trolley. It has a name of its
    own, because "which cheddar is this" is a question the app has to be able to
    answer, and its own stock, because a meal may ask for this one specifically. */
@@ -799,6 +956,7 @@ function productCard(ing, product, chosen, stores) {
       id: ing.id,
       product: product.id,
     })}
+    ${nutritionEditor(ing, product)}
     <div style="margin-bottom:8px">
       <span class="eyebrow" style="display:block;margin-bottom:6px">Barcodes</span>
       <div style="margin-bottom:8px">${codes}</div>
@@ -968,12 +1126,15 @@ function viewItems() {
       ? `<div class="empty">Nothing matches &ldquo;${esc(q)}&rdquo;.</div>`
       : "";
 
+  /* Adding sits at the top. With 40-odd items the button was a scroll away
+     from the only screen you would press it on. */
   return `${search}
     ${q ? `<p class="muted" style="margin:-4px 0 10px">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
+    <button class="btn tonal wide" style="margin-bottom:10px" data-act="addItem">Add an item</button>
     ${sortToggle}
     ${nothing}${byName ? flat : groups}
     <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
-    <button class="btn tonal wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
+    <div class="spacer"></div>`;
 }
 
 /* -------------------------------- sheets ------------------------------- */
@@ -982,6 +1143,7 @@ function viewSheet() {
   const s = state.sheet;
   if (!s) return "";
   if (s.kind === "receipt") return sheetReceipt(s);
+  if (s.kind === "label") return sheetLabel(s);
   if (s.kind === "settings") return sheetSettings(s);
   if (s.kind === "scanned") return sheetScanned(s);
   if (s.kind === "help") return sheetHelp();
@@ -1807,6 +1969,81 @@ function bumpRowStock(i, dir) {
   setSheet({ ...state.sheet, rows });
 }
 
+/* ---------------------------- nutrition labels ------------------------- */
+
+async function shootLabel(id, productId) {
+  const ing = ingredient(id);
+  const product = productOf(id, productId);
+  if (!ing || !product) return;
+
+  setSheet({ kind: "label", id, productId, busy: true, err: "" });
+  filePicker(async (file) => {
+    try {
+      const out = await readNutrition(state.settings, file);
+      const read = labelToPortion(product, out);
+      setSheet({
+        kind: "label",
+        id,
+        productId,
+        busy: false,
+        err: read ? "" : "No nutrition panel came back. Try filling the frame with the table itself.",
+        out,
+        values: read ? read.values : null,
+        why: read ? read.why : "",
+        warn: !!(read && read.warn),
+      });
+    } catch (err) {
+      setSheet({ kind: "label", id, productId, busy: false, err: err.message });
+    }
+  });
+}
+
+function sheetLabel(s) {
+  const ing = ingredient(s.id);
+  const product = productOf(s.id, s.productId);
+  if (!ing || !product) return "";
+
+  const inner = [];
+  if (s.err) inner.push(`<div class="err">${esc(s.err)}</div>`);
+  if (s.busy) inner.push(`<p class="muted">Reading the label…</p>`);
+
+  if (s.values) {
+    const row = (label, value, unit) =>
+      `<div class="row" style="margin-bottom:4px"><span class="grow">${label}</span>
+        <span class="num" style="font-weight:600">${trim2(value)}${unit}</span></div>`;
+    inner.push(`<div class="subcard">
+      ${row("Calories", s.values.kcal, " kcal")}
+      ${row("Protein", s.values.protein, " g")}
+      ${row("Carbs", s.values.carbs, " g")}
+      ${row("Fat", s.values.fat, " g")}
+      <p class="why" style="margin:6px 0 0">From ${s.why}.</p>
+    </div>`);
+    if (s.warn) {
+      inner.push(`<p class="muted">Check these before saving. Set the pack size note and portions
+        per pack on the product and photograph it again for a portion-sized figure.</p>`);
+    }
+    inner.push(`<div class="row">
+      <button class="btn solid grow" data-act="applyLabel">Save to ${esc(
+        product.name || ing.name
+      )}</button>
+      <button class="btn tonal" data-act="shootLabel" data-id="${s.id}" data-product="${esc(
+      s.productId
+    )}">Retake</button>
+    </div>`);
+  } else if (!s.busy) {
+    inner.push(`<button class="btn solid wide" data-act="shootLabel" data-id="${s.id}"
+      data-product="${esc(s.productId)}">Take a photo</button>`);
+  }
+
+  return shell(
+    "Nutrition label",
+    `Point the camera at the panel on ${esc(product.name || ing.name)}${
+      product.store ? ` from ${esc(product.store)}` : ""
+    }. The figures are stored per portion, so a per 100g table is converted for you.`,
+    inner.join("")
+  );
+}
+
 async function shootReceipt() {
   filePicker(async (file) => {
     setSheet({ ...state.sheet, busy: true, err: "" });
@@ -2414,12 +2651,28 @@ const actions = {
       pricePerPack: Math.max(0, Number(el.value) || 0),
       priceUpdated: now(),
     }),
-  setProductNumber: (el) =>
+  setProductNumber: (el) => {
+    const field = el.dataset.field;
     patchProduct(el.dataset.id, el.dataset.product, {
-      [el.dataset.field]: Math.max(0, Number(el.value) || 0),
-    }),
+      [field]: Math.max(0, Number(el.value) || 0),
+      // a hand-typed macro is a reading in its own right, and has to be
+      // stamped or the other phone's older label would win the merge
+      ...(NUTRIENTS.includes(field) ? { nutritionUpdated: now() } : {}),
+    });
+  },
   setProductField: (el) =>
     patchProduct(el.dataset.id, el.dataset.product, { [el.dataset.field]: el.value }),
+
+  shootLabel: (el) => shootLabel(el.dataset.id, el.dataset.product),
+
+  applyLabel: () => {
+    const s = state.sheet;
+    if (!s || !s.values) return;
+    const product = productOf(s.id, s.productId);
+    patchProduct(s.id, s.productId, { ...s.values, nutritionUpdated: now() });
+    setSheet(null);
+    flash(`Nutrition saved to ${(product && product.name) || "the product"}.`);
+  },
 
   addProduct: (el) => {
     const ing = ingredient(el.dataset.id);

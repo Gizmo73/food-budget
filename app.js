@@ -700,11 +700,14 @@ function viewItems() {
       ? `<div class="empty">Nothing matches &ldquo;${esc(q)}&rdquo;.</div>`
       : "";
 
+  /* Adding sits at the top. With 40-odd items the button was a scroll away
+     from the only screen you would press it on. */
   return `${search}
     ${q ? `<p class="muted" style="margin:-4px 0 10px">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
+    <button class="btn tonal wide" style="margin-bottom:10px" data-act="addItem">Add an item</button>
     ${nothing}${groups}
     <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
-    <button class="btn tonal wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
+    <div class="spacer"></div>`;
 }
 
 /* -------------------------------- sheets ------------------------------- */
