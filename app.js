@@ -8,10 +8,12 @@
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
   resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames, cleanOffer,
+  mergeSnapshots, SLOTS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
-  offerExpired, offerMeaning, groupByStore, money, today, daysSince, STALE_DAYS,
+  offerExpired, offerMeaning, groupByStore, searchItems, ukTime, ago,
+  money, today, daysSince, STALE_DAYS,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
 import { readReceipt } from "./lib/vision.js";
@@ -20,7 +22,43 @@ import { pull, push } from "./lib/sync.js";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const root = document.getElementById("app");
 
-const state = { db: null, settings: null, tab: "list", sheet: null, flash: null, calc: null, reveal: null };
+const state = {
+  db: null, settings: null, tab: "list", sheet: null, flash: null,
+  calc: null, reveal: null, query: "", incoming: null,
+};
+
+/* ------------------------------- theming ------------------------------- */
+
+function applyTheme(choice) {
+  const wanted =
+    choice === "system"
+      ? window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : choice;
+  document.documentElement.dataset.theme = wanted;
+  // mirrored into localStorage purely so index.html can set it before first paint
+  try {
+    localStorage.setItem("fs-theme", choice);
+  } catch (err) {
+    /* storage can be blocked; the theme still applies for this session */
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", wanted === "dark" ? "#1E2126" : "#FFFFFF");
+}
+
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (state.settings && state.settings.theme === "system") applyTheme("system");
+  });
+}
+
+/* Unsaved means the local copy has moved on since the last successful push. */
+function isDirty() {
+  if (!state.db || !state.settings) return false;
+  if (!state.settings.owner || !state.settings.token) return false;
+  return (state.db.updatedAt || "") > (state.settings.lastPush || "");
+}
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -178,7 +216,7 @@ function viewMasthead() {
   return `<header class="masthead"><div class="row">
     <div class="grow">
       <h1>Fortnight Shop</h1>
-      <p>${c.plannedDays} of 14 days planned &middot; ${state.db.ingredients.length} items priced by hand</p>
+      <p>${c.plannedMeals} of ${c.totalSlots} meals planned &middot; ${state.db.ingredients.length} items</p>
     </div>
     <button class="btn small ghost" data-act="openSettings">Settings</button>
   </div></header>`;
@@ -188,7 +226,7 @@ function viewTabs() {
   const c = state.calc;
   const tabs = [
     ["list", "List", c.lines.length],
-    ["plan", "Plan", c.plannedDays],
+    ["plan", "Plan", c.plannedMeals],
     ["meals", "Meals", state.db.meals.length],
     ["items", "Items", state.db.ingredients.length],
   ];
@@ -231,24 +269,39 @@ function viewList() {
     ? c.stores
         .map((store) => {
           const shut = isShut("collapsedList", store.name);
-          return `<section class="card">
-        <div class="row head" data-act="toggleStore" data-which="collapsedList" data-store="${esc(store.name)}">
+          return `<div class="group">
+        <button class="grouphead" data-act="toggleStore" data-which="collapsedList" data-store="${esc(store.name)}">
           <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
-          <span class="eyebrow grow">${esc(store.name)} &middot; ${store.lines.length} item${
+          <span class="grow">
+            <span class="gname">${esc(store.name)}</span>
+            <span class="gmeta" style="display:block">${store.lines.length} item${
             store.lines.length === 1 ? "" : "s"
-          }</span>
-          <span class="num muted">£${money(store.total)}</span>
-        </div>
-        ${shut ? "" : store.lines.map(ticket).join("")}
-      </section>`;
+          } &middot; £${money(store.total)}</span>
+          </span>
+        </button>
+        ${shut ? "" : `<section class="card">${store.lines.map(ticket).join("")}</section>`}
+      </div>`;
         })
         .join("")
     : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or add something by hand from Items.</div>`;
 
+  const incoming = state.incoming
+    ? `<div class="banner">
+         <div class="row">
+           <span class="grow"><strong>Changes waiting</strong><br>
+             <span style="font-size:13px">${esc(state.incoming.who || "Someone")} saved ${esc(
+        ago(state.incoming.at)
+      )}.</span></span>
+           <button class="btn small" data-act="mergeIncoming">Merge</button>
+         </div>
+       </div>`
+    : "";
+
   return `
+    ${incoming}
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn solid grow" data-act="openReceipt">Read a receipt</button>
-      <button class="btn grow" data-act="openScan">Scan an item</button>
+      <button class="btn tonal grow" data-act="openScan">Scan an item</button>
     </div>
     ${notes.join("")}
     ${body}
@@ -307,8 +360,9 @@ function ticket(l) {
 
 function viewPlan() {
   const c = state.calc;
+
   const options = (selected) =>
-    [`<option value="">—</option>`]
+    [`<option value="">\u2014</option>`]
       .concat(
         state.db.meals.map(
           (m) => `<option value="${m.id}"${m.id === selected ? " selected" : ""}>${esc(m.name)}</option>`
@@ -318,14 +372,27 @@ function viewPlan() {
 
   const week = (w) => {
     const subtotal = c.dayCost.slice(w * 7, w * 7 + 7).reduce((a, b) => a + b, 0);
+
     const rows = DAYS.map((name, i) => {
       const idx = w * 7 + i;
-      return `<div class="day">
-        <span class="dname">${name.slice(0, 3)}</span>
-        <select data-act="setDay" data-idx="${idx}" aria-label="${name} week ${w + 1}">${options(state.db.plan[idx])}</select>
-        <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
+      const day = state.db.plan[idx] || {};
+      const slots = SLOTS.map(
+        (slot) => `<div class="slot">
+          <span class="slabel">${slot.short}</span>
+          <select data-act="setSlot" data-idx="${idx}" data-slot="${slot.key}"
+            aria-label="${slot.label}, ${name} week ${w + 1}">${options(day[slot.key])}</select>
+        </div>`
+      ).join("");
+
+      return `<div class="dayblock">
+        <div class="row">
+          <span class="dname grow">${name}</span>
+          <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
+        </div>
+        ${slots}
       </div>`;
     }).join("");
+
     return `<section class="card">
       <div class="row" style="margin-bottom:6px">
         <span class="eyebrow grow">Week ${w + 1}</span>
@@ -333,8 +400,18 @@ function viewPlan() {
       </div>${rows}</section>`;
   };
 
+  // breakfast and lunch are usually the same all fortnight, so offer to fill them
+  const fillers = SLOTS.map(
+    (slot) => `<button class="btn small ghost grow" data-act="fillSlot" data-slot="${slot.key}">Repeat ${slot.label.toLowerCase()}</button>`
+  ).join("");
+
   return `${week(0)}${week(1)}
-    <p class="muted">Day costs are portion costs, so they show what a meal is worth. The List tab rounds up to whole packs.</p>
+    <div class="card">
+      <span class="eyebrow" style="display:block;margin-bottom:6px">Fill the fortnight</span>
+      <div class="row" style="gap:6px">${fillers}</div>
+      <p class="muted" style="margin:7px 0 0">Copies the first day's choice into every empty day of that slot.</p>
+    </div>
+    <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
     <button class="btn ghost wide" data-act="clearPlan">Clear both weeks</button>
     <div class="spacer"></div>`;
 }
@@ -462,6 +539,9 @@ function viewItems() {
   const c = state.calc;
   const open = state.sheet && state.sheet.kind === "item" ? state.sheet.id : null;
   const stores = storeNames(state.db.ingredients);
+  const q = state.query;
+  const matches = searchItems(q, state.db.ingredients);
+  const matchIds = new Set(matches.map((i) => i.id));
 
   const card = (ing) => {
     const age = daysSince(ing.priceUpdated);
@@ -471,14 +551,14 @@ function viewItems() {
 
     const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
       <div class="grow">
-        <div class="trunc" style="font-weight:700">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
+        <div class="trunc" style="font-weight:600">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
         <div class="muted num">${
-      Number(ing.portionsPerPack) > 0
-        ? `${ing.portionsPerPack}/pack`
-        : '<span class="stale">portions not set</span>'
-    } &middot; £${money(portionCost(ing))} a portion${
-      live ? ` &middot; ${esc(offerLabel(ing))}` : ""
-    }${extra ? ` &middot; ${extra} on the list` : ""}</div>
+          Number(ing.portionsPerPack) > 0
+            ? `${ing.portionsPerPack}/pack`
+            : '<span class="stale">portions not set</span>'
+        } &middot; £${money(portionCost(ing))} a portion${live ? ` &middot; ${esc(offerLabel(ing))}` : ""}${
+      extra ? ` &middot; ${extra} on the list` : ""
+    }</div>
       </div>
       <div style="text-align:right">
         <div class="num" style="font-weight:700">£${money(ing.pricePerPack)}</div>
@@ -492,18 +572,18 @@ function viewItems() {
     const codes = (ing.barcodes || []).length
       ? (ing.barcodes || [])
           .map(
-            (b) => `<span class="pill on" style="margin:0 4px 4px 0">${esc(b)}
-             <button class="btn small ghost" style="border:0;padding:0 0 0 4px" data-act="delBarcode"
+            (b) => `<span class="pill on" style="margin:0 5px 5px 0">${esc(b)}
+             <button class="btn small ghost" style="padding:0 0 0 5px;min-height:0" data-act="delBarcode"
                data-id="${ing.id}" data-code="${esc(b)}">&times;</button></span>`
           )
           .join("")
       : `<span class="muted">none yet</span>`;
 
     return `<section class="card" data-scroll="${ing.id}">${head}
-      <div style="border-top:1px solid var(--rule);margin-top:10px;padding-top:10px">
-        <label class="field" style="margin-bottom:8px"><span class="eyebrow">Item name</span>
+      <div style="border-top:1px solid var(--outline);margin-top:12px;padding-top:12px">
+        <label class="field" style="margin-bottom:10px"><span class="eyebrow">Item name</span>
           <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
-        <div class="grid2" style="margin-bottom:8px">
+        <div class="grid2" style="margin-bottom:10px">
           <label class="field"><span class="eyebrow">Base price £ per pack</span>
             <input class="inp mono" type="number" step="0.01" min="0" value="${ing.pricePerPack}"
               data-act="setPrice" data-id="${ing.id}"></label>
@@ -512,7 +592,7 @@ function viewItems() {
               data-act="setNumber" data-id="${ing.id}" data-field="portionsPerPack"></label>
         </div>
         ${offerEditor(ing, { kind: "setOfferKind", field: "setOfferField", id: ing.id })}
-        <div class="grid2" style="margin-bottom:8px">
+        <div class="grid2" style="margin-bottom:10px">
           <label class="field"><span class="eyebrow">Store</span>
             <input class="inp" list="fb-stores" value="${esc(ing.store || "")}" placeholder="Not set"
               data-act="setField" data-id="${ing.id}" data-field="store"></label>
@@ -520,19 +600,19 @@ function viewItems() {
             <input class="inp mono" type="number" step="0.25" min="0" value="${ing.stockPacks}"
               data-act="setNumber" data-id="${ing.id}" data-field="stockPacks"></label>
         </div>
-        <label class="field" style="margin-bottom:8px"><span class="eyebrow">Pack size note</span>
+        <label class="field" style="margin-bottom:10px"><span class="eyebrow">Pack size note</span>
           <input class="inp" placeholder="500g" value="${esc(ing.packLabel || "")}"
             data-act="setField" data-id="${ing.id}" data-field="packLabel"></label>
-        <div class="row" style="margin-bottom:8px">
+        <div class="row" style="margin-bottom:10px">
           <span class="eyebrow grow">On the list by hand</span>
-          <button class="btn small ghost" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
-          <span class="num" style="min-width:22px;text-align:center;font-weight:700">${extra}</span>
-          <button class="btn small ghost" data-act="addToList" data-id="${ing.id}">+</button>
+          <button class="btn small tonal" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
+          <span class="num" style="min-width:24px;text-align:center;font-weight:700">${extra}</span>
+          <button class="btn small tonal" data-act="addToList" data-id="${ing.id}">+</button>
         </div>
-        <div style="margin-bottom:8px">
-          <span class="eyebrow" style="display:block;margin-bottom:4px">Barcodes</span>
-          <div style="margin-bottom:6px">${codes}</div>
-          <button class="btn small" data-act="addBarcode" data-id="${ing.id}">Scan a barcode</button>
+        <div style="margin-bottom:10px">
+          <span class="eyebrow" style="display:block;margin-bottom:6px">Barcodes</span>
+          <div style="margin-bottom:8px">${codes}</div>
+          <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}">Scan a barcode</button>
         </div>
         <div class="row">
           <span class="muted grow">Needs ${trim2(c.need[ing.id] || 0)} portions this fortnight</span>
@@ -543,23 +623,51 @@ function viewItems() {
 
   const groups = groupByStore(state.db.ingredients)
     .map((g) => {
-      const shut = isShut("collapsedItems", g.name);
-      const holding = g.items.filter((i) => Number(i.extraPacks) > 0).length;
+      const shown = g.items.filter((i) => matchIds.has(i.id));
+      if (q && !shown.length) return "";
+      // a search opens every group that has a hit, otherwise results hide
+      const shut = q ? false : isShut("collapsedItems", g.name);
+      const holding = shown.filter((i) => Number(i.extraPacks) > 0).length;
+      const meta = [
+        `${shown.length} item${shown.length === 1 ? "" : "s"}`,
+        holding ? `${holding} on the list` : "",
+        g.name === "Unassigned" ? "set a store to file these" : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
       return `<div class="group">
-        <div class="row head grouphead" data-act="toggleStore" data-which="collapsedItems" data-store="${esc(g.name)}">
-          <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
-          <span class="eyebrow grow">${esc(g.name)} &middot; ${g.items.length} item${g.items.length === 1 ? "" : "s"}${
-        holding ? ` &middot; ${holding} on the list` : ""
-      }${g.name === "Unassigned" ? " &middot; set a store to file these" : ""}</span>
-        </div>
-        ${shut ? "" : g.items.map(card).join("")}
+        <button class="grouphead" data-act="toggleStore" data-which="collapsedItems" data-store="${esc(g.name)}"${
+        q ? " disabled" : ""
+      }>
+          <span class="chev">${q ? "" : shut ? "\u25B8" : "\u25BE"}</span>
+          <span class="grow">
+            <span class="gname">${esc(g.name)}</span>
+            <span class="gmeta" style="display:block">${esc(meta)}</span>
+          </span>
+        </button>
+        ${shut ? "" : shown.map(card).join("")}
       </div>`;
     })
     .join("");
 
-  return `${groups}
+  const search = `<div class="search">
+    <span class="mag">&#9906;</span>
+    <input class="inp" type="search" value="${esc(q)}" placeholder="Search items, stores, barcodes"
+      data-act="setQuery" aria-label="Search items">
+    ${q ? `<button class="btn small ghost clear" data-act="clearQuery">Clear</button>` : ""}
+  </div>`;
+
+  const nothing =
+    q && !matches.length
+      ? `<div class="empty">Nothing matches &ldquo;${esc(q)}&rdquo;.</div>`
+      : "";
+
+  return `${search}
+    ${q ? `<p class="muted" style="margin:-4px 0 10px">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
+    ${nothing}${groups}
     <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
-    <button class="btn wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
+    <button class="btn tonal wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
 }
 
 /* -------------------------------- sheets ------------------------------- */
@@ -570,6 +678,7 @@ function viewSheet() {
   if (s.kind === "receipt") return sheetReceipt(s);
   if (s.kind === "settings") return sheetSettings(s);
   if (s.kind === "scanned") return sheetScanned(s);
+  if (s.kind === "help") return sheetHelp();
   return "";
 }
 
@@ -783,70 +892,165 @@ function sheetScanned(s) {
 function sheetSettings(s) {
   const set = state.settings;
   const on = (p) => (set.provider === p ? " checked" : "");
-  return shell(
-    "Settings",
-    "Keys and tokens stay on this device. They are never written into the synced file.",
-    `
-    ${s.msg ? `<div class="${s.err ? "err" : "ok"}">${esc(s.msg)}</div>` : ""}
+  const configured = set.owner && set.repo && set.token;
 
-    <span class="eyebrow" style="display:block;margin-bottom:6px">Price data repo (private)</span>
-    <div class="grid2" style="margin-bottom:8px">
+  const themeBtn = (key, label) =>
+    `<button data-act="setTheme" data-theme="${key}" data-on="${set.theme === key ? 1 : 0}">${label}</button>`;
+
+  const flag = (key, label, note) => `<div class="row" style="margin-bottom:10px">
+      <span class="grow"><span style="font-weight:600">${label}</span><br>
+        <span class="muted">${note}</span></span>
+      <button class="pill${set[key] ? " on" : ""}" data-act="toggleFlag" data-key="${key}">${
+    set[key] ? "On" : "Off"
+  }</button>
+    </div>`;
+
+  const repoBox = set.showRepo
+    ? `
+    <div class="grid2" style="margin-bottom:10px">
       <label class="field"><span class="eyebrow">Owner</span>
         <input class="inp" value="${esc(set.owner)}" placeholder="your-username" data-act="setSetting" data-key="owner"></label>
       <label class="field"><span class="eyebrow">Repo</span>
         <input class="inp" value="${esc(set.repo)}" placeholder="shop-data" data-act="setSetting" data-key="repo"></label>
     </div>
-    <div class="grid2" style="margin-bottom:8px">
+    <div class="grid2" style="margin-bottom:10px">
       <label class="field"><span class="eyebrow">File path</span>
         <input class="inp" value="${esc(set.path)}" data-act="setSetting" data-key="path"></label>
       <label class="field"><span class="eyebrow">Branch</span>
         <input class="inp" value="${esc(set.branch)}" data-act="setSetting" data-key="branch"></label>
     </div>
-    <label class="field" style="margin-bottom:10px"><span class="eyebrow">Fine-grained token, contents write</span>
+    <label class="field" style="margin-bottom:12px"><span class="eyebrow">Access token</span>
       <input class="inp mono" type="password" value="${esc(set.token)}" placeholder="github_pat_…"
         data-act="setSetting" data-key="token"></label>
-    <div class="row" style="gap:8px;margin-bottom:6px">
-      <button class="btn grow" data-act="pullNow">Pull from repo</button>
-      <button class="btn solid grow" data-act="pushNow">Push to repo</button>
-    </div>
-    <p class="muted">${set.lastPush ? "Last push " + esc(set.lastPush.slice(0, 16).replace("T", " ")) : "Never pushed."}
-      ${set.lastPull ? " · last pull " + esc(set.lastPull.slice(0, 16).replace("T", " ")) : ""}</p>
 
-    <span class="eyebrow" style="display:block;margin:14px 0 6px">Receipt reading</span>
-    <div class="row" style="margin-bottom:8px">
+    <h3>Receipt reading</h3>
+    <div class="row" style="margin-bottom:10px">
       <label class="row grow"><input type="radio" name="prov" value="gemini" data-act="setProvider"${on("gemini")}> Gemini</label>
-      <label class="row grow"><input type="radio" name="prov" value="anthropic" data-act="setProvider"${on(
-        "anthropic"
-      )}> Claude</label>
+      <label class="row grow"><input type="radio" name="prov" value="anthropic" data-act="setProvider"${on("anthropic")}> Claude</label>
     </div>
     ${
       set.provider === "anthropic"
-        ? `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Anthropic key</span>
+        ? `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Anthropic key</span>
             <input class="inp mono" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
               data-act="setSetting" data-key="anthropicKey"></label>
-           <label class="field" style="margin-bottom:8px"><span class="eyebrow">Model</span>
+           <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.anthropicModel)}" data-act="setSetting" data-key="anthropicModel"></label>`
-        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Gemini key</span>
+        : `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Gemini key</span>
             <input class="inp mono" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
               data-act="setSetting" data-key="geminiKey"></label>
-           <label class="field" style="margin-bottom:8px"><span class="eyebrow">Model</span>
+           <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.geminiModel)}" data-act="setSetting" data-key="geminiModel"></label>`
     }
 
-    <span class="eyebrow" style="display:block;margin:14px 0 6px">Manual backup</span>
+    <h3>Manual backup</h3>
     <textarea class="inp mono" data-act="setBackup" spellcheck="false">${esc(JSON.stringify(state.db, null, 2))}</textarea>
     <div class="row" style="gap:8px;margin-top:8px">
-      <button class="btn grow" data-act="copyBackup">Copy</button>
-      <button class="btn grow" data-act="restoreBackup">Restore</button>
+      <button class="btn tonal grow" data-act="copyBackup">Copy</button>
+      <button class="btn tonal grow" data-act="restoreBackup">Restore</button>
       <button class="btn danger" data-act="resetAll">Reset</button>
     </div>
-    <p class="muted">Scanning needs camera access. ${
-      !scanSupported()
-        ? "This browser has no camera access, so type barcodes by hand."
-        : "BarcodeDetector" in window
-        ? "Your browser decodes barcodes natively."
-        : "Your browser has no built-in decoder, so the app loads its own the first time you scan. About a megabyte, cached afterwards, then it works offline like everything else."
-    }</p>`
+    <p class="muted">Keys and tokens stay on this device and are never written into the shared database.</p>`
+    : "";
+
+  return shell(
+    "Settings",
+    configured ? "Restore before you edit, update when you are done." : "Connect a database below to sync and share.",
+    `
+    ${s.msg ? `<div class="${s.err ? "err" : "ok"}">${esc(s.msg)}</div>` : ""}
+
+    <div class="row" style="gap:8px;margin-bottom:8px">
+      <button class="btn tonal grow" data-act="pullNow"${configured ? "" : " disabled"}>Restore from database</button>
+      <button class="btn solid grow" data-act="pushNow"${configured ? "" : " disabled"}>Update database</button>
+    </div>
+    <p class="muted" style="margin:0 0 14px">${
+      configured
+        ? `${esc(set.owner)}/${esc(set.repo)} &middot; last updated ${esc(ago(set.lastPush))}${
+            set.lastPush ? ` (${esc(ukTime(set.lastPush))})` : ""
+          }${isDirty() ? " &middot; <strong>unsaved changes</strong>" : ""}`
+        : "No database connected yet."
+    }</p>
+
+    <label class="field" style="margin-bottom:12px"><span class="eyebrow">Your name, shown in the change log</span>
+      <input class="inp" value="${esc(set.person)}" placeholder="Lee" data-act="setSetting" data-key="person"></label>
+
+    <h3>Appearance</h3>
+    <div class="seg" style="margin-bottom:14px">
+      ${themeBtn("light", "Light")}${themeBtn("dark", "Dark")}${themeBtn("system", "System")}
+    </div>
+
+    <h3>Syncing</h3>
+    ${flag("autoMerge", "Merge on opening", "Pick up the other person's changes automatically.")}
+    ${flag("warnOnLeave", "Save when leaving", "Update the database as you close or switch away.")}
+
+    <button class="btn tonal wide" style="margin-bottom:10px" data-act="openHelp">How to share with someone</button>
+
+    <button class="btn ghost wide head" data-act="toggleRepoBox">
+      <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
+    </button>
+    ${repoBox}`
+  );
+}
+
+function sheetHelp() {
+  const set = state.settings;
+  const owner = esc(set.owner || "your-username");
+  const repo = esc(set.repo || "shop-data");
+
+  return shell(
+    "Sharing with someone",
+    "About ten minutes for them, most of it waiting for GitHub.",
+    `
+    <p class="muted">You both use the same database, so prices, items and stock stay in step.
+    They need a free GitHub account first.</p>
+
+    <h3>1. Invite them</h3>
+    <ol>
+      <li>Open <code>github.com/${owner}/${repo}</code></li>
+      <li><strong>Settings</strong>, then <strong>Collaborators</strong> in the left menu</li>
+      <li><strong>Add people</strong>, type their GitHub username, send the invite</li>
+      <li>They accept it from their email or from GitHub notifications</li>
+    </ol>
+
+    <h3>2. They make a token</h3>
+    <p class="muted">A token lets the app save on their behalf. It is theirs, not yours, and
+    you never see it.</p>
+    <ol>
+      <li>They open <code>github.com/settings/personal-access-tokens/new</code></li>
+      <li>Name it anything, set expiry to the longest offered</li>
+      <li><strong>Resource owner:</strong> choose <strong>${owner}</strong>, not their own name</li>
+      <li><strong>Repository access:</strong> Only select repositories, then <strong>${repo}</strong></li>
+      <li><strong>Permissions:</strong> Repository permissions, find <strong>Contents</strong>, set to <strong>Read and write</strong></li>
+      <li>Generate, then copy the token straight away. GitHub shows it once</li>
+    </ol>
+
+    <h3>3. They set up the app</h3>
+    <ol>
+      <li>Open this same web address on their phone</li>
+      <li><strong>Settings</strong>, open <strong>Database, keys and backup</strong></li>
+      <li>Owner <code>${owner}</code>, Repo <code>${repo}</code>, paste their token</li>
+      <li>Put their name in the name box, so changes are labelled</li>
+      <li>Tap <strong>Restore from database</strong> to pull everything down</li>
+      <li>Add to Home screen from the browser menu</li>
+    </ol>
+
+    <h3>How it stays in step</h3>
+    <ul>
+      <li>Opening the app checks for their changes and merges them.</li>
+      <li>Prices merge per item, whoever priced it most recently wins.</li>
+      <li>Items, barcodes and meals are combined, never dropped.</li>
+      <li>Stock takes the higher count, since a bought pack is real.</li>
+      <li>The meal plan cannot be combined, so it comes from whoever saved last. Agree who owns it.</li>
+    </ul>
+
+    <h3>If something looks wrong</h3>
+    <ul>
+      <li><strong>Token rejected:</strong> it expired, or Resource owner was set to them instead of ${owner}.</li>
+      <li><strong>Not found:</strong> they have not accepted the invite yet.</li>
+      <li><strong>Their changes missing:</strong> they need to tap Update database, or leave Save when leaving on.</li>
+    </ul>
+
+    <p class="muted">Removing someone: take them off Collaborators on GitHub, and their token stops working.</p>
+    <button class="btn tonal wide" style="margin-top:10px" data-act="openSettings">Back to settings</button>`
   );
 }
 
@@ -1059,6 +1263,52 @@ function applyReceipt() {
 
 /* --------------------------------- sync -------------------------------- */
 
+/* On open, see whether the shared file has moved on since this device last
+   pulled. Merging is almost always what you want, so with autoMerge on it
+   just happens and reports what changed; otherwise a banner offers it. */
+async function checkForChanges() {
+  const set = state.settings;
+  if (!set.owner || !set.repo || !set.token) return;
+  try {
+    const { db } = await pull(set);
+    if (!db) return;
+    const remoteAt = db.updatedAt || "";
+    if (!remoteAt || remoteAt <= (set.lastPull || "")) return;
+
+    state.incoming = { at: remoteAt, who: db.lastPushedBy || "", db };
+    if (set.autoMerge) {
+      await acceptIncoming(true);
+    } else {
+      draw();
+    }
+  } catch (err) {
+    // offline or a bad token should never block the app from opening
+  }
+}
+
+async function acceptIncoming(quiet) {
+  const incoming = state.incoming;
+  if (!incoming) return;
+  const { db: merged, notes } = mergeSnapshots(state.db, incoming.db);
+  state.db = merged;
+  state.incoming = null;
+  await saveDb(state.db);
+  state.settings = { ...state.settings, lastPull: new Date().toISOString() };
+  await saveSettings(state.settings);
+
+  const bits = [];
+  if (notes.added) bits.push(`${notes.added} new item${notes.added === 1 ? "" : "s"}`);
+  if (notes.updated) bits.push(`${notes.updated} updated price${notes.updated === 1 ? "" : "s"}`);
+  const who = incoming.who ? `${incoming.who}'s` : "Their";
+  flash(
+    "ok",
+    bits.length
+      ? `${who} changes merged: ${bits.join(", ")}.`
+      : `${who} changes merged.`
+  );
+  if (!quiet) draw();
+}
+
 async function pullNow() {
   setSheet({ ...state.sheet, msg: "Pulling…", err: false });
   try {
@@ -1067,11 +1317,21 @@ async function pullNow() {
       setSheet({ ...state.sheet, msg: "No file there yet. Push first to create it.", err: false });
       return;
     }
-    state.db = migrate(db);
+
+    // Merge rather than replace. Someone else may have priced things since
+    // your last pull, and overwriting would silently discard their work.
+    const { db: merged, notes } = mergeSnapshots(state.db, db);
+    state.db = merged;
     await saveDb(state.db);
     state.settings = { ...state.settings, lastPull: new Date().toISOString() };
     await saveSettings(state.settings);
-    setSheet({ ...state.sheet, msg: `Pulled ${state.db.ingredients.length} items.`, err: false });
+
+    const bits = [];
+    if (notes.added) bits.push(`${notes.added} new item${notes.added === 1 ? "" : "s"}`);
+    if (notes.updated) bits.push(`${notes.updated} price${notes.updated === 1 ? "" : "s"} newer than yours`);
+    if (notes.kept) bits.push(`${notes.kept} of yours kept`);
+    bits.push(`meal plan from ${notes.planFrom === "remote" ? "the repo" : "this device"}`);
+    setSheet({ ...state.sheet, msg: `Merged: ${bits.join(", ")}.`, err: false });
   } catch (err) {
     setSheet({ ...state.sheet, msg: err.message, err: true });
   }
@@ -1089,10 +1349,15 @@ async function pushNow() {
     } catch (err) {
       /* a missing file is fine, push will create it */
     }
-    if (remoteNewer && !confirm("The copy in the repo is newer than your last pull. Overwrite it?")) {
-      setSheet({ ...state.sheet, msg: "Push cancelled. Pull first to take the newer copy.", err: true });
+    if (remoteNewer) {
+      setSheet({
+        ...state.sheet,
+        msg: "Someone has pushed since your last pull. Tap Pull first, which merges their changes with yours, then push.",
+        err: true,
+      });
       return;
     }
+    state.db.lastPushedBy = (state.settings.person || "").trim();
     await push(state.settings, state.db);
     state.settings = { ...state.settings, lastPush: new Date().toISOString(), lastPull: new Date().toISOString() };
     await saveSettings(state.settings);
@@ -1236,6 +1501,28 @@ const actions = {
   },
 
   toggleStore: (el) => toggleShut(el.dataset.which, el.dataset.store),
+  setQuery: (el) => {
+    state.query = el.value;
+    draw();
+  },
+  clearQuery: () => {
+    state.query = "";
+    draw();
+  },
+  mergeIncoming: () => acceptIncoming(),
+  setTheme: async (el) => {
+    state.settings = { ...state.settings, theme: el.dataset.theme };
+    await saveSettings(state.settings);
+    applyTheme(state.settings.theme);
+    draw();
+  },
+  toggleFlag: async (el) => {
+    const key = el.dataset.key;
+    state.settings = { ...state.settings, [key]: !state.settings[key] };
+    await saveSettings(state.settings);
+    draw();
+  },
+  openHelp: () => setSheet({ kind: "help" }),
   addToList: (el) => {
     const ing = ingredient(el.dataset.id);
     if (ing) patchIngredient(ing.id, { extraPacks: (Number(ing.extraPacks) || 0) + 1 });
@@ -1269,9 +1556,29 @@ const actions = {
   },
 
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
-  setDay: (el) => commit((db) => { db.plan[Number(el.dataset.idx)] = el.value || null; }),
+  setSlot: (el) =>
+    commit((db) => {
+      const day = db.plan[Number(el.dataset.idx)];
+      if (day) day[el.dataset.slot] = el.value || null;
+    }),
+  fillSlot: (el) => {
+    const slot = el.dataset.slot;
+    const first = state.db.plan[0] && state.db.plan[0][slot];
+    if (!first) {
+      flash("err", `Set day one's ${slot} first, then this copies it across.`);
+      return;
+    }
+    commit((db) => {
+      db.plan.forEach((day) => {
+        if (day && !day[slot]) day[slot] = first;
+      });
+    });
+  },
   clearPlan: () => {
-    if (confirm("Clear both weeks?")) commit((db) => { db.plan = Array(14).fill(null); });
+    if (confirm("Clear both weeks?"))
+      commit((db) => {
+        db.plan = Array.from({ length: 14 }, () => ({ breakfast: null, lunch: null, dinner: null }));
+      });
   },
 
   openItem: (el) => {
@@ -1336,7 +1643,13 @@ const actions = {
     if (!confirm("Delete this meal? Any planned days using it will empty.")) return;
     commit((db) => {
       db.meals = db.meals.filter((m) => m.id !== id);
-      db.plan = db.plan.map((p) => (p === id ? null : p));
+      db.plan = db.plan.map((day) => {
+        const next = { ...day };
+        SLOTS.forEach((slot) => {
+          if (next[slot.key] === id) next[slot.key] = null;
+        });
+        return next;
+      });
     });
     setSheet(null);
   },
@@ -1441,6 +1754,11 @@ const actions = {
     await saveSettings(state.settings);
     draw();
   },
+  toggleRepoBox: async () => {
+    state.settings = { ...state.settings, showRepo: !state.settings.showRepo };
+    await saveSettings(state.settings);
+    draw();
+  },
   pullNow: () => pullNow(),
   pushNow: () => pushNow(),
   setBackup: (el) => { state.sheet = { ...state.sheet, backup: el.value }; },
@@ -1475,6 +1793,42 @@ const actions = {
     flash("ok", "Reset to the starting data.");
   },
 };
+
+/* --------------------------- leaving the page --------------------------- */
+
+/* Desktop browsers show their own generic "leave site?" dialog; the wording
+   cannot be customised. Mobile browsers mostly ignore it, which is why the
+   visibility handler below matters more in practice. */
+window.addEventListener("beforeunload", (e) => {
+  if (!state.settings || !state.settings.warnOnLeave) return;
+  if (!isDirty()) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
+/* On a phone the tab is rarely "closed", it is backgrounded. This is the only
+   reliable moment to save, so push quietly then rather than nagging. */
+let leaving = false;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "hidden") return;
+  if (!state.settings || !state.settings.warnOnLeave) return;
+  if (!isDirty() || leaving) return;
+  leaving = true;
+  try {
+    state.db.lastPushedBy = (state.settings.person || "").trim();
+    await push(state.settings, state.db);
+    state.settings = {
+      ...state.settings,
+      lastPush: new Date().toISOString(),
+      lastPull: new Date().toISOString(),
+    };
+    await saveSettings(state.settings);
+  } catch (err) {
+    // no signal in the aisle is normal; the next manual save will catch up
+  } finally {
+    leaving = false;
+  }
+});
 
 /* ------------------------------ delegation ----------------------------- */
 
@@ -1511,7 +1865,9 @@ root.addEventListener("change", dispatch);
   try {
     state.db = await loadDb();
     state.settings = await loadSettings();
+    applyTheme(state.settings.theme);
     draw();
+    checkForChanges();
   } catch (err) {
     // Storage can fail outright in private windows with strict settings.
     // Say so plainly rather than leaving the page on "Loading."

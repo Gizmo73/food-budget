@@ -3,10 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#15171B">
+<meta name="theme-color" content="#FFFFFF">
 <title>Fortnight Shop</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="stylesheet" href="./styles.css">
+<script>
+/* Set the theme before first paint, otherwise a dark-mode user gets a white flash. */
+(function () {
+  try {
+    var saved = localStorage.getItem("fs-theme") || "system";
+    var dark = saved === "dark" || (saved === "system" &&
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) { document.documentElement.dataset.theme = "light"; }
+})();
+</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2315171B'/><text x='16' y='23' font-size='20' font-family='monospace' fill='%23F5C400' text-anchor='middle'>£</text></svg>">
 </head>
 <body>
