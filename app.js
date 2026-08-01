@@ -662,6 +662,8 @@ function viewItems() {
   const matches = searchItems(q, state.db.ingredients);
   const matchIds = new Set(matches.map((i) => i.id));
 
+  const byName = state.settings.itemSort === "name";
+
   const card = (ing) => {
     const chosen = chooseSource(ing);
     const all = sourcesOf(ing);
@@ -676,6 +678,9 @@ function viewItems() {
       <div class="grow">
         <div class="trunc" style="font-weight:600">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
         <div class="muted num">${
+          // with the shop headings gone, the line has to say where it comes from
+          byName && chosen && chosen.store ? `${esc(chosen.store)} &middot; ` : ""
+        }${
           pp > 0 ? `${trim2(pp)}/pack` : '<span class="stale">portions not set</span>'
         } &middot; £${money(portionCost(ing))} a portion &middot; ${trim2(stock)} in stock${
       all.length > 1 ? ` &middot; ${all.length} shops` : ""
@@ -754,6 +759,11 @@ function viewItems() {
       </div></section>`;
   };
 
+  /* Grouping by shop made sense when an item lived in exactly one. Now that
+     an item can be sold in three, the heading it sits under is a judgement
+     the app made, not a fact, and hunting for cheese under whichever shop
+     happened to be cheapest is worse than reading one alphabetical list.
+     Both are useful, so it is a choice rather than a change. */
   const groups = groupByStore(state.db.ingredients)
     .map((g) => {
       const shown = g.items.filter((i) => matchIds.has(i.id));
@@ -784,6 +794,20 @@ function viewItems() {
     })
     .join("");
 
+  const flat = matches
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(card)
+    .join("");
+
+  const sortToggle = `<div class="row" style="margin-bottom:10px">
+    <span class="eyebrow grow">Sort</span>
+    <div class="seg">
+      <button data-act="setItemSort" data-sort="store" data-on="${byName ? 0 : 1}">By shop</button>
+      <button data-act="setItemSort" data-sort="name" data-on="${byName ? 1 : 0}">A to Z</button>
+    </div>
+  </div>`;
+
   const search = `<div class="search">
     <span class="mag">&#9906;</span>
     <input class="inp" type="search" value="${esc(q)}" placeholder="Search items, stores, barcodes"
@@ -798,7 +822,8 @@ function viewItems() {
 
   return `${search}
     ${q ? `<p class="muted" style="margin:-4px 0 10px">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
-    ${nothing}${groups}
+    ${sortToggle}
+    ${nothing}${byName ? flat : groups}
     <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
     <button class="btn tonal wide" data-act="addItem">Add an item</button><div class="spacer"></div>`;
 }
@@ -1090,6 +1115,23 @@ function sheetScanned(s) {
   );
 }
 
+/* The backup is read by people as often as it is pasted back, and a flat
+   array in the order things happened to be created is hard to check against a
+   shopping trip. Ordered the same way the Items tab groups them: by the shop
+   the list would send you to, alphabetical within each, unassigned first so
+   anything unfiled is obvious. Restoring is unaffected, since nothing anywhere
+   depends on the order of this array. */
+function backupJson(db) {
+  const ordered = groupByStore(db.ingredients).flatMap((g) => g.items);
+  const seen = new Set(ordered.map((i) => i.id));
+  return JSON.stringify(
+    // anything grouping somehow missed is kept rather than quietly dropped
+    { ...db, ingredients: [...ordered, ...db.ingredients.filter((i) => !seen.has(i.id))] },
+    null,
+    2
+  );
+}
+
 function sheetSettings(s) {
   const set = state.settings;
   const on = (p) => (set.provider === p ? " checked" : "");
@@ -1144,7 +1186,7 @@ function sheetSettings(s) {
     }
 
     <h3>Manual backup</h3>
-    <textarea class="inp mono" data-act="setBackup" spellcheck="false">${esc(JSON.stringify(state.db, null, 2))}</textarea>
+    <textarea class="inp mono" data-act="setBackup" spellcheck="false">${esc(backupJson(state.db))}</textarea>
     <div class="row" style="gap:8px;margin-top:8px">
       <button class="btn tonal grow" data-act="copyBackup">Copy</button>
       <button class="btn tonal grow" data-act="restoreBackup">Restore</button>
@@ -2057,6 +2099,12 @@ const actions = {
     await saveSettings(state.settings);
     draw();
   },
+  setItemSort: async (el) => {
+    state.settings = { ...state.settings, itemSort: el.dataset.sort };
+    await saveSettings(state.settings);
+    draw();
+  },
+
   openHelp: () => setSheet({ kind: "help" }),
 
   openInvite: () => setSheet({ kind: "invite", msg: "" }),
@@ -2451,7 +2499,8 @@ const actions = {
   pushNow: () => pushNow(),
   setBackup: (el) => { state.sheet = { ...state.sheet, backup: el.value }; },
   copyBackup: async () => {
-    const text = JSON.stringify(state.db, null, 2);
+    // the same ordering that is on screen, so copy and read agree
+    const text = backupJson(state.db);
     try {
       await navigator.clipboard.writeText(text);
       setSheet({ ...state.sheet, msg: "Copied.", err: false });
