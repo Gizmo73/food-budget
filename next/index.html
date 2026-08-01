@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<title>Fortnight Shop (sources test)</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./styles.css">
+<script>
+/* Set the theme before first paint, otherwise a dark-mode user gets a white flash. */
+(function () {
+  try {
+    var saved = localStorage.getItem("fs-theme") || "system";
+    var dark = saved === "dark" || (saved === "system" &&
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) { document.documentElement.dataset.theme = "light"; }
+})();
+</script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2315171B'/><text x='16' y='23' font-size='20' font-family='monospace' fill='%23F5C400' text-anchor='middle'>£</text></svg>">
+</head>
+<body>
+<div id="app" class="fb">
+  <div class="wrap"><p class="muted">Loading.</p></div>
+</div>
+
+<script>
+/* Boot watchdog. A module that fails to load leaves a blank page with no clue
+   why, so capture the reason and show it rather than sitting on "Loading." */
+(function () {
+  var problems = [];
+  var note = function (what) { if (what && problems.indexOf(what) === -1) problems.push(what); };
+
+  window.addEventListener("error", function (e) {
+    if (e.target && e.target.src) note("Could not load " + e.target.src);
+    else note(e.message || String(e.error || "Unknown script error"));
+  }, true);
+
+  window.addEventListener("unhandledrejection", function (e) {
+    note(String((e.reason && e.reason.message) || e.reason || "Unknown"));
+  });
+
+  setTimeout(function () {
+    var app = document.getElementById("app");
+    if (!app || app.dataset.booted === "1") return;
+    app.innerHTML =
+      '<div class="wrap"><div class="err"><strong>The app did not start.</strong><br>' +
+      'One of its files is missing or out of date on the server. That usually means an ' +
+      'upload did not finish, so re-upload the whole folder and reload.</div>' +
+      (problems.length
+        ? '<p class="eyebrow">What went wrong</p><pre class="inp mono" style="white-space:pre-wrap;min-height:0">' +
+          problems.join("\n").replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }) +
+          "</pre>"
+        : "") +
+      '<p class="eyebrow">Files it needs</p><p class="muted num">app.js &middot; styles.css &middot; sw.js &middot; ' +
+      'lib/calc.js &middot; lib/store.js &middot; lib/scan.js &middot; lib/vision.js &middot; lib/sync.js &middot; ' +
+      'lib/vendor/barcode-polyfill.js &middot; lib/vendor/zxing_reader.wasm</p>' +
+      '<p class="muted">Your saved data is untouched by this. It lives in the browser, not in those files.</p></div>';
+  }, 5000);
+})();
+</script>
+
+<script type="module" src="./app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
