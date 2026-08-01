@@ -132,7 +132,7 @@ Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco on
 
 ## The plan, and who is eating
 
-Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the arrow beside a slot gives the second person the first one's choice, which is most dinners.
+Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the **`=`** beside a slot gives the second person the first one's choice, which is most dinners.
 
 **Portions on a meal are for one person.** Plan it for both and it counts twice.
 

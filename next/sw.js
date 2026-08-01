@@ -7,7 +7,7 @@
    each one wipe the other every time it updated, and both would look broken
    offline for no reason. Only caches under this prefix are ever deleted. */
 const PREFIX = "fortnight-shop-next-";
-const CACHE = `${PREFIX}v3`;
+const CACHE = `${PREFIX}v4`;
 const SHELL = [
   "./",
   "./index.html",

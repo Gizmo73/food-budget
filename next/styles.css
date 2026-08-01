@@ -190,6 +190,9 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .part { color:var(--alert); font-weight:700; }
 
 .slot { display:flex; align-items:center; gap:8px; margin-top:6px; }
+/* "=" is a short glyph and sits high in most faces. Mono and a size up so it
+   reads as a control rather than a stray character between two dropdowns. */
+.slot .copy { font-family:var(--mono); font-size:17px; font-weight:700; line-height:1; padding:6px 9px; }
 .slot .slabel { width:14px; font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); text-align:center; }
 .slot select {
   flex:1; min-width:0; padding:10px; border:1px solid var(--outline);

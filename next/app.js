@@ -502,8 +502,10 @@ function viewPlan() {
           <div class="grow" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
             ${pick(0)}${pick(1)}
           </div>
-          <button class="btn small ghost" data-act="copySlot" data-idx="${idx}" data-slot="${slot.key}"
-            title="Give ${esc(people[1])} the same">&rarr;</button>
+          <button class="btn small ghost copy" data-act="copySlot" data-idx="${idx}" data-slot="${slot.key}"
+            title="Give ${esc(people[1])} the same" aria-label="${slot.label} on ${name}: give ${esc(
+          people[1]
+        )} the same as ${esc(people[0])}">=</button>
         </div>`;
       }).join("");
 
