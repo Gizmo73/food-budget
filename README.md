@@ -2,7 +2,7 @@
 
 A portion-based meal planner and food budget for UK shopping. Static site, no build step, no server. Prices are captured from receipts and barcodes rather than scraped, so nothing breaks when a supermarket changes its website.
 
-Ported from the Meal_Planner spreadsheet. The maths is identical: portions needed across 14 days, minus what is in stock, rounded up to whole packs, grouped by store. The seeded data reproduces the spreadsheet's £12.60 total exactly.
+Ported from the Meal_Planner spreadsheet. The maths is identical: portions needed across 14 days, minus the portions in stock, rounded up to whole packs, grouped by store. The seeded data reproduces the spreadsheet's £12.60 total exactly.
 
 ## Setup, about 15 minutes
 
@@ -15,7 +15,9 @@ Ported from the Meal_Planner spreadsheet. The maths is identical: portions neede
 
 ## How pricing works
 
-**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices, and each line is matched to one of your items. You confirm before anything changes.
+**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices and quantities, and each line is matched to one of your items. You confirm before anything changes.
+
+A confirmed line also puts stock in, since a receipt is proof you bought the thing. Each line carries an **Into stock** figure in portions, worked out from the quantity on the receipt times that item's portions per pack, with ± stepping a whole pack at a time. It is editable because a receipt often cannot tell your items apart: three yoghurts on one line may be three flavours you keep separately, so knock that line down to one pack and put the others where they belong. Set it to 0 to record the price and nothing else. Pointing a line at a different item re-derives the figure, because portions are a different size on a different item.
 
 Matching gets better every shop, because confirming a line saves that receipt's wording as an alias:
 
@@ -51,7 +53,7 @@ Two people can use one shared price list. On GitHub, open the `shop-data` repo, 
 |---|---|
 | Prices and offers | Per item, whoever priced it most recently wins |
 | Items | The union of both sides, nothing is dropped |
-| Stock and hand-added packs | The higher count, since a bought pack is a physical fact |
+| Stock and hand-added packs | The higher count, since a bought pack is a physical fact. Stock compares in portions |
 | Barcodes and aliases | Combined, never replaced |
 | Meals | The union |
 | Meal plan | Taken whole from whichever device saved last |
@@ -70,9 +72,27 @@ Raise it for genuinely portioned things: a 500g bag of pasta that does four meal
 
 Setting it to 0 is a trap the app now guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list now names those items in red instead.
 
+## Stock is counted in portions
+
+**In stock is a portion count, not a pack count.** An opened pack is the normal case, and a pack that is half gone should not be offered to the planner as a whole one.
+
+The arithmetic follows from that. A pack of pies does 4 portions and 2 are left, so stock is 2. Plan a meal wanting 4 and the deficit is 2 portions, which is less than a pack but cannot be bought as less than a pack, so a whole pack goes on the list and 2 portions show as left over. Stock only cancels a pack when it genuinely covers the portions the plan asks for.
+
+Everything that hands you packs converts on the way in, because shelves and receipts count in packs:
+
+| Where | What you enter | What is stored |
+|---|---|---|
+| Items tab, In stock | portions | portions |
+| Items tab, ± pack | one pack | portions per pack |
+| Got it, on the list | the packs bought | packs × portions per pack |
+| Scan an item | packs in the trolley | packs × portions per pack |
+| Receipt review, Into stock | portions, pre-filled from the receipt | portions |
+
+Old data migrates itself on first open: a stored count of 2 packs at 4 portions each becomes 8 portions. Where portions per pack was never set, a pack counts as one portion, which matches what the shopping list already assumed. Nothing needs re-entering, and the conversion runs once.
+
 ## Adding things by hand
 
-Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping moves those packs into stock and clears the hand-added count.
+Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping turns those packs into portions of stock and clears the hand-added count.
 
 New items start with **no store**, and land in an *Unassigned* group that sorts to the top of the Items tab until you file them. Guessing a store would be worse than leaving it empty, because an item in the wrong group is harder to spot than one in an obviously empty one. Receipts are the exception: the receipt tells you which shop it was, so items created from one inherit it.
 

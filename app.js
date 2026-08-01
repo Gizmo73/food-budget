@@ -13,7 +13,7 @@ import {
 import {
   computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
   offerExpired, offerMeaning, groupByStore, searchItems, ukTime, ago,
-  money, today, daysSince, STALE_DAYS,
+  money, today, daysSince, STALE_DAYS, stockPortions, stockPacks, packPortions,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill } from "./lib/scan.js";
 import { readReceipt } from "./lib/vision.js";
@@ -323,7 +323,8 @@ function viewList() {
           step="1" min="0" value="${state.db.budget}" data-act="setBudget" aria-label="Budget in pounds">
       </div>
     </div>
-    <p class="muted">Whole packs only, less what you already have. Tap "Got it" after shopping to move packs into stock.</p>
+    <p class="muted">Whole packs only, less the portions you already have.
+    Tap "Got it" after shopping and those packs become portions in stock.</p>
     <div class="spacer"></div>`;
 }
 
@@ -333,6 +334,8 @@ function ticket(l) {
   if (l.offer) bits.push(l.offer);
   if (l.ing.packLabel) bits.push(esc(l.ing.packLabel));
   if (l.extra) bits.push(`${l.extra} by hand`);
+  // needs 4, has 2, so a whole pack is still required: say so on the line
+  if (l.stock > 0.001) bits.push(`${trim2(l.stock)} in stock`);
   if (l.leftover > 0.001) bits.push(`${trim2(l.leftover)} left over`);
 
   return `<div class="ticket">
@@ -548,6 +551,7 @@ function viewItems() {
     const stale = age > STALE_DAYS;
     const extra = Number(ing.extraPacks) || 0;
     const live = activeOffer(ing);
+    const stock = stockPortions(ing);
 
     const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
       <div class="grow">
@@ -556,9 +560,9 @@ function viewItems() {
           Number(ing.portionsPerPack) > 0
             ? `${ing.portionsPerPack}/pack`
             : '<span class="stale">portions not set</span>'
-        } &middot; £${money(portionCost(ing))} a portion${live ? ` &middot; ${esc(offerLabel(ing))}` : ""}${
-      extra ? ` &middot; ${extra} on the list` : ""
-    }</div>
+        } &middot; £${money(portionCost(ing))} a portion &middot; ${trim2(stock)} in stock${
+      live ? ` &middot; ${esc(offerLabel(ing))}` : ""
+    }${extra ? ` &middot; ${extra} on the list` : ""}</div>
       </div>
       <div style="text-align:right">
         <div class="num" style="font-weight:700">£${money(ing.pricePerPack)}</div>
@@ -592,13 +596,26 @@ function viewItems() {
               data-act="setNumber" data-id="${ing.id}" data-field="portionsPerPack"></label>
         </div>
         ${offerEditor(ing, { kind: "setOfferKind", field: "setOfferField", id: ing.id })}
-        <div class="grid2" style="margin-bottom:10px">
+        <div class="grid2" style="margin-bottom:6px">
           <label class="field"><span class="eyebrow">Store</span>
             <input class="inp" list="fb-stores" value="${esc(ing.store || "")}" placeholder="Not set"
               data-act="setField" data-id="${ing.id}" data-field="store"></label>
-          <label class="field"><span class="eyebrow">In stock (packs)</span>
-            <input class="inp mono" type="number" step="0.25" min="0" value="${ing.stockPacks}"
-              data-act="setNumber" data-id="${ing.id}" data-field="stockPacks"></label>
+          <label class="field"><span class="eyebrow">In stock (portions)</span>
+            <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(stock)}"
+              data-act="setNumber" data-id="${ing.id}" data-field="stockPortions"></label>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <span class="muted grow">${
+            Number(ing.portionsPerPack) > 0
+              ? `${trim2(stockPacks(ing))} pack${Math.abs(stockPacks(ing) - 1) < 0.001 ? "" : "s"} at ${
+                  ing.portionsPerPack
+                } a pack`
+              : "Set portions per pack and this counts packs too"
+          }</span>
+          <button class="btn small tonal" data-act="lessStockPack" data-id="${ing.id}"
+            title="Take a pack out of stock">&minus; pack</button>
+          <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
+            title="Put a pack into stock">+ pack</button>
         </div>
         <label class="field" style="margin-bottom:10px"><span class="eyebrow">Pack size note</span>
           <input class="inp" placeholder="500g" value="${esc(ing.packLabel || "")}"
@@ -690,6 +707,31 @@ function shell(title, blurb, inner) {
     ${inner}</div></div>`;
 }
 
+/* The stock control on a receipt line. Counted in portions like everywhere
+   else, stepped by whole packs because that is how a receipt counts, and
+   pre-filled from the quantity the model read off the paper. */
+function receiptStockRow(r, i) {
+  const add = rowStock(r);
+  const perPack = rowPackPortions(r);
+  const known = r.targetId !== "__new__" ? ingredient(r.targetId) : null;
+  const now = known ? stockPortions(known) : 0;
+  const packs = perPack > 0 ? add / perPack : 0;
+  const plural = (n) => (Math.abs(n - 1) < 0.001 ? "" : "s");
+
+  return `<div class="row" style="margin-top:5px">
+      <span class="eyebrow grow">Into stock</span>
+      <button class="btn small ghost" data-act="lessRowStock" data-i="${i}" aria-label="One pack fewer">&minus;</button>
+      <input class="inp mono" style="width:66px;text-align:right;padding:5px 7px" type="number" step="0.5" min="0"
+        value="${trim2(add)}" data-act="setRowStock" data-i="${i}" aria-label="Portions to put into stock">
+      <button class="btn small ghost" data-act="moreRowStock" data-i="${i}" aria-label="One pack more">+</button>
+    </div>
+    <p class="why" style="margin:3px 0 0">${trim2(add)} portion${plural(add)} &middot; ${trim2(
+    packs
+  )} pack${plural(packs)} of ${trim2(perPack)} &middot; ${
+    r.stockTouched ? "your figure" : "read off the receipt"
+  } &middot; stock ${trim2(now)} &rarr; ${trim2(now + add)}</p>`;
+}
+
 function sheetReceipt(s) {
   const inner = [];
   if (s.err) inner.push(`<div class="err">${esc(s.err)}</div>`);
@@ -745,6 +787,7 @@ function sheetReceipt(s) {
               r.barcode ? "Rescan" : "Scan barcode"
             }</button>
         </div>
+        ${r.targetId ? receiptStockRow(r, i) : ""}
         <div class="row" style="margin-top:5px">
           <span class="eyebrow" style="white-space:nowrap">Paid</span>
           <select class="inp grow" data-act="setRowOfferKind" data-i="${i}">
@@ -772,13 +815,16 @@ function sheetReceipt(s) {
         `</div>`
     );
 
-    const ready = s.rows.filter((r) => r.use && r.targetId && r.price > 0).length;
+    const live = s.rows.filter((r) => r.use && r.targetId && r.price > 0);
+    const ready = live.length;
+    const stocking = live.filter((r) => rowStock(r) > 0).length;
     inner.push(`<button class="btn solid wide" style="margin-top:10px" data-act="applyReceipt"${
       ready ? "" : " disabled"
-    }>Update ${ready} price${ready === 1 ? "" : "s"}</button>
+    }>Update ${ready} price${ready === 1 ? "" : "s"}${stocking ? " and stock" : ""}</button>
     <p class="muted">Confirming a line teaches the app that receipt wording, so it matches itself next time.
     Scanning binds the barcode too, which is what makes in-store scanning work later.
-    A <strong>card price</strong> applies to every pack, a <strong>multibuy</strong> only once you buy enough. Both leave the base price alone.</p>`);
+    A <strong>card price</strong> applies to every pack, a <strong>multibuy</strong> only once you buy enough. Both leave the base price alone.
+    <strong>Into stock</strong> starts from the quantity on the receipt; correct it when one receipt line covers two flavours you keep as separate items.</p>`);
   }
 
   return shell(
@@ -820,7 +866,10 @@ function sheetScanned(s) {
   // what the packs in the trolley actually cost, deal included
   const spend = bought > 0 ? packCost({ pricePerPack: base, offer: s.offer }, bought) : 0;
   const full = bought * base;
-  const stockNow = known ? Number(known.stockPacks) || 0 : 0;
+  // the trolley is counted in packs, stock is kept in portions
+  const stockNow = known ? stockPortions(known) : 0;
+  const perPack = known ? packPortions(known) : Math.max(0.5, Number(s.portions) || 1);
+  const adding = bought * perPack;
 
   return shell(
     known ? esc(known.name) : "New barcode",
@@ -865,7 +914,9 @@ function sheetScanned(s) {
         <div class="grow">
           <span class="eyebrow" style="display:block">In the trolley</span>
           <span class="muted">${
-            known ? `${stockNow} pack${stockNow === 1 ? "" : "s"} in stock now` : "Nothing in stock yet"
+            known
+              ? `${trim2(stockNow)} portion${Math.abs(stockNow - 1) < 0.001 ? "" : "s"} in stock now`
+              : "Nothing in stock yet"
           }</span>
         </div>
         <button class="btn small ghost" data-act="lessScanBought">&minus;</button>
@@ -876,13 +927,15 @@ function sheetScanned(s) {
         bought > 0
           ? `<p class="muted" style="margin:7px 0 0">That is £${money(spend)}${
               full - spend > 0.004 ? `, saving £${money(full - spend)} on the offer` : ""
-            }. Stock goes to ${stockNow + bought} on save.</p>`
-          : `<p class="muted" style="margin:7px 0 0">Leave at 0 to record the price only.</p>`
+            }. ${bought} pack${bought === 1 ? "" : "s"} at ${trim2(perPack)} a pack is ${trim2(
+              adding
+            )} portions, so stock goes to ${trim2(stockNow + adding)} on save.</p>`
+          : `<p class="muted" style="margin:7px 0 0">Packs in the trolley. Leave at 0 to record the price only.</p>`
       }
     </div>
 
     <button class="btn solid wide" data-act="saveScan">${
-      bought > 0 ? `Save and add ${bought} to stock` : "Save price"
+      bought > 0 ? `Save and add ${trim2(adding)} portions to stock` : "Save price"
     }</button>
     <p class="muted">Saving binds this barcode, so next time the scan comes straight here.
     Anything added to stock comes off what the shopping list says to buy.</p>`
@@ -1181,7 +1234,37 @@ function receiptRow(line) {
     offerTotal: Number(line.offerTotal) || 0,
     newName: titleise(line.name),
     newPortions: 1,
+    // Stock stays derived from the receipt's quantity until you touch it, so
+    // changing which item a line points at re-derives rather than going stale.
+    stockAdd: 0,
+    stockTouched: false,
   };
+}
+
+/* One pack's worth of portions for whatever a receipt line points at. */
+function rowPackPortions(r) {
+  if (r.targetId === "__new__") return Math.max(0.5, Number(r.newPortions) || 1);
+  const ing = r.targetId ? ingredient(r.targetId) : null;
+  return ing ? packPortions(ing) : 1;
+}
+
+/* Portions this line puts into stock. The receipt's quantity times the pack
+   size is right most of the time, but a receipt cannot tell two flavours of
+   the same thing apart, so an edit always wins. */
+function rowStock(r) {
+  if (r.stockTouched) return Math.max(0, Number(r.stockAdd) || 0);
+  return Math.max(0, (Number(r.qty) || 1) * rowPackPortions(r));
+}
+
+/* Step a line's stock by one pack, since a receipt counts in packs even
+   though the number in the box is portions. */
+function bumpRowStock(i, dir) {
+  const rows = state.sheet.rows.slice();
+  const r = rows[i];
+  if (!r) return;
+  const next = Math.max(0, rowStock(r) + dir * rowPackPortions(r));
+  rows[i] = { ...r, stockAdd: Math.round(next * 100) / 100, stockTouched: true };
+  setSheet({ ...state.sheet, rows });
 }
 
 async function shootReceipt() {
@@ -1209,6 +1292,8 @@ function applyReceipt() {
   const rows = s.rows.filter((r) => r.use && r.targetId && r.price > 0);
   let created = 0;
   let updated = 0;
+  let stocked = 0;
+  let stockedItems = 0;
 
   commit((db) => {
     for (const r of rows) {
@@ -1246,6 +1331,16 @@ function applyReceipt() {
       } else {
         ing.pricePerPack = r.price;
       }
+      // Stock is in portions. The line was pre-filled from the receipt's
+      // quantity and may have been corrected, so take whatever it holds now.
+      const add = rowStock(r);
+      if (add > 0) {
+        ing.stockPortions = (Number(ing.stockPortions) || 0) + add;
+        // buying it settles whatever was on the list by hand
+        ing.extraPacks = 0;
+        stocked += add;
+        stockedItems += 1;
+      }
       ing.priceUpdated = today();
       if (s.store) ing.store = s.store;
       ing.aliases = [...new Set([...(ing.aliases || []), alias])];
@@ -1257,7 +1352,15 @@ function applyReceipt() {
   state.sheet = null;
   flash(
     "ok",
-    `${updated} price${updated === 1 ? "" : "s"} updated${created ? `, ${created} new item${created === 1 ? "" : "s"} added` : ""}.`
+    `${updated} price${updated === 1 ? "" : "s"} updated${
+      created ? `, ${created} new item${created === 1 ? "" : "s"} added` : ""
+    }${
+      stockedItems
+        ? `, ${trim2(stocked)} portions into stock across ${stockedItems} item${
+            stockedItems === 1 ? "" : "s"
+          }`
+        : ""
+    }.`
   );
 }
 
@@ -1443,11 +1546,12 @@ const actions = {
       const ing = ingredient(s.targetId);
       if (!ing) return;
       const before = ing.pricePerPack;
+      const added = bought * packPortions(ing);
       patchIngredient(ing.id, {
         pricePerPack: price,
         priceUpdated: today(),
         offer,
-        stockPacks: (Number(ing.stockPacks) || 0) + bought,
+        stockPortions: stockPortions(ing) + added,
         // buying it settles whatever was on the list by hand
         extraPacks: bought > 0 ? 0 : ing.extraPacks,
         barcodes: [...new Set([...(ing.barcodes || []), s.code].filter(Boolean))],
@@ -1461,7 +1565,7 @@ const actions = {
         bought > 0
           ? `${ing.name} now £${money(price)}${moved}. ${bought} pack${
               bought === 1 ? "" : "s"
-            } added to stock.`
+            }, ${trim2(added)} portions, added to stock.`
           : `${ing.name} now £${money(price)}${moved}.`
       );
       return;
@@ -1478,7 +1582,7 @@ const actions = {
     made.pricePerPack = price;
     made.priceUpdated = today();
     made.offer = offer;
-    made.stockPacks = bought;
+    made.stockPortions = bought * made.portionsPerPack;
     made.barcodes = s.code ? [s.code] : [];
     made.id = uniqueId(name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
@@ -1486,7 +1590,7 @@ const actions = {
     flash(
       "ok",
       bought > 0
-        ? `${made.name} added at £${money(price)}, ${bought} in stock.`
+        ? `${made.name} added at £${money(price)}, ${trim2(made.stockPortions)} portions in stock.`
         : `${made.name} added at £${money(price)}.`
     );
   },
@@ -1494,10 +1598,23 @@ const actions = {
   bought: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
+    // packs off the shelf, portions into stock
+    const packs = Number(el.dataset.packs) || 0;
     patchIngredient(ing.id, {
-      stockPacks: (Number(ing.stockPacks) || 0) + Number(el.dataset.packs),
+      stockPortions: stockPortions(ing) + packs * packPortions(ing),
       extraPacks: 0,
     });
+  },
+
+  moreStockPack: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (ing) patchIngredient(ing.id, { stockPortions: stockPortions(ing) + packPortions(ing) });
+  },
+  lessStockPack: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (ing) {
+      patchIngredient(ing.id, { stockPortions: Math.max(0, stockPortions(ing) - packPortions(ing)) });
+    }
   },
 
   toggleStore: (el) => toggleShut(el.dataset.which, el.dataset.store),
@@ -1610,7 +1727,9 @@ const actions = {
         : el.value;
     patchIngredient(el.dataset.id, { [field]: value });
   },
-  setNumber: (el) => patchIngredient(el.dataset.id, { [el.dataset.field]: Number(el.value) || 0 }),
+  // portions and stock are both counts of things, so never below zero
+  setNumber: (el) =>
+    patchIngredient(el.dataset.id, { [el.dataset.field]: Math.max(0, Number(el.value) || 0) }),
   setPrice: (el) =>
     patchIngredient(el.dataset.id, { pricePerPack: Number(el.value) || 0, priceUpdated: today() }),
   addBarcode: (el) => {
@@ -1695,7 +1814,16 @@ const actions = {
   setRowTarget: (el) => {
     const rows = state.sheet.rows.slice();
     const i = Number(el.dataset.i);
-    rows[i] = { ...rows[i], targetId: el.value, use: !!el.value, why: el.value ? "you chose it" : "ignored" };
+    // Portions are a different size on a different item, so a figure typed
+    // against the old target must not carry over to the new one.
+    rows[i] = {
+      ...rows[i],
+      targetId: el.value,
+      use: !!el.value,
+      why: el.value ? "you chose it" : "ignored",
+      stockAdd: 0,
+      stockTouched: false,
+    };
     setSheet({ ...state.sheet, rows });
   },
   scanRow: (el) => {
@@ -1722,8 +1850,19 @@ const actions = {
     const rows = state.sheet.rows.slice();
     const i = Number(el.dataset.i);
     rows[i] = { ...rows[i], newPortions: Math.max(0.5, Number(el.value) || 1) };
-    state.sheet = { ...state.sheet, rows };
+    // a redraw here, unlike the name field, because the pack size decides how
+    // many portions the line puts into stock
+    setSheet({ ...state.sheet, rows });
   },
+  setRowStock: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], stockAdd: Math.max(0, Number(el.value) || 0), stockTouched: true };
+    setSheet({ ...state.sheet, rows });
+  },
+  moreRowStock: (el) => bumpRowStock(Number(el.dataset.i), 1),
+  lessRowStock: (el) => bumpRowStock(Number(el.dataset.i), -1),
+
   setRowOfferKind: (el) => {
     const rows = state.sheet.rows.slice();
     const i = Number(el.dataset.i);
