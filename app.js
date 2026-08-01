@@ -517,7 +517,7 @@ function offerEditor(subject, acts) {
   const live = activeOffer(subject);
   const expired = offerExpired(subject);
 
-  return `<div style="border:1px solid var(--rule);padding:9px;margin-bottom:8px;background:#fff">
+  return `<div class="subcard">
     <label class="field" style="margin-bottom:${kind ? "8px" : "0"}">
       <span class="eyebrow">Offer</span>
       <select class="inp" ${attrs}>
@@ -947,7 +947,7 @@ function sheetScanned(s) {
 
     ${offerEditor({ pricePerPack: base, offer: s.offer }, { kind: "setScanOfferKind", field: "setScanOfferField" })}
 
-    <div style="border:1px solid var(--rule);padding:9px;margin-bottom:10px;background:#fff">
+    <div class="subcard">
       <div class="row">
         <div class="grow">
           <span class="eyebrow" style="display:block">In the trolley</span>
@@ -1119,7 +1119,7 @@ function sheetInvite(s) {
     "One code is all they need. No GitHub account, no token, no waiting for an invite to be accepted.",
     `
     ${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}
-    <div style="border:1px solid var(--rule);padding:12px;margin-bottom:10px;background:#fff">
+    <div class="subcard">
       ${qrSvg(code, { label: "Invite code" })}
     </div>
     <p class="muted" style="margin-top:0">On their phone: <strong>Settings</strong>, then

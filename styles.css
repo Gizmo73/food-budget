@@ -79,6 +79,14 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
   background:var(--surface); border-radius:var(--r-m); box-shadow:var(--shadow-1);
   padding:12px 14px; margin-bottom:10px;
 }
+/* A panel nested inside a card: one product, one receipt line, one shop.
+   Steps up off the card surface rather than adding another shadow, so the
+   nesting reads at a glance. Theme-aware, unlike the hardcoded white it
+   replaces. */
+.subcard {
+  background:var(--surface-2); border:1px solid var(--outline);
+  border-radius:var(--r-s); padding:10px; margin-bottom:8px;
+}
 .row { display:flex; align-items:center; gap:10px; }
 .grow { flex:1; min-width:0; }
 .num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
