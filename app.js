@@ -7,16 +7,16 @@
 
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
-  resolveLine, norm, uid, slug, uniqueId, canonicalStore, storeNames, cleanOffer,
-  mergeSnapshots, makeInvite, readInvite, newSource, sourceKey, findSourceByBarcode,
-  SLOTS,
+  resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
+  cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
+  findProductByBarcode, findByBarcode, tidyProductName, SLOTS,
 } from "./lib/store.js";
 import {
-  computeShopping, mealCost, portionCost, packCost, activeOffer, offerLabel,
-  offerExpired, anyOfferExpired, offerMeaning, groupByStore, searchItems, ukTime, ago,
-  money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
-  stockPortions, stockPacks, packPortions,
-  sourcesOf, sourceById, chooseSource, isPinned, sourcePortionCost, sourceSavings,
+  computeShopping, mealCost, portionCost, itemPortionCost, packCost, activeOffer,
+  offerLabel, offerExpired, anyOfferExpired, offerMeaning, groupByStore, searchItems,
+  ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
+  stockPortions, stockPacks, packPortions, productStock,
+  productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -115,7 +115,7 @@ const isShut = (which, name) => (state.settings[which] || []).includes(name);
    and scroll it into view, otherwise a collapsed group swallows it silently. */
 async function revealItem(id) {
   const ing = state.db.ingredients.find((i) => i.id === id);
-  const chosen = ing ? chooseSource(ing) : null;
+  const chosen = ing ? chooseProduct(ing) : null;
   const store = (chosen && chosen.store) || "Unassigned";
   const shut = state.settings.collapsedItems || [];
   if (shut.some((n) => n.toLowerCase() === store.toLowerCase())) {
@@ -148,20 +148,61 @@ function patchIngredient(id, changes) {
   });
 }
 
-/* Edit one shop's entry. The item's own stamp moves too, because changing
-   what you pay at Aldi is a change to the item as far as sharing is
+/* A product's id is built from its name and shop, so that two devices agree
+   without talking. Renaming either therefore has to move the id, and carry the
+   pin and any meal that named it along with it. */
+function renameProduct(ing, product, changes) {
+  const name = changes.name !== undefined ? changes.name : product.name;
+  const store = changes.store !== undefined ? changes.store : product.store;
+  const nextId = productKey(name, store);
+
+  if (nextId !== product.id && productsOf(ing).some((p) => p.id === nextId)) {
+    flash("err", `${ing.name} already has one called that. Edit that one, or remove it first.`);
+    draw();
+    return;
+  }
+
+  commit((db) => {
+    const i = db.ingredients.findIndex((x) => x.id === ing.id);
+    if (i < 0) return;
+    const was = db.ingredients[i];
+    db.ingredients[i] = {
+      ...was,
+      updatedAt: now(),
+      preferredProductId: was.preferredProductId === product.id ? nextId : was.preferredProductId,
+      products: (was.products || []).map((p) =>
+        p.id === product.id ? { ...p, name, store, id: nextId } : p
+      ),
+    };
+    if (nextId !== product.id) {
+      db.meals = db.meals.map((m) => ({
+        ...m,
+        items: m.items.map((it) =>
+          it.ingredientId === ing.id && it.productId === product.id
+            ? { ...it, productId: nextId }
+            : it
+        ),
+      }));
+    }
+  });
+}
+
+/* Edit one product. The ingredient's own stamp moves too, because changing
+   what the Aldi one costs is a change to the ingredient as far as sharing is
    concerned. */
-function patchSource(id, sourceId, changes) {
+function patchProduct(id, productId, changes) {
   commit((db) => {
     const i = db.ingredients.findIndex((x) => x.id === id);
     if (i < 0) return;
     const ing = db.ingredients[i];
-    const sources = (ing.sources || []).map((s) => (s.id === sourceId ? { ...s, ...changes } : s));
-    db.ingredients[i] = { ...ing, sources, updatedAt: now() };
+    const products = (ing.products || []).map((p) =>
+      p.id === productId ? { ...p, ...changes } : p
+    );
+    db.ingredients[i] = { ...ing, products, updatedAt: now() };
   });
 }
 
-const sourceOf = (id, sourceId) => sourceById(ingredient(id), sourceId);
+const productOf = (id, productId) => productById(ingredient(id), productId);
 
 /* --------------------------------- views ------------------------------- */
 
@@ -356,30 +397,37 @@ function viewList() {
 }
 
 function ticket(l) {
-  const bits = [`${l.packs} pack${l.packs === 1 ? "" : "s"} @ £${money(l.src && l.src.pricePerPack)}`];
+  const bits = [`${l.packs} pack${l.packs === 1 ? "" : "s"} @ £${money(l.product && l.product.pricePerPack)}`];
   if (l.offer) bits.push(l.offer);
-  if (l.src && l.src.packLabel) bits.push(esc(l.src.packLabel));
+  if (l.product && l.product.packLabel) bits.push(esc(l.product.packLabel));
   if (l.extra) bits.push(`${l.extra} by hand`);
   // needs 4, has 2, so a whole pack is still required: say so on the line
   if (l.stock > 0.001) bits.push(`${trim2(l.stock)} in stock`);
   if (l.leftover > 0.001) bits.push(`${trim2(l.leftover)} left over`);
 
+  /* The heading is the ingredient, because that is what the meal asked for.
+     The product goes underneath, because that is what you pick off the shelf,
+     and the two are different the moment an ingredient has more than one. */
+  const product = l.product ? l.product.name : "";
+  const named = product && product !== l.ing.name;
+
   return `<div class="ticket">
     <div class="grow">
       <div class="name trunc">${l.stale ? '<span class="dot"></span>' : ""}${esc(l.ing.name)}</div>
+      ${named ? `<div class="meta">${esc(product)}</div>` : ""}
       <div class="meta">${bits.join(" &middot; ")}</div>
       ${l.saving > 0.004 ? `<div class="meta save">saves £${money(l.saving)}</div>` : ""}
       ${
-        l.cheaper && l.cheaper.perPortion > 0.001
-          ? `<div class="meta save">cheapest of ${l.cheaper.count} shops${
-              isPinned(l.ing, l.src) ? ", pinned" : ""
-            } &middot; ${esc(l.cheaper.against.store || "elsewhere")} is £${money(
+        l.only
+          ? `<div class="meta">this one only, asked for by name</div>`
+          : l.cheaper && l.cheaper.perPortion > 0.001
+          ? `<div class="meta save">cheapest of ${l.cheaper.count}${
+              isPinned(l.ing, l.product) ? ", pinned" : ""
+            } &middot; ${esc(l.cheaper.against.name || l.cheaper.against.store || "another")} is £${money(
               l.cheaper.perPortion
             )} more a portion</div>`
-          : isPinned(l.ing, l.src) && l.cheaper
-          ? `<div class="meta">pinned to ${esc(l.src.store || "this shop")}, ${
-              l.cheaper.count
-            } shops known</div>`
+          : isPinned(l.ing, l.product) && l.cheaper
+          ? `<div class="meta">pinned &middot; ${l.cheaper.count} priced</div>`
           : ""
       }
     </div>
@@ -393,7 +441,7 @@ function ticket(l) {
             : ""
         }
         <button class="btn small ghost" data-act="bought" data-id="${l.ing.id}"
-          data-src="${esc((l.src && l.src.id) || "")}" data-packs="${l.packs}">Got it</button>
+          data-product="${esc((l.product && l.product.id) || "")}" data-packs="${l.packs}">Got it</button>
       </div>
     </div>
   </div>`;
@@ -401,8 +449,22 @@ function ticket(l) {
 
 /* ---- plan ---- */
 
+/* Day names come from the start date rather than a fixed Monday, because a
+   fortnight that begins on a Thursday should say so. */
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function planDate(start, index) {
+  if (!start) return null;
+  const t = new Date(`${dayOf(start)}T12:00:00`).getTime();
+  if (!Number.isFinite(t)) return null;
+  // midday, so British Summer Time cannot roll a date backwards
+  return new Date(t + index * 86400000);
+}
+
 function viewPlan() {
   const c = state.calc;
+  const people = state.db.people || ["Person 1", "Person 2"];
+  const start = state.db.planStart || "";
 
   const options = (selected) =>
     [`<option value="">\u2014</option>`]
@@ -416,20 +478,36 @@ function viewPlan() {
   const week = (w) => {
     const subtotal = c.dayCost.slice(w * 7, w * 7 + 7).reduce((a, b) => a + b, 0);
 
-    const rows = DAYS.map((name, i) => {
+    const rows = Array.from({ length: 7 }, (_, i) => {
       const idx = w * 7 + i;
       const day = state.db.plan[idx] || {};
-      const slots = SLOTS.map(
-        (slot) => `<div class="slot">
+      const when = planDate(start, idx);
+      const name = when ? WEEKDAYS[when.getDay()] : DAYS[i];
+      const dated = when
+        ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "";
+
+      const slots = SLOTS.map((slot) => {
+        const pair = Array.isArray(day[slot.key]) ? day[slot.key] : [day[slot.key] || null, null];
+        const pick = (person) => `<select data-act="setSlot" data-idx="${idx}" data-slot="${slot.key}"
+            data-person="${person}" aria-label="${slot.label} for ${esc(people[person])}, ${name}">${options(
+          pair[person]
+        )}</select>`;
+        return `<div class="slot">
           <span class="slabel">${slot.short}</span>
-          <select data-act="setSlot" data-idx="${idx}" data-slot="${slot.key}"
-            aria-label="${slot.label}, ${name} week ${w + 1}">${options(day[slot.key])}</select>
-        </div>`
-      ).join("");
+          <div class="grow" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            ${pick(0)}${pick(1)}
+          </div>
+          <button class="btn small ghost" data-act="copySlot" data-idx="${idx}" data-slot="${slot.key}"
+            title="Give ${esc(people[1])} the same">&rarr;</button>
+        </div>`;
+      }).join("");
 
       return `<div class="dayblock">
         <div class="row">
-          <span class="dname grow">${name}</span>
+          <span class="dname grow">${name}${
+        dated ? ` <span class="muted num" style="font-weight:400">${esc(dated)}</span>` : ""
+      }</span>
           <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
         </div>
         ${slots}
@@ -448,11 +526,30 @@ function viewPlan() {
     (slot) => `<button class="btn small ghost grow" data-act="fillSlot" data-slot="${slot.key}">Repeat ${slot.label.toLowerCase()}</button>`
   ).join("");
 
-  return `${week(0)}${week(1)}
+  return `
+    <section class="card">
+      <div class="grid2" style="margin-bottom:8px">
+        <label class="field"><span class="eyebrow">${esc(people[0])}</span>
+          <input class="inp" value="${esc(people[0])}" placeholder="Person 1"
+            data-act="setPerson" data-person="0"></label>
+        <label class="field"><span class="eyebrow">${esc(people[1])}</span>
+          <input class="inp" value="${esc(people[1])}" placeholder="Person 2"
+            data-act="setPerson" data-person="1"></label>
+      </div>
+      <label class="field"><span class="eyebrow">The fortnight starts</span>
+        <input class="inp mono" type="date" value="${esc(dayOf(start))}" data-act="setPlanStart"></label>
+      <p class="muted" style="margin:7px 0 0">${
+        start
+          ? "Each day shows its date, so you can tell whether something will still be in date by then."
+          : "Set a date and every day shows the date it falls on, which is what tells you whether a use-by will hold."
+      }</p>
+    </section>
+    ${week(0)}${week(1)}
     <div class="card">
       <span class="eyebrow" style="display:block;margin-bottom:6px">Fill the fortnight</span>
       <div class="row" style="gap:6px">${fillers}</div>
-      <p class="muted" style="margin:7px 0 0">Copies the first day's choice into every empty day of that slot.</p>
+      <p class="muted" style="margin:7px 0 0">Copies day one into every empty day of that slot, for
+      both of you. The arrow beside a day copies ${esc(people[0])}'s choice to ${esc(people[1])}.</p>
     </div>
     <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
     <button class="btn ghost wide" data-act="clearPlan">Clear both weeks</button>
@@ -484,15 +581,53 @@ function viewMeals() {
           .map((i) => `<option value="${i.id}"${i.id === selected ? " selected" : ""}>${esc(i.name)}</option>`)
           .join("");
 
+      /* Which one, under that ingredient. Blank is the useful default: the
+         meal wants cheddar, and whichever cheddar is cheapest will do. Naming
+         one is for when the recipe really does mean that jar. */
+      const which = (ing, selected) => {
+        const options = productsOf(ing);
+        const cheapest = chooseProduct(ing);
+        return [
+          `<option value=""${selected ? "" : " selected"}>Any${
+            cheapest ? ` (now ${cheapest.name || cheapest.store || "cheapest"})` : ""
+          }</option>`,
+        ]
+          .concat(
+            options.map(
+              (p) =>
+                `<option value="${p.id}"${p.id === selected ? " selected" : ""}>${esc(
+                  p.name || "Unnamed"
+                )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
+            )
+          )
+          .join("");
+      };
+
       const rows = meal.items
-        .map(
-          (it, i) => `<div class="row" style="margin-bottom:6px">
-        <select class="inp grow" data-act="setMealIng" data-id="${meal.id}" data-i="${i}">${picker(it.ingredientId)}</select>
-        <input class="inp mono" style="width:74px;text-align:right" type="number" step="0.05" min="0"
-          value="${it.portions}" data-act="setMealPortions" data-id="${meal.id}" data-i="${i}" aria-label="Portions">
-        <button class="btn small danger" data-act="delMealIng" data-id="${meal.id}" data-i="${i}" aria-label="Remove">×</button>
-      </div>`
-        )
+        .map((it, i) => {
+          const ing = byId[it.ingredientId];
+          const named = it.productId && ing ? productById(ing, it.productId) : null;
+          return `<div style="border:1px solid var(--rule);padding:8px;margin-bottom:6px;background:#fff">
+        <div class="row" style="margin-bottom:6px">
+          <select class="inp grow" data-act="setMealIng" data-id="${meal.id}" data-i="${i}">${picker(
+            it.ingredientId
+          )}</select>
+          <input class="inp mono" style="width:74px;text-align:right" type="number" step="0.05" min="0"
+            value="${it.portions}" data-act="setMealPortions" data-id="${meal.id}" data-i="${i}" aria-label="Portions each">
+          <button class="btn small danger" data-act="delMealIng" data-id="${meal.id}" data-i="${i}" aria-label="Remove">×</button>
+        </div>
+        <select class="inp" data-act="setMealProduct" data-id="${meal.id}" data-i="${i}">${
+            ing ? which(ing, it.productId) : ""
+          }</select>
+        <p class="why" style="margin:4px 0 0">${
+          named
+            ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
+                ing.name
+              )} in.`
+            : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
+        }</p>
+      </div>`;
+        })
         .join("");
 
       return `<section class="card">
@@ -509,6 +644,8 @@ function viewMeals() {
       }>Add ingredient</button>
           <button class="btn small danger" data-act="delMeal" data-id="${meal.id}">Delete meal</button>
         </div>
+        <p class="muted" style="margin:0 0 8px">Portions are for one person. Plan it for both of
+        you and it counts twice.</p>
         <div class="row" style="margin-top:8px"><span class="eyebrow grow">Cost per serving</span>
           <span class="num" style="font-weight:700">£${money(cost)}</span></div>
       </section>`;
@@ -525,7 +662,9 @@ function viewMeals() {
 function offerEditor(subject, acts) {
   const o = subject.offer || {};
   const kind = o.kind || "";
-  const own = `${acts.id ? ` data-id="${acts.id}"` : ""}${acts.src ? ` data-src="${acts.src}"` : ""}`;
+  const own = `${acts.id ? ` data-id="${acts.id}"` : ""}${
+    acts.product ? ` data-product="${acts.product}"` : ""
+  }`;
   const attrs = `data-act="${acts.kind}"${own}`;
   const field = (name) => `data-act="${acts.field}"${own} data-field="${name}"`;
   const opt = (v, label) => `<option value="${v}"${kind === v ? " selected" : ""}>${label}</option>`;
@@ -579,76 +718,101 @@ function offerEditor(subject, acts) {
   </div>`;
 }
 
-/* One shop's entry for an item: its price, its pack, its offer, its barcodes.
-   Pack size sits here rather than on the item because 250g at one shop and
-   400g at another is the normal case, and portions are the unit that makes
-   those comparable. */
-function sourceCard(ing, src, chosen, stores) {
-  const age = daysSince(src.priceUpdated);
+/* One product: a thing you can actually put in a trolley. It has a name of its
+   own, because "which cheddar is this" is a question the app has to be able to
+   answer, and its own stock, because a meal may ask for this one specifically. */
+function productCard(ing, product, chosen, stores) {
+  const age = daysSince(product.priceUpdated);
   const stale = age > STALE_DAYS;
-  const pinned = isPinned(ing, src);
-  const pp = Number(src.portionsPerPack) || 0;
-  const only = sourcesOf(ing).length === 1;
+  const pinned = isPinned(ing, product);
+  const pp = Number(product.portionsPerPack) || 0;
+  const only = productsOf(ing).length === 1;
+  const stock = productStock(product);
 
-  const codes = (src.barcodes || []).length
-    ? (src.barcodes || [])
+  const codes = (product.barcodes || []).length
+    ? (product.barcodes || [])
         .map(
           (b) => `<span class="pill on" style="margin:0 5px 5px 0">${esc(b)}
            <button class="btn small ghost" style="padding:0 0 0 5px;min-height:0" data-act="delBarcode"
-             data-id="${ing.id}" data-src="${esc(src.id)}" data-code="${esc(b)}">&times;</button></span>`
+             data-id="${ing.id}" data-product="${esc(product.id)}" data-code="${esc(b)}">&times;</button></span>`
         )
         .join("")
     : `<span class="muted">none yet</span>`;
 
   return `<div style="border:1px solid var(--rule);padding:10px;margin-bottom:8px;background:#fff">
     <div class="row" style="margin-bottom:8px">
-      <span class="grow" style="font-weight:600">${esc(src.store || "No shop set")}</span>
+      <span class="grow" style="font-weight:600">${esc(product.name || "Unnamed")}${
+    product.store ? ` <span class="muted">at ${esc(product.store)}</span>` : ""
+  }</span>
       ${
         chosen
           ? `<span class="pill on">${pinned ? "pinned" : "cheapest"}</span>`
-          : `<span class="muted num">£${money(sourcePortionCost(src))} a portion</span>`
+          : `<span class="muted num">£${money(productPortionCost(product))} a portion</span>`
       }
-      <button class="pill${pinned ? " on" : ""}" data-act="pinSource" data-id="${ing.id}"
-        data-src="${esc(src.id)}" title="Always buy it here">${pinned ? "Unpin" : "Pin"}</button>
+      <button class="pill${pinned ? " on" : ""}" data-act="pinProduct" data-id="${ing.id}"
+        data-product="${esc(product.id)}" title="Always buy this one">${pinned ? "Unpin" : "Pin"}</button>
     </div>
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shop</span>
-      <input class="inp" list="fb-stores" value="${esc(src.store || "")}" placeholder="Not set"
-        data-act="setSourceStore" data-id="${ing.id}" data-src="${esc(src.id)}"></label>
+    <div class="grid2" style="margin-bottom:8px">
+      <label class="field"><span class="eyebrow">What it is called</span>
+        <input class="inp" value="${esc(product.name || "")}" placeholder="Cathedral City"
+          data-act="setProductName" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
+      <label class="field"><span class="eyebrow">Shop</span>
+        <input class="inp" list="fb-stores" value="${esc(product.store || "")}" placeholder="Not set"
+          data-act="setProductStore" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
+    </div>
     <div class="grid2" style="margin-bottom:8px">
       <label class="field"><span class="eyebrow">Base price £ per pack</span>
-        <input class="inp mono" type="number" step="0.01" min="0" value="${src.pricePerPack}"
-          data-act="setSourcePrice" data-id="${ing.id}" data-src="${esc(src.id)}"></label>
+        <input class="inp mono" type="number" step="0.01" min="0" value="${product.pricePerPack}"
+          data-act="setProductPrice" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
       <label class="field"><span class="eyebrow">Portions per pack</span>
-        <input class="inp mono" type="number" step="0.5" min="0" value="${src.portionsPerPack}"
-          data-act="setSourceNumber" data-id="${ing.id}" data-src="${esc(
-    src.id
+        <input class="inp mono" type="number" step="0.5" min="0" value="${product.portionsPerPack}"
+          data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
+    product.id
   )}" data-field="portionsPerPack"></label>
     </div>
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Pack size note</span>
-      <input class="inp" placeholder="500g" value="${esc(src.packLabel || "")}"
-        data-act="setSourceField" data-id="${ing.id}" data-src="${esc(
-    src.id
+    <div class="grid2" style="margin-bottom:6px">
+      <label class="field"><span class="eyebrow">In stock (portions)</span>
+        <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(stock)}"
+          data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
+    product.id
+  )}" data-field="stockPortions"></label>
+      <label class="field"><span class="eyebrow">Pack size note</span>
+        <input class="inp" placeholder="500g" value="${esc(product.packLabel || "")}"
+          data-act="setProductField" data-id="${ing.id}" data-product="${esc(
+    product.id
   )}" data-field="packLabel"></label>
-    ${offerEditor(src, {
-      kind: "setSourceOfferKind",
-      field: "setSourceOfferField",
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <span class="muted grow">${
+        pp > 0
+          ? `${trim2(stock / pp)} pack${Math.abs(stock / pp - 1) < 0.001 ? "" : "s"} of ${trim2(pp)}`
+          : "Set portions per pack and this counts packs too"
+      }</span>
+      <button class="btn small tonal" data-act="lessStockPack" data-id="${ing.id}"
+        data-product="${esc(product.id)}" title="Take a pack out of stock">&minus; pack</button>
+      <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
+        data-product="${esc(product.id)}" title="Put a pack into stock">+ pack</button>
+    </div>
+    ${offerEditor(product, {
+      kind: "setProductOfferKind",
+      field: "setProductOfferField",
       id: ing.id,
-      src: src.id,
+      product: product.id,
     })}
     <div style="margin-bottom:8px">
-      <span class="eyebrow" style="display:block;margin-bottom:6px">Barcodes here</span>
+      <span class="eyebrow" style="display:block;margin-bottom:6px">Barcodes</span>
       <div style="margin-bottom:8px">${codes}</div>
       <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}"
-        data-src="${esc(src.id)}">Scan a barcode</button>
+        data-product="${esc(product.id)}">Scan a barcode</button>
     </div>
     <div class="row">
       <span class="muted grow${stale ? " stale" : ""}">${
-    src.priceUpdated ? `priced ${esc(ago(src.priceUpdated))}` : "never priced"
-  }${pp > 0 ? ` &middot; £${money(sourcePortionCost(src))} a portion` : " &middot; portions not set"}</span>
-      <button class="btn small ghost" data-act="delSource" data-id="${ing.id}" data-src="${esc(
-    src.id
+    product.priceUpdated ? `priced ${esc(ago(product.priceUpdated))}` : "never priced"
+  }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</span>
+      <button class="btn small ghost" data-act="delProduct" data-id="${ing.id}" data-product="${esc(
+    product.id
   )}"${only ? " disabled" : ""} title="${
-    only ? "An item needs somewhere to buy it" : "Remove this shop"
+    only ? "An ingredient needs something to buy" : "Remove this one"
   }">Remove</button>
     </div>
   </div>`;
@@ -664,9 +828,19 @@ function viewItems() {
 
   const byName = state.settings.itemSort === "name";
 
+  /* Demand can arrive either way round: "any cheddar" sits under the
+     ingredient, "that cheddar" under a product of it. Both are this
+     ingredient's business. */
+  const needOf = (ing) =>
+    (c.need[ing.id] || 0) +
+    Object.entries(c.needProduct || {}).reduce(
+      (sum, [key, portions]) => (key.startsWith(`${ing.id}|`) ? sum + portions : sum),
+      0
+    );
+
   const card = (ing) => {
-    const chosen = chooseSource(ing);
-    const all = sourcesOf(ing);
+    const chosen = chooseProduct(ing);
+    const all = productsOf(ing);
     const age = daysSince(chosen && chosen.priceUpdated);
     const stale = age > STALE_DAYS;
     const extra = Number(ing.extraPacks) || 0;
@@ -683,7 +857,7 @@ function viewItems() {
         }${
           pp > 0 ? `${trim2(pp)}/pack` : '<span class="stale">portions not set</span>'
         } &middot; £${money(portionCost(ing))} a portion &middot; ${trim2(stock)} in stock${
-      all.length > 1 ? ` &middot; ${all.length} shops` : ""
+      all.length > 1 ? ` &middot; ${all.length} to choose from` : ""
     }${live ? ` &middot; ${esc(offerLabel(chosen))}` : ""}${
       extra ? ` &middot; ${extra} on the list` : ""
     }</div>
@@ -701,24 +875,11 @@ function viewItems() {
 
     return `<section class="card" data-scroll="${ing.id}">${head}
       <div style="border-top:1px solid var(--outline);margin-top:12px;padding-top:12px">
-        <label class="field" style="margin-bottom:10px"><span class="eyebrow">Item name</span>
+        <label class="field" style="margin-bottom:6px"><span class="eyebrow">Ingredient</span>
           <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
-        <label class="field" style="margin-bottom:6px"><span class="eyebrow">In stock (portions)</span>
-          <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(stock)}"
-            data-act="setNumber" data-id="${ing.id}" data-field="stockPortions"></label>
-        <div class="row" style="margin-bottom:10px">
-          <span class="muted grow">${
-            pp > 0
-              ? `${trim2(stockPacks(ing, chosen))} pack${
-                  Math.abs(stockPacks(ing, chosen) - 1) < 0.001 ? "" : "s"
-                } at ${trim2(pp)} a pack &middot; shared across every shop`
-              : "Set portions per pack below and this counts packs too"
-          }</span>
-          <button class="btn small tonal" data-act="lessStockPack" data-id="${ing.id}"
-            title="Take a pack out of stock">&minus; pack</button>
-          <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
-            title="Put a pack into stock">+ pack</button>
-        </div>
+        <p class="muted" style="margin:0 0 10px">What a meal asks for. The things below are what
+        you can actually buy to satisfy it.</p>
+
         <div class="row" style="margin-bottom:10px">
           <span class="eyebrow grow">On the list by hand</span>
           <button class="btn small tonal" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
@@ -727,43 +888,30 @@ function viewItems() {
         </div>
 
         <div class="row" style="margin-bottom:6px">
-          <span class="eyebrow grow">Where to buy it</span>
-          <span class="muted">${all.length} shop${all.length === 1 ? "" : "s"}</span>
+          <span class="eyebrow grow">What to buy</span>
+          <span class="muted">${trim2(stock)} in stock in total</span>
         </div>
-        <p class="muted" style="margin:0 0 8px">The list uses whichever is cheapest a portion, unless
-        you pin one. Stock above is shared, so buying it anywhere covers the meals that need it.</p>
-        ${all
-          .map((src) => sourceCard(ing, src, src === chosen, stores))
-          .join("")}
-        <button class="btn small tonal wide" style="margin-bottom:10px" data-act="addSource"
-          data-id="${ing.id}">Add another shop</button>
+        <p class="muted" style="margin:0 0 8px">Whichever is cheapest a portion is what the list
+        uses, unless you pin one. A meal can also ask for one of these by name.</p>
+        ${all.map((product) => productCard(ing, product, product === chosen, stores)).join("")}
+        <button class="btn small tonal wide" style="margin-bottom:10px" data-act="addProduct"
+          data-id="${ing.id}">Add another one</button>
+
         <div style="margin-bottom:10px">
           <span class="eyebrow" style="display:block;margin-bottom:4px">Last updated</span>
           <span class="muted num">${
             ing.updatedAt
               ? `${esc(stampText(ing.updatedAt))} &middot; ${esc(ago(ing.updatedAt))}`
-              : "not since this item was made"
+              : "not since this ingredient was made"
           }</span>
-          ${
-            chosen && chosen.priceUpdated && dayOf(chosen.priceUpdated) !== dayOf(ing.updatedAt)
-              ? `<br><span class="muted num">${esc(
-                  chosen.store || "that shop"
-                )} price ${esc(ago(chosen.priceUpdated))}</span>`
-              : ""
-          }
         </div>
         <div class="row">
-          <span class="muted grow">Needs ${trim2(c.need[ing.id] || 0)} portions this fortnight</span>
+          <span class="muted grow">Needs ${trim2(needOf(ing))} portions this fortnight</span>
           <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
         </div>
       </div></section>`;
   };
 
-  /* Grouping by shop made sense when an item lived in exactly one. Now that
-     an item can be sold in three, the heading it sits under is a judgement
-     the app made, not a fact, and hunting for cheese under whichever shop
-     happened to be cheapest is worse than reading one alphabetical list.
-     Both are useful, so it is a choice rather than a change. */
   const groups = groupByStore(state.db.ingredients)
     .map((g) => {
       const shown = g.items.filter((i) => matchIds.has(i.id));
@@ -896,13 +1044,32 @@ function sheetReceipt(s) {
       old ? ` <strong>${old} line${old === 1 ? "" : "s"} older than what you already have.</strong>` : ""
     }</p>`);
 
+    /* Which one of that kind, at this shop. Blank is not offered: a receipt
+       line is always a specific thing you actually bought. */
+    const which = (r) => {
+      const ing = ingredient(r.targetId);
+      if (!ing) return "";
+      return [
+        `<option value="__new__"${r.productId === "__new__" ? " selected" : ""}>Something new</option>`,
+      ]
+        .concat(
+          productsOf(ing).map(
+            (p) =>
+              `<option value="${p.id}"${p.id === r.productId ? " selected" : ""}>${esc(
+                p.name || "Unnamed"
+              )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
+          )
+        )
+        .join("");
+    };
+
     const picker = (sel) =>
       [`<option value=""${sel ? "" : " selected"}>Ignore this line</option>`,
        `<option value="__new__"${sel === "__new__" ? " selected" : ""}>+ Add as a new item</option>`]
         .concat(
           state.db.ingredients.map(
             (i) => `<option value="${i.id}"${i.id === sel ? " selected" : ""}>${esc(i.name)} (now £${money(
-              (chooseSource(i) || {}).pricePerPack
+              (chooseProduct(i) || {}).pricePerPack
             )})</option>`
           )
         )
@@ -921,23 +1088,40 @@ function sheetReceipt(s) {
         </div>
         <select class="inp" style="margin-top:5px" data-act="setRowTarget" data-i="${i}">${picker(r.targetId)}</select>
         ${
-          r.targetId === "__new__"
+          r.targetId && r.targetId !== "__new__"
+            ? `<select class="inp" style="margin-top:5px" data-act="setRowProduct" data-i="${i}">${which(
+                r
+              )}</select>`
+            : ""
+        }
+        ${
+          r.targetId === "__new__" || r.productId === "__new__"
             ? `<div class="grid2" style="margin-top:5px">
-                 <label class="field"><span class="eyebrow">Name</span>
-                   <input class="inp" value="${esc(r.newName)}" data-act="setRowName" data-i="${i}"></label>
+                 <label class="field"><span class="eyebrow">${
+                   r.targetId === "__new__" ? "Ingredient" : "What it is called"
+                 }</span>
+                   <input class="inp" value="${esc(
+                     r.targetId === "__new__" ? r.newName : r.newProductName
+                   )}" data-act="${
+                r.targetId === "__new__" ? "setRowName" : "setRowProductName"
+              }" data-i="${i}"></label>
                  <label class="field"><span class="eyebrow">Portions per pack</span>
                    <input class="inp mono" type="number" step="0.5" min="0.5" value="${r.newPortions}"
                      data-act="setRowPortions" data-i="${i}"></label>
                </div>
-               <p class="why" style="margin:3px 0 0">Leave it at 1 for anything you do not divide into servings, like water or kitchen roll.</p>`
+               <p class="why" style="margin:3px 0 0">${
+                 r.targetId === "__new__"
+                   ? "The ingredient is what a meal asks for, so keep it general: Cheddar, not Tesco Finest Mature 320g."
+                   : "A new kind of this, alongside the ones you already buy."
+               }</p>`
             : ""
         }
         <div class="row" style="margin-top:5px">
           <span class="why grow">${
               r.outdated
                 ? `<strong class="stale">old price</strong> &middot; ${esc(
-                    ingredient(r.targetId) ? ingredient(r.targetId).name : "this item"
-                  )} was updated after ${esc(dayOf(s.date))}`
+                    (productById(ingredient(r.targetId), r.productId) || {}).name || "this one"
+                  )} was priced after ${esc(dayOf(s.date))}`
                 : r.barcode
                 ? "barcode " + esc(r.barcode)
                 : esc(r.why)
@@ -1004,75 +1188,97 @@ function sheetScanned(s) {
   const stores = storeNames(state.db.ingredients);
   const base = Number(s.price) || 0;
   const bought = Number(s.bought) || 0;
-  // You are standing in one shop, so the whole sheet edits that shop's entry.
-  // Scanning the Asda cheddar prices Asda and leaves the Tesco price alone.
-  const here = known ? sourceById(known, sourceKey(s.store)) : null;
-  const fresh = !!known && !here;
 
-  const picker = [`<option value=""${s.targetId ? "" : " selected"}>A new item</option>`]
+  /* Two steps, because a barcode identifies a product and a meal asks for an
+     ingredient. First what kind of thing this is, then which one of them. */
+  const here = known && s.productId ? productById(known, s.productId) : null;
+  const making = !known || s.productId === "__new__";
+
+  const kinds = [`<option value=""${s.targetId ? "" : " selected"}>A new ingredient</option>`]
     .concat(
       state.db.ingredients.map(
-        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)} (£${money(
-          (chooseSource(i) || {}).pricePerPack
-        )})</option>`
+        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)}</option>`
       )
     )
     .join("");
 
+  const whichOnes = known
+    ? [`<option value="__new__"${s.productId === "__new__" ? " selected" : ""}>Something new</option>`]
+        .concat(
+          productsOf(known).map(
+            (p) =>
+              `<option value="${p.id}"${p.id === s.productId ? " selected" : ""}>${esc(
+                p.name || "Unnamed"
+              )}${p.store ? ` at ${esc(p.store)}` : ""} &middot; £${money(p.pricePerPack)}</option>`
+          )
+        )
+        .join("")
+    : "";
+
   const was = here ? Number(here.pricePerPack) || 0 : 0;
   const delta =
     here && base > 0 && was > 0 && Math.abs(base - was) > 0.004
-      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(was)} at ${esc(
-          here.store || "this shop"
-        )}, so that is ${base > was ? "up" : "down"} £${money(Math.abs(base - was))}.</p>`
-      : fresh
-      ? `<p class="muted" style="margin:-2px 0 8px">First price for ${esc(known.name)} at ${esc(
-          s.store || "this shop"
-        )}. The prices you already have elsewhere are left alone.</p>`
+      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(was)}, so that is ${
+          base > was ? "up" : "down"
+        } £${money(Math.abs(base - was))}.</p>`
+      : known && making
+      ? `<p class="muted" style="margin:-2px 0 8px">A new kind of ${esc(
+          known.name
+        )}. What you already have priced is left alone.</p>`
       : "";
 
   // what the packs in the trolley actually cost, deal included
   const spend = bought > 0 ? packCost({ pricePerPack: base, offer: s.offer }, bought) : 0;
   const full = bought * base;
-  // the trolley is counted in packs, stock is kept in portions and pooled
-  const stockNow = known ? stockPortions(known) : 0;
-  const perPack = known
-    ? packPortions(here || chooseSource(known))
-    : Math.max(0.5, Number(s.portions) || 1);
+  // the trolley is counted in packs, stock is kept in portions
+  const stockNow = here ? productStock(here) : 0;
+  const perPack = here ? packPortions(here) : Math.max(0.5, Number(s.portions) || 1);
   const adding = bought * perPack;
 
   return shell(
-    known ? esc(known.name) : "New barcode",
+    here ? esc(here.name || known.name) : known ? `New ${esc(known.name)}` : "New barcode",
     known
-      ? "Update the price, record an offer, and add what you put in the trolley."
+      ? "Say which one this is, then update its price and add what you put in the trolley."
       : "This barcode is new. Fill it in and it is saved when you tap the button.",
     `
     ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
       <input class="inp mono" value="${esc(s.code)}" data-act="setScanCode"></label>
 
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is</span>
-      <select class="inp" data-act="setScanTarget">${picker}</select></label>
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is a kind of</span>
+      <select class="inp" data-act="setScanTarget">${kinds}</select></label>
 
     ${
       known
-        ? ""
-        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Name</span>
-             <input class="inp" value="${esc(s.name)}" placeholder="Chicken Korma" data-act="setScanName"></label>`
+        ? `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Which one</span>
+             <select class="inp" data-act="setScanProduct">${whichOnes}</select></label>`
+        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Call the ingredient</span>
+             <input class="inp" value="${esc(s.name)}" placeholder="Cheddar" data-act="setScanName"></label>`
     }
-    <div class="grid2" style="margin-bottom:8px">
-      <label class="field"><span class="eyebrow">Shop you are in</span>
-        <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="${
-      known ? "Which shop is this price from" : "Leave blank to sort later"
-    }" data-act="setScanStore">
-        <datalist id="fb-scan-stores">${stores
-          .map((st) => `<option value="${esc(st)}"></option>`)
-          .join("")}</datalist></label>
-      <label class="field"><span class="eyebrow">Portions per pack</span>
-        <input class="inp mono" type="number" step="0.5" min="0.5" value="${
-          known ? trim2(perPack) : s.portions
-        }" data-act="setScanPortions"></label>
-    </div>
+
+    ${
+      making
+        ? `<div class="grid2" style="margin-bottom:8px">
+             <label class="field"><span class="eyebrow">${
+               known ? "What it is called" : "What this one is called"
+             }</span>
+               <input class="inp" value="${esc(s.productName)}" placeholder="Cathedral City"
+                 data-act="setScanProductName"></label>
+             <label class="field"><span class="eyebrow">Portions per pack</span>
+               <input class="inp mono" type="number" step="0.5" min="0.5" value="${s.portions}"
+                 data-act="setScanPortions"></label>
+           </div>`
+        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Portions per pack</span>
+             <input class="inp mono" type="number" step="0.5" min="0.5" value="${trim2(perPack)}"
+               data-act="setScanPortions"></label>`
+    }
+
+    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shop you are in</span>
+      <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="Leave blank to sort later"
+        data-act="setScanStore">
+      <datalist id="fb-scan-stores">${stores
+        .map((st) => `<option value="${esc(st)}"></option>`)
+        .join("")}</datalist></label>
 
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shelf price £ per pack</span>
       <input class="inp mono" type="number" step="0.01" min="0" inputmode="decimal"
@@ -1086,9 +1292,9 @@ function sheetScanned(s) {
         <div class="grow">
           <span class="eyebrow" style="display:block">In the trolley</span>
           <span class="muted">${
-            known
-              ? `${trim2(stockNow)} portion${Math.abs(stockNow - 1) < 0.001 ? "" : "s"} in stock now`
-              : "Nothing in stock yet"
+            here
+              ? `${trim2(stockNow)} portion${Math.abs(stockNow - 1) < 0.001 ? "" : "s"} of it in stock`
+              : "Nothing of this one in stock yet"
           }</span>
         </div>
         <button class="btn small ghost" data-act="lessScanBought">&minus;</button>
@@ -1101,7 +1307,7 @@ function sheetScanned(s) {
               full - spend > 0.004 ? `, saving £${money(full - spend)} on the offer` : ""
             }. ${bought} pack${bought === 1 ? "" : "s"} at ${trim2(perPack)} a pack is ${trim2(
               adding
-            )} portions, so stock goes to ${trim2(stockNow + adding)} on save.</p>`
+            )} portions, so its stock goes to ${trim2(stockNow + adding)} on save.</p>`
           : `<p class="muted" style="margin:7px 0 0">Packs in the trolley. Leave at 0 to record the price only.</p>`
       }
     </div>
@@ -1109,9 +1315,10 @@ function sheetScanned(s) {
     <button class="btn solid wide" data-act="saveScan">${
       bought > 0 ? `Save and add ${trim2(adding)} portions to stock` : "Save price"
     }</button>
-    <p class="muted">Saving binds this barcode to ${esc(s.store || "this shop")}, so next time the
-    scan comes straight here. Stock is shared across every shop, so anything added comes off what the
-    list says to buy wherever it would have sent you.</p>`
+    <p class="muted">Saving binds this barcode to that one thing, so next time the scan comes
+    straight here. A meal asking for ${esc(
+      (known && known.name) || "the ingredient"
+    )} in general can be satisfied by any of them.</p>`
   );
 }
 
@@ -1462,28 +1669,25 @@ document.addEventListener("click", (e) => {
 
 /* Load an item into scan-sheet state. Offers are copied rather than
    referenced, so editing the sheet does not mutate the item before saving. */
-function scanState(code, hit, store) {
-  /* Which shop's entry is being edited, in order of how much it is worth
-     trusting: the barcode, since an own-brand code belongs to one shop; then
-     whatever shop the sheet was already on; then the shop this item is
-     normally bought from.
-
-     That last fallback matters. Defaulting to no shop looked harmless and
-     meant scanning something you already own created a blank second entry,
-     priced nothing and sized one portion a pack: quietly wrong three ways. */
-  const byCode = hit && code ? findSourceByBarcode(hit, code) : null;
-  const asked = hit && store ? sourceById(hit, sourceKey(store)) : null;
-  const here = byCode || asked || (hit && !store ? chooseSource(hit) : null);
-  const where = here ? here.store : store || "";
+function scanState(code, hit, keep = {}) {
+  /* Which product is being edited, in order of how much it is worth trusting:
+     the barcode, since it names one exact thing; then one already chosen; then
+     the one this ingredient is normally bought as. */
+  const byCode = hit && code ? findProductByBarcode(hit, code) : null;
+  const asked = hit && keep.productId ? productById(hit, keep.productId) : null;
+  const here = byCode || asked || (hit ? chooseProduct(hit) : null);
 
   return {
     kind: "scanned",
     code: code || "",
     targetId: hit ? hit.id : "",
-    name: "",
-    // an existing shop's pack size, so the trolley converts to portions right
-    portions: here ? packPortions(here) : 1,
-    store: where,
+    productId: here ? here.id : hit ? "__new__" : "",
+    // the ingredient's name, when this is a whole new kind of thing
+    name: keep.name || "",
+    // the product's own name, which is what a shelf label actually says
+    productName: keep.productName || "",
+    portions: here ? packPortions(here) : keep.portions || 1,
+    store: here ? here.store : keep.store || "",
     price: here ? String(here.pricePerPack || "") : "",
     offer: here && here.offer ? { ...here.offer } : null,
     bought: 0,
@@ -1510,16 +1714,24 @@ const filePicker = (() => {
   };
 })();
 
-function receiptRow(line) {
+function receiptRow(line, store) {
   const res = resolveLine(line, state.db.ingredients);
-  // No match means a thing you have not recorded yet, and adding it is nearly
-  // always what you want. Ignoring it silently loses the shop.
+  // No match means something you have not recorded yet, and adding it is
+  // nearly always what you want. Ignoring it silently loses the shop.
   const unmatched = !res.id;
+  const ing = res.id ? ingredient(res.id) : null;
+  /* The shop is known, so the product usually is too: the barcode said so, or
+     its printed name matches one you already buy there, or that shop only
+     sells you one of these. Otherwise it is something new under that kind. */
+  const product =
+    res.productId || (ing ? (resolveProduct(ing, store, line.name) || {}).id || "__new__" : "");
+
   return {
     raw: line.name,
     price: Number(line.unitPrice) || 0,
     qty: Number(line.qty) || 1,
     targetId: unmatched ? "__new__" : res.id,
+    productId: unmatched ? "" : product,
     why: unmatched ? "nothing matched, so it will be added" : res.why,
     confident: res.confident,
     use: true,
@@ -1528,7 +1740,8 @@ function receiptRow(line) {
     offerKind: line.offerKind || "none",
     offerQty: Number(line.offerQty) || 3,
     offerTotal: Number(line.offerTotal) || 0,
-    newName: titleise(line.name),
+    newName: titleise(tidyProductName(line.name)),
+    newProductName: titleise(tidyProductName(line.name)),
     newPortions: 1,
     // Stock stays derived from the receipt's quantity until you touch it, so
     // changing which item a line points at re-derives rather than going stale.
@@ -1548,11 +1761,13 @@ function receiptRow(line) {
 function refreshRows(rows, date, store) {
   return rows.map((r) => {
     const ing = r.targetId && r.targetId !== "__new__" ? ingredient(r.targetId) : null;
-    // Compared against this shop's price, not the item's. A three-week-old
-    // Asda receipt has nothing to say about the Tesco price and should not be
-    // blocked by it, but it must not walk back the Asda price you fixed since.
-    const src = ing ? sourceById(ing, sourceKey(store)) : null;
-    const outdated = !!(src && isEarlierDay(date, src.priceUpdated));
+    // Compared against the price this line would actually overwrite. A
+    // three-week-old Asda receipt has nothing to say about the Tesco cheddar
+    // and must not be blocked by it, but it must not walk back the Asda one.
+    const product = ing && r.productId && r.productId !== "__new__"
+      ? productById(ing, r.productId)
+      : null;
+    const outdated = !!(product && isEarlierDay(date, product.priceUpdated));
     if (outdated === r.outdated) return r;
     // Only lines whose standing actually changed are touched, so a line
     // switched off by hand stays off. Correcting the date, though, removes the
@@ -1564,10 +1779,12 @@ function refreshRows(rows, date, store) {
 /* One pack's worth of portions for whatever a receipt line points at, at the
    shop the receipt came from, since that is the pack being bought. */
 function rowPackPortions(r, store) {
-  if (r.targetId === "__new__") return Math.max(0.5, Number(r.newPortions) || 1);
+  if (r.targetId === "__new__" || r.productId === "__new__") {
+    return Math.max(0.5, Number(r.newPortions) || 1);
+  }
   const ing = r.targetId ? ingredient(r.targetId) : null;
   if (!ing) return 1;
-  return packPortions(sourceById(ing, sourceKey(store)) || chooseSource(ing));
+  return packPortions(productById(ing, r.productId) || chooseProduct(ing));
 }
 
 /* Portions this line puts into stock. The receipt's quantity times the pack
@@ -1605,7 +1822,7 @@ async function shootReceipt() {
         store,
         date,
         dateRead: !!out.date,
-        rows: refreshRows(out.lines.map(receiptRow), date, store),
+        rows: refreshRows(out.lines.map((line) => receiptRow(line, store)), date, store),
       });
     } catch (err) {
       setSheet({ ...state.sheet, busy: false, err: err.message });
@@ -1623,7 +1840,7 @@ function applyReceipt() {
   let updated = 0;
   let stocked = 0;
   let stockedItems = 0;
-  let addedSources = 0;
+  let addedProducts = 0;
 
   commit((db) => {
     for (const r of rows) {
@@ -1632,11 +1849,12 @@ function applyReceipt() {
 
       if (target === "__new__") {
         // The receipt genuinely tells us the shop, so that one is not a guess.
-        const made = newIngredient(s.store);
-        made.name = (r.newName || "").trim() || titleise(r.raw);
+        const made = newIngredient(s.store, (r.newName || "").trim() || titleise(r.raw));
         made.updatedAt = stamp;
-        made.sources = [
-          newSource(s.store, { portionsPerPack: Math.max(0.5, Number(r.newPortions) || 1) }),
+        made.products = [
+          newProduct((r.newProductName || "").trim() || made.name, s.store, {
+            portionsPerPack: Math.max(0.5, Number(r.newPortions) || 1),
+          }),
         ];
         made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
         db.ingredients.push(made);
@@ -1650,51 +1868,55 @@ function applyReceipt() {
       if (idx < 0) continue;
       const ing = { ...db.ingredients[idx] };
 
-      /* The price belongs to the shop on the receipt, not to the item. Buying
-         cheddar at Asda for the first time therefore adds an Asda price to the
-         cheddar you already have, instead of a second cheddar that no meal
-         knows about and whose stock never counts. */
-      const wanted = sourceKey(s.store);
-      const existing = (ing.sources || []).find((x) => x.id === wanted);
-      const src = existing
+      /* The price belongs to one product of that ingredient, not to the
+         ingredient itself. Buying a different cheddar therefore adds a cheddar
+         to the cheddar you already have, instead of a second Cheddar that no
+         meal knows about and whose stock never counts. */
+      const wantNew = r.targetId === "__new__" || r.productId === "__new__";
+      const existing = wantNew ? null : (ing.products || []).find((x) => x.id === r.productId);
+      const product = existing
         ? { ...existing }
-        : newSource(s.store, {
-            // an unpriced shop starts from the pack size of one that is priced
-            portionsPerPack: packPortions(chooseSource(ing)),
+        : newProduct((r.newProductName || "").trim() || tidyProductName(r.raw) || ing.name, s.store, {
+            // something new starts from the pack size of one already priced
+            portionsPerPack: Math.max(0.5, Number(r.newPortions) || packPortions(chooseProduct(ing))),
           });
-      if (!existing) addedSources += 1;
+      // a brand new ingredient always brings a product, and the count above
+      // already says so, so only count one added under something you had
+      if (!existing && r.targetId !== "__new__") addedProducts += 1;
 
       // An offer price must not overwrite the base price, or the base price
       // drifts down every time a promotion runs and never comes back up.
       // The kind matters: a card price applies to a single pack, a multibuy
       // does not, so storing a multibuy as a card price understates singles.
       if (r.offerKind === "loyalty") {
-        src.offer = { kind: "loyalty", price: r.price, ends: "" };
-        if (!src.pricePerPack) src.pricePerPack = r.price;
+        product.offer = { kind: "loyalty", price: r.price, ends: "" };
+        if (!product.pricePerPack) product.pricePerPack = r.price;
       } else if (r.offerKind === "multibuy" && r.offerQty > 1 && r.offerTotal > 0) {
-        src.offer = { kind: "multibuy", qty: r.offerQty, price: r.offerTotal, ends: "" };
+        product.offer = { kind: "multibuy", qty: r.offerQty, price: r.offerTotal, ends: "" };
         // With no base price on record the deal rate is the only number we
         // have. It shows in the editor so it can be corrected.
-        if (!src.pricePerPack) src.pricePerPack = r.offerTotal / r.offerQty;
+        if (!product.pricePerPack) product.pricePerPack = r.offerTotal / r.offerQty;
       } else {
-        src.pricePerPack = r.price;
+        product.pricePerPack = r.price;
       }
-      src.priceUpdated = stamp;
-      if (r.barcode) src.barcodes = [...new Set([...(src.barcodes || []), r.barcode])];
-      ing.sources = [...(ing.sources || []).filter((x) => x.id !== src.id), src];
+      product.priceUpdated = stamp;
+      if (r.barcode) product.barcodes = [...new Set([...(product.barcodes || []), r.barcode])];
 
-      // Stock is in portions and pooled, so it lands on the item rather than
-      // the shop. The line was pre-filled from the receipt's quantity and may
-      // have been corrected, so take whatever it holds now.
+      // Stock is in portions and sits on the product, because a meal is
+      // allowed to ask for this one specifically. The line was pre-filled from
+      // the receipt's quantity and may have been corrected.
       const add = rowStock(r, s.store);
       if (add > 0) {
-        ing.stockPortions = (Number(ing.stockPortions) || 0) + add;
+        product.stockPortions = (Number(product.stockPortions) || 0) + add;
         // buying it settles whatever was on the list by hand
         ing.extraPacks = 0;
         stocked += add;
         stockedItems += 1;
       }
+      ing.products = [...(ing.products || []).filter((x) => x.id !== product.id), product];
       ing.updatedAt = stamp;
+      // the wording is remembered against the ingredient, since that is what
+      // the next receipt has to find first
       ing.aliases = [...new Set([...(ing.aliases || []), alias])];
       db.ingredients[idx] = ing;
     }
@@ -1706,8 +1928,8 @@ function applyReceipt() {
     `${updated} price${updated === 1 ? "" : "s"} updated${
       created ? `, ${created} new item${created === 1 ? "" : "s"} added` : ""
     }${
-      addedSources
-        ? `, ${addedSources} new shop price${addedSources === 1 ? "" : "s"} on items you already had`
+      addedProducts
+        ? `, ${addedProducts} new thing${addedProducts === 1 ? "" : "s"} to buy under ingredients you already had`
         : ""
     }${
       stockedItems
@@ -1899,15 +2121,15 @@ const actions = {
 
   openScan: () =>
     openCamera("Scan an item", (code) => {
-      const hit = state.db.ingredients.find((i) => findSourceByBarcode(i, code));
-      setSheet(scanState(code, hit));
+      const found = findByBarcode(state.db.ingredients, code);
+      setSheet(scanState(code, found && found.ing));
     }),
 
   setScanCode: (el) => {
     const code = el.value.trim();
-    const hit = state.db.ingredients.find((i) => findSourceByBarcode(i, code));
-    if (hit && hit.id !== state.sheet.targetId) {
-      setSheet({ ...scanState(code, hit, state.sheet.store), bought: state.sheet.bought });
+    const found = findByBarcode(state.db.ingredients, code);
+    if (found && found.ing.id !== state.sheet.targetId) {
+      setSheet({ ...scanState(code, found.ing), bought: state.sheet.bought });
       return;
     }
     setSheet({ ...state.sheet, code });
@@ -1920,17 +2142,31 @@ const actions = {
       bought: state.sheet.bought,
     });
   },
+  setScanProduct: (el) => {
+    const hit = state.sheet.targetId ? ingredient(state.sheet.targetId) : null;
+    if (el.value === "__new__") {
+      /* Another kind of the same thing. Keep what has been typed and drop the
+         price, since the price on screen belongs to a different product. */
+      setSheet({ ...state.sheet, productId: "__new__", price: "", offer: null });
+      return;
+    }
+    // an existing one: load its shop, price and pack size, so you edit what it has
+    setSheet({
+      ...scanState(state.sheet.code, hit, { productId: el.value }),
+      name: state.sheet.name,
+      bought: state.sheet.bought,
+    });
+  },
+  setScanProductName: (el) => setSheet({ ...state.sheet, productName: el.value }),
   setScanName: (el) => setSheet({ ...state.sheet, name: el.value }),
   setScanPortions: (el) => setSheet({ ...state.sheet, portions: Math.max(0.5, Number(el.value) || 1) }),
   setScanStore: (el) => {
-    const store = canonicalStore(el.value, storeNames(state.db.ingredients));
-    const hit = state.sheet.targetId ? ingredient(state.sheet.targetId) : null;
-    // moving shops means editing a different entry, so reload from that one
+    /* Just the shop for the thing being edited. It must not reload from
+       anywhere: doing that used to pull the existing product back in and
+       quietly overwrite it instead of adding the new one beside it. */
     setSheet({
-      ...scanState(state.sheet.code, hit, store),
-      name: state.sheet.name,
-      portions: state.sheet.portions,
-      bought: state.sheet.bought,
+      ...state.sheet,
+      store: canonicalStore(el.value, storeNames(state.db.ingredients)),
     });
   },
   setScanPrice: (el) => setSheet({ ...state.sheet, price: el.value }),
@@ -1967,24 +2203,34 @@ const actions = {
     }
     const bought = Math.max(0, Number(s.bought) || 0);
     const offer = cleanOffer(s.offer);
+    const portions = Math.max(0.5, Number(s.portions) || 1);
 
+    /* An existing kind of thing: this either updates one of its products or
+       adds another one alongside, and either way the rest are left alone. */
     if (s.targetId) {
       const ing = ingredient(s.targetId);
       if (!ing) return;
-      const existing = sourceById(ing, sourceKey(s.store));
-      const before = existing ? Number(existing.pricePerPack) || 0 : 0;
-      const src = {
-        ...(existing ||
-          newSource(s.store, { portionsPerPack: packPortions(chooseSource(ing)) })),
+      const wantNew = s.productId === "__new__";
+      const existing = wantNew ? null : productById(ing, s.productId);
+      const name = (s.productName || "").trim() || (existing && existing.name) || ing.name;
+
+      // the id is built from the name and shop, so it moves when either does
+      const nextId = productKey(name, s.store);
+      const product = {
+        ...(existing || newProduct(name, s.store)),
+        id: nextId,
+        name,
+        store: s.store,
         pricePerPack: price,
         priceUpdated: now(),
         offer,
-        portionsPerPack: Math.max(0.5, Number(s.portions) || packPortions(existing)),
-        barcodes: [
-          ...new Set([...((existing && existing.barcodes) || []), s.code].filter(Boolean)),
-        ],
+        portionsPerPack: portions,
+        barcodes: [...new Set([...((existing && existing.barcodes) || []), s.code].filter(Boolean))],
       };
-      const added = bought * packPortions(src);
+      const added = bought * packPortions(product);
+      product.stockPortions = (Number(product.stockPortions) || 0) + added;
+
+      const before = existing ? Number(existing.pricePerPack) || 0 : 0;
       commit((db) => {
         const i = db.ingredients.findIndex((x) => x.id === ing.id);
         if (i < 0) return;
@@ -1992,58 +2238,64 @@ const actions = {
         db.ingredients[i] = {
           ...was,
           updatedAt: now(),
-          sources: [...(was.sources || []).filter((x) => x.id !== src.id), src],
-          // stock is pooled, so it lands on the item however it was bought
-          stockPortions: stockPortions(was) + added,
+          products: [
+            ...(was.products || []).filter(
+              (x) => x.id !== product.id && x.id !== (existing && existing.id)
+            ),
+            product,
+          ],
+          preferredProductId:
+            existing && was.preferredProductId === existing.id
+              ? product.id
+              : was.preferredProductId,
           // buying it settles whatever was on the list by hand
           extraPacks: bought > 0 ? 0 : was.extraPacks,
         };
       });
       state.sheet = null;
-      const where = src.store ? ` at ${src.store}` : "";
+
       const delta = price - before;
       const moved =
         existing && before > 0 && Math.abs(delta) > 0.004
           ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}`
           : existing
           ? ""
-          : ", a shop it had no price for before";
+          : `, a new kind of ${ing.name}`;
       flash(
         "ok",
         bought > 0
-          ? `${ing.name} now £${money(price)}${where}${moved}. ${bought} pack${
+          ? `${product.name} now £${money(price)}${moved}. ${bought} pack${
               bought === 1 ? "" : "s"
             }, ${trim2(added)} portions, added to stock.`
-          : `${ing.name} now £${money(price)}${where}${moved}.`
+          : `${product.name} now £${money(price)}${moved}.`
       );
       return;
     }
 
     const name = (s.name || "").trim();
     if (!name) {
-      setSheet({ ...s, err: "Give the new item a name." });
+      setSheet({ ...s, err: "Say what kind of thing this is." });
       return;
     }
-    const made = newIngredient(s.store);
-    made.name = name;
+    const made = newIngredient(s.store, name);
     made.updatedAt = now();
-    made.sources = [
-      newSource(s.store, {
+    made.products = [
+      newProduct((s.productName || "").trim() || name, s.store, {
         pricePerPack: price,
-        portionsPerPack: Math.max(0.5, Number(s.portions) || 1),
+        portionsPerPack: portions,
         priceUpdated: now(),
         offer,
         barcodes: s.code ? [s.code] : [],
+        stockPortions: bought * portions,
       }),
     ];
-    made.stockPortions = bought * packPortions(made.sources[0]);
     made.id = uniqueId(name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
     state.sheet = null;
     flash(
       "ok",
       bought > 0
-        ? `${made.name} added at £${money(price)}, ${trim2(made.stockPortions)} portions in stock.`
+        ? `${made.name} added at £${money(price)}, ${trim2(made.products[0].stockPortions)} portions in stock.`
         : `${made.name} added at £${money(price)}.`
     );
   },
@@ -2051,30 +2303,31 @@ const actions = {
   bought: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
-    // packs off a particular shelf, portions into one shared pool
+    // packs off a particular shelf, portions onto that particular thing
     const packs = Number(el.dataset.packs) || 0;
-    const src = sourceOf(ing.id, el.dataset.src) || chooseSource(ing);
-    patchIngredient(ing.id, {
-      stockPortions: stockPortions(ing) + packs * packPortions(src),
-      extraPacks: 0,
+    const product = productOf(ing.id, el.dataset.product) || chooseProduct(ing);
+    if (!product) return;
+    patchProduct(ing.id, product.id, {
+      stockPortions: productStock(product) + packs * packPortions(product),
     });
+    patchIngredient(ing.id, { extraPacks: 0 });
   },
 
   moreStockPack: (el) => {
     const ing = ingredient(el.dataset.id);
-    if (ing) {
-      patchIngredient(ing.id, {
-        stockPortions: stockPortions(ing) + packPortions(chooseSource(ing)),
-      });
-    }
+    const product = ing && (productOf(ing.id, el.dataset.product) || chooseProduct(ing));
+    if (!product) return;
+    patchProduct(ing.id, product.id, {
+      stockPortions: productStock(product) + packPortions(product),
+    });
   },
   lessStockPack: (el) => {
     const ing = ingredient(el.dataset.id);
-    if (ing) {
-      patchIngredient(ing.id, {
-        stockPortions: Math.max(0, stockPortions(ing) - packPortions(chooseSource(ing))),
-      });
-    }
+    const product = ing && (productOf(ing.id, el.dataset.product) || chooseProduct(ing));
+    if (!product) return;
+    patchProduct(ing.id, product.id, {
+      stockPortions: Math.max(0, productStock(product) - packPortions(product)),
+    });
   },
 
   toggleStore: (el) => toggleShut(el.dataset.which, el.dataset.store),
@@ -2138,79 +2391,59 @@ const actions = {
   },
   clearExtra: (el) => patchIngredient(el.dataset.id, { extraPacks: 0 }),
 
-  /* ---- one shop's entry for an item ---- */
+  /* ---- one product of an ingredient ---- */
 
-  setSourceStore: (el) => {
+  setProductName: (el) => {
     const ing = ingredient(el.dataset.id);
-    const src = sourceOf(el.dataset.id, el.dataset.src);
-    if (!ing || !src) return;
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (!ing || !product) return;
+    renameProduct(ing, product, { name: el.value.trim() });
+  },
+  setProductStore: (el) => {
+    const ing = ingredient(el.dataset.id);
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (!ing || !product) return;
     const store = canonicalStore(
       el.value,
-      storeNames(state.db.ingredients).filter((n) => n !== src.store)
+      storeNames(state.db.ingredients).filter((n) => n !== product.store)
     );
-    const nextId = sourceKey(store);
-    // An item holds at most one entry per shop, so renaming onto a shop it
-    // already has would silently swallow one of them. Say so instead.
-    if (nextId !== src.id && sourcesOf(ing).some((s) => s.id === nextId)) {
-      flash("err", `${ing.name} already has an entry for ${store}. Edit that one, or remove it first.`);
-      draw();
-      return;
-    }
-    commit((db) => {
-      const i = db.ingredients.findIndex((x) => x.id === ing.id);
-      if (i < 0) return;
-      const was = db.ingredients[i];
-      db.ingredients[i] = {
-        ...was,
-        updatedAt: now(),
-        // a pin follows the shop it was pinned to
-        preferredSourceId: was.preferredSourceId === src.id ? nextId : was.preferredSourceId,
-        sources: (was.sources || []).map((s) =>
-          s.id === src.id ? { ...s, store, id: nextId } : s
-        ),
-      };
-    });
+    renameProduct(ing, product, { store });
   },
-  setSourcePrice: (el) =>
-    patchSource(el.dataset.id, el.dataset.src, {
+  setProductPrice: (el) =>
+    patchProduct(el.dataset.id, el.dataset.product, {
       pricePerPack: Math.max(0, Number(el.value) || 0),
       priceUpdated: now(),
     }),
-  setSourceNumber: (el) =>
-    patchSource(el.dataset.id, el.dataset.src, {
+  setProductNumber: (el) =>
+    patchProduct(el.dataset.id, el.dataset.product, {
       [el.dataset.field]: Math.max(0, Number(el.value) || 0),
     }),
-  setSourceField: (el) =>
-    patchSource(el.dataset.id, el.dataset.src, { [el.dataset.field]: el.value }),
+  setProductField: (el) =>
+    patchProduct(el.dataset.id, el.dataset.product, { [el.dataset.field]: el.value }),
 
-  addSource: (el) => {
+  addProduct: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
-    if (sourcesOf(ing).some((s) => s.id === sourceKey(""))) {
-      flash("err", "Name the shop on the blank entry first.");
-      return;
-    }
-    // Pack size copied from where it is bought now, since the same thing in
-    // two shops is usually a similar pack. It is editable either way.
-    const from = chooseSource(ing);
+    // pack size copied from what it is bought as now, since the same thing in
+    // two guises is usually a similar pack. Editable either way.
+    const from = chooseProduct(ing);
     commit((db) => {
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
+      const made = newProduct("", "", { portionsPerPack: from ? from.portionsPerPack : 1 });
+      made.id = uniqueId(made.id, (db.ingredients[i].products || []).map((p) => p.id));
       db.ingredients[i] = {
         ...db.ingredients[i],
         updatedAt: now(),
-        sources: [
-          ...(db.ingredients[i].sources || []),
-          newSource("", { portionsPerPack: from ? from.portionsPerPack : 1 }),
-        ],
+        products: [...(db.ingredients[i].products || []), made],
       };
     });
   },
-  delSource: (el) => {
+  delProduct: (el) => {
     const ing = ingredient(el.dataset.id);
-    if (!ing || sourcesOf(ing).length < 2) return;
-    const src = sourceOf(ing.id, el.dataset.src);
-    if (!confirm(`Stop buying ${ing.name} from ${(src && src.store) || "this shop"}?`)) return;
+    if (!ing || productsOf(ing).length < 2) return;
+    const product = productOf(ing.id, el.dataset.product);
+    if (!confirm(`Stop buying ${ing.name} as ${(product && product.name) || "this"}?`)) return;
     commit((db) => {
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
@@ -2218,63 +2451,100 @@ const actions = {
       db.ingredients[i] = {
         ...was,
         updatedAt: now(),
-        preferredSourceId: was.preferredSourceId === el.dataset.src ? "" : was.preferredSourceId,
-        sources: (was.sources || []).filter((s) => s.id !== el.dataset.src),
+        preferredProductId:
+          was.preferredProductId === el.dataset.product ? "" : was.preferredProductId,
+        products: (was.products || []).filter((p) => p.id !== el.dataset.product),
       };
+      // a meal naming this one now means "any", which is better than nothing
+      db.meals = db.meals.map((m) => ({
+        ...m,
+        items: m.items.map((it) =>
+          it.ingredientId === ing.id && it.productId === el.dataset.product
+            ? { ...it, productId: "" }
+            : it
+        ),
+      }));
     });
   },
-  pinSource: (el) => {
+  pinProduct: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
-    const already = ing.preferredSourceId === el.dataset.src;
-    patchIngredient(ing.id, { preferredSourceId: already ? "" : el.dataset.src });
+    const already = ing.preferredProductId === el.dataset.product;
+    patchIngredient(ing.id, { preferredProductId: already ? "" : el.dataset.product });
   },
 
-  setSourceOfferKind: (el) => {
+  setProductOfferKind: (el) => {
     const kind = el.value;
     if (!kind) {
-      patchSource(el.dataset.id, el.dataset.src, { offer: null });
+      patchProduct(el.dataset.id, el.dataset.product, { offer: null });
       return;
     }
-    const src = sourceOf(el.dataset.id, el.dataset.src);
-    const prev = (src && src.offer) || {};
+    const product = productOf(el.dataset.id, el.dataset.product);
+    const prev = (product && product.offer) || {};
     const seed = { kind, ends: prev.ends || "" };
     if (kind === "loyalty") seed.price = prev.price || 0;
     if (kind === "multibuy") { seed.qty = prev.qty || 2; seed.price = prev.price || 0; }
     if (kind === "xfory") { seed.qty = prev.qty || 3; seed.pay = prev.pay || 2; }
-    patchSource(el.dataset.id, el.dataset.src, { offer: seed });
+    patchProduct(el.dataset.id, el.dataset.product, { offer: seed });
   },
-  setSourceOfferField: (el) => {
-    const src = sourceOf(el.dataset.id, el.dataset.src);
-    if (!src || !src.offer) return;
+  setProductOfferField: (el) => {
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (!product || !product.offer) return;
     const field = el.dataset.field;
     const value = field === "ends" ? el.value : Number(el.value) || 0;
-    patchSource(el.dataset.id, el.dataset.src, { offer: { ...src.offer, [field]: value } });
+    patchProduct(el.dataset.id, el.dataset.product, { offer: { ...product.offer, [field]: value } });
   },
+
+  /* ---- the plan ---- */
+
+  setPerson: async (el) => {
+    const which = Number(el.dataset.person) || 0;
+    commit((db) => {
+      const people = [...(db.people || ["Person 1", "Person 2"])];
+      people[which] = el.value.trim() || `Person ${which + 1}`;
+      db.people = people;
+    });
+  },
+  setPlanStart: (el) => commit((db) => { db.planStart = el.value || ""; }),
+  copySlot: (el) =>
+    commit((db) => {
+      const day = db.plan[Number(el.dataset.idx)];
+      if (!day) return;
+      const pair = day[el.dataset.slot] || [null, null];
+      day[el.dataset.slot] = [pair[0], pair[0]];
+    }),
 
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
   setSlot: (el) =>
     commit((db) => {
       const day = db.plan[Number(el.dataset.idx)];
-      if (day) day[el.dataset.slot] = el.value || null;
+      if (!day) return;
+      const pair = Array.isArray(day[el.dataset.slot]) ? [...day[el.dataset.slot]] : [null, null];
+      pair[Number(el.dataset.person) || 0] = el.value || null;
+      day[el.dataset.slot] = pair;
     }),
   fillSlot: (el) => {
     const slot = el.dataset.slot;
-    const first = state.db.plan[0] && state.db.plan[0][slot];
-    if (!first) {
+    const first = (state.db.plan[0] && state.db.plan[0][slot]) || [null, null];
+    if (!first[0] && !first[1]) {
       flash("err", `Set day one's ${slot} first, then this copies it across.`);
       return;
     }
     commit((db) => {
       db.plan.forEach((day) => {
-        if (day && !day[slot]) day[slot] = first;
+        if (!day) return;
+        const pair = Array.isArray(day[slot]) ? day[slot] : [null, null];
+        // only the empty places, so a day you have already decided is safe
+        day[slot] = [pair[0] || first[0], pair[1] || first[1]];
       });
     });
   },
   clearPlan: () => {
     if (confirm("Clear both weeks?"))
       commit((db) => {
-        db.plan = Array.from({ length: 14 }, () => ({ breakfast: null, lunch: null, dinner: null }));
+        db.plan = Array.from({ length: 14 }, () => ({
+          breakfast: [null, null], lunch: [null, null], dinner: [null, null],
+        }));
       });
   },
 
@@ -2308,26 +2578,23 @@ const actions = {
     patchIngredient(el.dataset.id, { [field]: value });
   },
   // portions and stock are both counts of things, so never below zero
-  setNumber: (el) =>
-    patchIngredient(el.dataset.id, { [el.dataset.field]: Math.max(0, Number(el.value) || 0) }),
-  setPrice: (el) =>
-    patchIngredient(el.dataset.id, { pricePerPack: Number(el.value) || 0, priceUpdated: now() }),
   addBarcode: (el) => {
     const id = el.dataset.id;
-    const sourceId = el.dataset.src;
+    const productId = el.dataset.product;
     openCamera("Scan a barcode", (code) => {
-      const src = sourceOf(id, sourceId);
+      const product = productOf(id, productId);
       const ing = ingredient(id);
-      if (!ing || !src) return;
-      patchSource(id, sourceId, { barcodes: [...new Set([...(src.barcodes || []), code])] });
-      flash("ok", `Barcode ${code} bound to ${ing.name} at ${src.store || "this shop"}.`);
+      if (!ing || !product) return;
+      patchProduct(id, productId, { barcodes: [...new Set([...(product.barcodes || []), code])] });
+      // a barcode names one exact thing, so say which one it landed on
+      flash("ok", `Barcode ${code} bound to ${product.name || ing.name}.`);
     });
   },
   delBarcode: (el) => {
-    const src = sourceOf(el.dataset.id, el.dataset.src);
-    if (!src) return;
-    patchSource(el.dataset.id, el.dataset.src, {
-      barcodes: (src.barcodes || []).filter((b) => b !== el.dataset.code),
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (!product) return;
+    patchProduct(el.dataset.id, el.dataset.product, {
+      barcodes: (product.barcodes || []).filter((b) => b !== el.dataset.code),
     });
   },
 
@@ -2364,7 +2631,8 @@ const actions = {
   addMealIng: (el) =>
     commit((db) => {
       const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.items.push({ ingredientId: db.ingredients[0].id, portions: 0.5 });
+      // blank product: any of that ingredient will do, which is the usual case
+      if (m) m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5 });
     }),
   delMealIng: (el) =>
     commit((db) => {
@@ -2374,7 +2642,18 @@ const actions = {
   setMealIng: (el) =>
     commit((db) => {
       const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.items[Number(el.dataset.i)].ingredientId = el.value;
+      if (!m) return;
+      // a product of the old ingredient means nothing under the new one
+      m.items[Number(el.dataset.i)] = {
+        ...m.items[Number(el.dataset.i)],
+        ingredientId: el.value,
+        productId: "",
+      };
+    }),
+  setMealProduct: (el) =>
+    commit((db) => {
+      const m = db.meals.find((x) => x.id === el.dataset.id);
+      if (m) m.items[Number(el.dataset.i)].productId = el.value || "";
     }),
   setMealPortions: (el) =>
     commit((db) => {
@@ -2412,9 +2691,14 @@ const actions = {
     const i = Number(el.dataset.i);
     // Portions are a different size on a different item, so a figure typed
     // against the old target must not carry over to the new one.
+    const ing = el.value && el.value !== "__new__" ? ingredient(el.value) : null;
     rows[i] = {
       ...rows[i],
       targetId: el.value,
+      // pick the likeliest one of that kind at this shop, or something new
+      productId: ing
+        ? (resolveProduct(ing, state.sheet.store, rows[i].raw) || {}).id || "__new__"
+        : "",
       use: !!el.value,
       why: el.value ? "you chose it" : "ignored",
       stockAdd: 0,
@@ -2449,6 +2733,19 @@ const actions = {
     rows[i] = { ...rows[i], newPortions: Math.max(0.5, Number(el.value) || 1) };
     // a redraw here, unlike the name field, because the pack size decides how
     // many portions the line puts into stock
+    setSheet({ ...state.sheet, rows });
+  },
+  setRowProduct: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], productId: el.value, stockAdd: 0, stockTouched: false };
+    // a different one may have been priced since this receipt was printed
+    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date, state.sheet.store) });
+  },
+  setRowProductName: (el) => {
+    const rows = state.sheet.rows.slice();
+    const i = Number(el.dataset.i);
+    rows[i] = { ...rows[i], newProductName: el.value };
     setSheet({ ...state.sheet, rows });
   },
   setRowStock: (el) => {
