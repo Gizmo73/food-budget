@@ -1,7 +1,7 @@
 {
-  "name": "Fortnight Shop",
-  "short_name": "Shop",
-  "description": "Portion-based meal planner and food budget, priced from receipts and barcodes.",
+  "name": "Fortnight Shop (sources test)",
+  "short_name": "Shop test",
+  "description": "Test build: one ingredient, several shops. Separate data from the live app.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -10,7 +10,7 @@
   "theme_color": "#15171B",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%2315171B'/%3E%3Ctext x='256' y='352' font-size='300' font-family='monospace' font-weight='bold' fill='%23F5C400' text-anchor='middle'%3E£%3C/text%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%2315171B'/%3E%3Ctext x='256' y='352' font-size='300' font-family='monospace' font-weight='bold' fill='%23F5C400' text-anchor='middle'%3E\u00a3%3C/text%3E%3C/svg%3E",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

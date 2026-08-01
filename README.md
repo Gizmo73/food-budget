@@ -1,5 +1,12 @@
 # Fortnight Shop
 
+> **This branch is the sources test build.** It stores its data separately from the
+> live app: a different IndexedDB name (`fortnight-shop-next`), its own service worker
+> cache, and its own home-screen name. Deploy it to a subfolder such as `/next/` and it
+> cannot touch your real list. Point it at a different file in `shop-data`, for example
+> `prices-next.json`, before connecting a database. See "Trying this alongside the live
+> app" below.
+
 A portion-based meal planner and food budget for UK shopping. Static site, no build step, no server. Prices are captured from receipts and barcodes rather than scraped, so nothing breaks when a supermarket changes its website.
 
 Ported from the Meal_Planner spreadsheet. The maths is identical: portions needed across 14 days, minus the portions in stock, rounded up to whole packs, grouped by store. The seeded data reproduces the spreadsheet's £12.60 total exactly.
@@ -35,7 +42,7 @@ Matching gets better every shop, because confirming a line saves that receipt's 
 
 So the first receipt needs the most tapping and later ones need almost none. This is why the barcode step during receipt review is worth doing even though it is optional: it builds the barcode library that makes in-store scanning work.
 
-**Offers** are recorded per item on the Items tab, and there are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
+**Offers** are recorded per shop on the Items tab, since a Clubcard price is Tesco's business and not Aldi's. There are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
 
 Base price and offer price are kept apart on purpose. A loyalty price applies to every pack, so it feeds portion costs and meal costs. A multibuy depends on how many packs you buy, so it only affects the shopping list total. A meal is not cheaper because you bought three.
 
@@ -67,7 +74,8 @@ The QR code is generated on the device by `lib/qr.js`, written for this app rath
 
 | What | Rule |
 |---|---|
-| Prices and offers | Per item, whoever priced it most recently wins |
+| Prices and offers | Per shop, whoever priced that shop most recently wins it |
+| Sources | The union, since a shop one of you found is real information |
 | Items | The union of both sides, nothing is dropped |
 | Stock and hand-added packs | The higher count, since a bought pack is a physical fact. Stock compares in portions |
 | Barcodes and aliases | Combined, never replaced |
@@ -79,6 +87,31 @@ The meal plan is the one thing that cannot merge sensibly, since two different f
 Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
 
 Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
+
+## One ingredient, several shops
+
+**An item is an ingredient, not a product.** "Cheddar" is one thing you cook with; Tesco's and Aldi's are two places to buy it, at two prices, in two pack sizes. Those are its **sources**.
+
+What lives where follows from that:
+
+| On the ingredient | On each source |
+|---|---|
+| Name, aliases | Shop |
+| **Stock, in portions** | Price per pack |
+| What meals ask for | Portions per pack |
+| Hand-added packs | Pack size note, offer, barcodes |
+
+**Stock is pooled, and that is the whole point.** A block of cheese in the fridge does not remember which shop it came from, so buying cheddar at Asda cancels the cheddar a meal needs even though the plan was priced against Tesco. Before this, the Asda cheddar was a separate item, its stock invisible to the meal, and the list would send you back to Tesco for cheese you already had.
+
+The shopping list buys from **whichever source is cheapest per portion**, and says so on the line: *cheapest of 2 shops · Tesco is £0.15 more a portion*. Per portion, not per pack, so a bigger pack at a higher price can still win. **Pin** a source to override that when you would rather always buy it in one place, and the line says *pinned* instead.
+
+Everything that records a price records it against a shop. A receipt from Asda adds an Asda price to the cheddar you already have, rather than a second cheddar; the flash says *1 new shop price on items you already had*. Scanning does the same, defaulting to the shop that item is normally bought from, and binding the barcode to that shop only, since an own-brand code belongs to one shop.
+
+One item holds **at most one source per shop**, and a source's identity is its shop name. That makes the id the same on every device, so two people who both add Aldi end up with one Aldi rather than two. Renaming a shop onto one the item already has is refused rather than silently swallowing an entry. Two genuinely different cheddars in the same shop are two items, which is what you want, because they are two things.
+
+Receipts print legal names: `TESCO STORES LTD`, `ASDA STORES LIMITED`. Those now fold onto the shop you already have. Left alone they used to make an untidy second heading; under sources they would split one shop's price into two, which is exactly what this is here to prevent.
+
+Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco one, and both survive rather than the later push winning.
 
 ## When things were last updated
 
@@ -146,13 +179,23 @@ Everything on a Pages site is public, whether through the repo itself or through
 - The token is fine-grained and scoped to one repo with one permission. Revoke it from GitHub if a device is lost.
 - Keys in device storage are readable by anything that achieves script execution on the page. For a personal tool on your own phone that is a reasonable trade, and it is the only option without a server.
 
+## Trying this alongside the live app
+
+The data model changed, so a snapshot written here cannot be read correctly by the live app: it would find no `pricePerPack` on an item and show £0. Keep the two apart.
+
+**Local data is already separate.** The IndexedDB name is `fortnight-shop-next`, so even served from the same domain as the live app it reads and writes its own store. The service worker cache and the home-screen name differ too, so the two installs do not fight.
+
+**Keep the synced file separate as well.** In Settings, under Database, keys and backup, set **File path** to something like `prices-next.json`. The same repo and token are fine. Do that before the first push, or you will overwrite the live list.
+
+**The simplest way to load real data in** is not to connect a database at all: on the live app, Settings, Database, keys and backup, **Copy**, then paste it into the same box here and tap **Restore**. It migrates on the way in, nothing can leak back, and no token is involved.
+
 ## Files
 
 ```
 index.html              shell
 styles.css              shelf-edge ticket design system
 app.js                  state, rendering, actions
-lib/calc.js             shopping maths, ported from the spreadsheet
+lib/calc.js             shopping maths, sources, ported from the spreadsheet
 lib/store.js            IndexedDB, seed data, receipt line matching
 lib/scan.js             live barcode and QR scanning
 lib/qr.js               QR encoder for invite codes
