@@ -55,6 +55,14 @@ function applyTheme(choice) {
   if (meta) meta.setAttribute("content", wanted === "dark" ? "#1E2126" : "#FFFFFF");
 }
 
+/* Safari on iOS has ignored user-scalable=no since iOS 10, so the meta tag
+   alone leaves pinch zoom live. Zooming out then shrinks the app inside a
+   blank page it can never scroll back from, which reads as a broken layout.
+   These are the only events that offer a way to refuse it. */
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
+
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (state.settings && state.settings.theme === "system") applyTheme("system");
@@ -891,15 +899,17 @@ function offerEditor(subject, acts) {
 function moveControl(ing, product) {
   const others = state.db.ingredients.filter((i) => i.id !== ing.id);
   if (!others.length) return "";
-  // moving the only thing you can buy leaves the ingredient with nothing, so
-  // it goes; the label says so rather than letting it look like a deletion
   const last = productsOf(ing).length === 1;
 
-  return `<select class="inp" style="width:auto;padding:7px 10px;font-size:13px"
-      data-act="moveProduct" data-id="${ing.id}" data-product="${esc(product.id)}"
+  /* No font-size here on purpose: anything under 16px makes Safari zoom the
+     page in the moment it is tapped. The label stays short for the same
+     reason a select cannot be trusted with a long one, since the widest
+     option decides how much room it demands from the row. */
+  return `<select class="inp move" data-act="moveProduct" data-id="${ing.id}"
+      data-product="${esc(product.id)}"
       title="${last ? `Moving this leaves ${esc(ing.name)} empty, so it goes too` : "File this one under a different ingredient"}"
       aria-label="File ${esc(product.name || "this")} under a different ingredient">
-      <option value="" selected>${last ? "Move, and drop " + esc(ing.name) : "Move to"}&hellip;</option>
+      <option value="" selected>Move to&hellip;</option>
       ${others
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -1089,10 +1099,10 @@ function productCard(ing, product, chosen, stores) {
       <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan a barcode</button>
     </div>
-    <div class="row">
-      <span class="muted grow${stale ? " stale" : ""}">${
+    <p class="muted${stale ? " stale" : ""}" style="margin:0 0 8px">${
     product.priceUpdated ? `priced ${esc(ago(product.priceUpdated))}` : "never priced"
-  }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</span>
+  }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</p>
+    <div class="prodacts">
       <button class="btn small tonal" data-act="copyProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}" title="Same thing, another shop">Copy to a shop</button>
@@ -1102,7 +1112,13 @@ function productCard(ing, product, chosen, stores) {
   )}"${only ? " disabled" : ""} title="${
     only ? "An ingredient needs something to buy" : "Remove this one"
   }">Remove</button>
-    </div>
+    </div>${
+      only && state.db.ingredients.length > 1
+        ? `<p class="why" style="margin:6px 0 0">The only one here, so moving it takes ${esc(
+            ing.name
+          )} with it.</p>`
+        : ""
+    }
   </div>`;
 }
 

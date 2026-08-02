@@ -333,6 +333,22 @@ manifest.webmanifest    home screen install
 
 No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing. The camera overlay lives outside the render tree because a rebuild would kill the video stream.
 
+## Phones, zooming and Safari
+
+The page is pinned at 1:1 and pinch zoom is refused. Zooming out used to shrink the app inside a blank page it could not scroll back from, which reads as a broken layout rather than a zoom.
+
+Three things do that together, because no one of them is enough:
+
+| | What it stops |
+|---|---|
+| `user-scalable=no, maximum-scale=1, minimum-scale=1` | Zoom in Chrome and most browsers |
+| `touch-action: manipulation` | Double-tap-to-zoom, which a fast scroll triggers by accident |
+| Refusing `gesturestart` | Pinch on iOS Safari, which has ignored `user-scalable` since iOS 10 |
+
+**Nothing focusable is ever under 16px.** Safari on iOS zooms the whole page in the moment you tap a control smaller than that, and does not zoom back out. The meal pickers on the Plan tab were 15px and the backup box was 12px, which is what made them feel like they would not scroll: the page had silently zoomed and the gesture was landing somewhere else. It is a hard floor now, not a preference, and a test walks every tab asserting it.
+
+Sheets keep a scroll gesture to themselves rather than chaining it to the page underneath, which is the other half of a sheet that feels stuck.
+
 ## Appearance
 
 Light, dark or follow the system, under Settings. The theme is applied before first paint, so a dark-mode phone never flashes white on open.

@@ -49,6 +49,14 @@ function applyTheme(choice) {
   if (meta) meta.setAttribute("content", wanted === "dark" ? "#1E2126" : "#FFFFFF");
 }
 
+/* Safari on iOS has ignored user-scalable=no since iOS 10, so the meta tag
+   alone leaves pinch zoom live. Zooming out then shrinks the app inside a
+   blank page it can never scroll back from, which reads as a broken layout.
+   These are the only events that offer a way to refuse it. */
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
+
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (state.settings && state.settings.theme === "system") applyTheme("system");

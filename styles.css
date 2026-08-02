@@ -51,6 +51,10 @@
 
 html, body { margin:0; padding:0; background:var(--bg); }
 
+/* manipulation drops the double-tap-to-zoom delay and gesture, which is the
+   one kind of zoom a phone triggers by accident while scrolling a list. */
+html { touch-action:manipulation; }
+
 body {
   color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.45;
   -webkit-font-smoothing:antialiased; -webkit-text-size-adjust:100%;
@@ -59,6 +63,10 @@ body {
 .fb { min-height:100vh; padding:0 0 calc(88px + env(safe-area-inset-bottom)); }
 
 button { font-family:inherit; cursor:pointer; }
+/* 16px is a hard floor on anything focusable, not a preference. Safari on
+   iOS zooms the whole page in when you tap a control smaller than that, and
+   it does not zoom back out, which is what made the meal pickers feel like
+   they would not scroll. */
 input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink); }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
@@ -176,7 +184,7 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .slot .slabel { width:14px; font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); text-align:center; }
 .slot select {
   flex:1; min-width:0; padding:10px; border:1px solid var(--outline);
-  border-radius:var(--r-s); background:var(--surface); color:var(--ink); font-size:15px;
+  border-radius:var(--r-s); background:var(--surface); color:var(--ink);
 }
 
 /* --------------------------- collapsible groups ------------------------- */
@@ -200,10 +208,14 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 /* --------------------------------- sheet -------------------------------- */
 .scrim {
   position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex;
+  overscroll-behavior:none;
   align-items:flex-end; justify-content:center; z-index:50;
 }
 .sheet {
   background:var(--bg); width:100%; max-width:560px; max-height:92vh; overflow-y:auto;
+  /* keep a scroll gesture inside the sheet: without this it chains to the
+     page underneath, which on iOS reads as a stuck sheet */
+  overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
   border-radius:var(--r-l) var(--r-l) 0 0; box-shadow:var(--shadow-3);
   padding:8px 16px calc(24px + env(safe-area-inset-bottom));
 }
@@ -247,7 +259,9 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 .err { background:var(--alert-bg); color:var(--alert); padding:12px; font-size:13.5px; margin-bottom:10px; border-radius:var(--r-s); }
 .ok { background:var(--ok-bg); color:var(--ok); padding:12px; font-size:13.5px; margin-bottom:10px; border-radius:var(--r-s); }
 .empty { padding:28px 16px; text-align:center; color:var(--ink-2); font-size:14px; background:var(--surface-2); border-radius:var(--r-m); }
-textarea.inp { min-height:160px; font-size:12px; }
+/* mono at 16px so a pasted backup stays readable without tripping the
+   iOS focus zoom; the box is scrollable rather than small-print. */
+textarea.inp { min-height:160px; font-family:var(--mono); }
 
 /* banner offering a merge when the shared file has moved on */
 .banner {
