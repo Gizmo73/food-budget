@@ -10,7 +10,7 @@ import {
   resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
   findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop, moveProduct,
-  tidyProductName, SLOTS,
+  tidyProductName, markDeleted, SLOTS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, itemPortionCost, packCost, activeOffer,
@@ -175,6 +175,11 @@ let saveTimer = null;
 function commit(mutator) {
   mutator(state.db);
   state.db.updatedAt = new Date().toISOString();
+  /* The first edit means this is a real list now, not the demo one every
+     install opens on. A merge uses that to tell "they have a list of their
+     own" from "they have not started yet", and joining should not push a
+     stranger's demo items onto somebody else's shopping. */
+  state.db.demo = false;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => saveDb(state.db).catch(() => {}), 300);
   draw();
@@ -203,6 +208,22 @@ function forgetOpenProduct() {
   if (!state.sheet || state.sheet.kind !== "item") return;
   const { openProduct, ...rest } = state.sheet;
   state.sheet = rest;
+}
+
+/* Every edit to a meal stamps it, and every edit to the plan stamps the plan.
+   Without their own stamps there was nothing for a merge to compare: a meal
+   held by both phones always kept the local copy, so a meal you rewrote never
+   reached the other person, and the plan was decided by whichever database
+   had been saved last, which any unrelated price edit was enough to change. */
+function editMeal(db, id, change) {
+  const meal = db.meals.find((m) => m.id === id);
+  if (!meal) return;
+  change(meal);
+  meal.updatedAt = new Date().toISOString();
+}
+
+function touchPlan(db) {
+  db.planUpdatedAt = new Date().toISOString();
 }
 
 const ingredient = (id) => state.db.ingredients.find((i) => i.id === id);
@@ -2782,16 +2803,25 @@ function applyReceipt() {
 /* On open, see whether the shared file has moved on since this device last
    pulled. Merging is almost always what you want, so with autoMerge on it
    just happens and reports what changed; otherwise a banner offers it. */
+let checking = false;
+
 async function checkForChanges() {
   const set = state.settings;
-  if (!set.owner || !set.repo || !set.token) return;
+  if (!set || !set.owner || !set.repo || !set.token) return;
+  if (checking) return;
+  checking = true;
   try {
-    const { db } = await pull(set);
+    const { db, sha } = await pull(set);
     if (!db) return;
-    const remoteAt = db.updatedAt || "";
-    if (!remoteAt || remoteAt <= (set.lastPull || "")) return;
 
-    state.incoming = { at: remoteAt, who: db.lastPushedBy || "", db };
+    /* Whether the file has moved is decided by the file itself. Comparing the
+       snapshot's timestamp against when this device last pulled compared two
+       phones' clocks, and a phone running a few minutes slow than the other
+       pushed changes that looked older than they were and were never picked
+       up. The sha changes when, and only when, the contents change. */
+    if (sha && sha === set.lastSha) return;
+
+    state.incoming = { at: db.updatedAt || "", who: db.lastPushedBy || "", db, sha };
     if (set.autoMerge) {
       await acceptIncoming(true);
     } else {
@@ -2799,6 +2829,8 @@ async function checkForChanges() {
     }
   } catch (err) {
     // offline or a bad token should never block the app from opening
+  } finally {
+    checking = false;
   }
 }
 
@@ -2809,12 +2841,17 @@ async function acceptIncoming(quiet) {
   state.db = merged;
   state.incoming = null;
   await saveDb(state.db);
-  state.settings = { ...state.settings, lastPull: new Date().toISOString() };
+  state.settings = {
+    ...state.settings,
+    lastPull: new Date().toISOString(),
+    lastSha: incoming.sha || state.settings.lastSha || "",
+  };
   await saveSettings(state.settings);
 
   const bits = [];
-  if (notes.added) bits.push(`${notes.added} new item${notes.added === 1 ? "" : "s"}`);
-  if (notes.updated) bits.push(`${notes.updated} updated price${notes.updated === 1 ? "" : "s"}`);
+  if (notes.added) bits.push(`${notes.added} new${notes.added === 1 ? "" : "s"}`);
+  if (notes.updated) bits.push(`${notes.updated} updated`);
+  if (notes.removed) bits.push(`${notes.removed} removed`);
   const who = incoming.who ? `${incoming.who}'s` : "Their";
   flash(
     "ok",
@@ -2848,11 +2885,12 @@ async function joinList(code) {
     // a different database entirely, so what this device last saw means nothing
     lastPull: "",
     lastPush: "",
+    lastSha: "",
   };
   await saveSettings(state.settings);
 
   try {
-    const { db } = await pull(state.settings);
+    const { db, sha } = await pull(state.settings);
     if (!db) {
       setSheet({
         ...state.sheet,
@@ -2865,7 +2903,7 @@ async function joinList(code) {
     const { db: merged, notes } = mergeSnapshots(state.db, db);
     state.db = merged;
     await saveDb(state.db);
-    state.settings = { ...state.settings, lastPull: new Date().toISOString() };
+    state.settings = { ...state.settings, lastPull: new Date().toISOString(), lastSha: sha || "" };
     await saveSettings(state.settings);
 
     const bits = [];
@@ -2887,7 +2925,7 @@ async function joinList(code) {
 async function pullNow() {
   setSheet({ ...state.sheet, msg: "Pulling…", err: false });
   try {
-    const { db } = await pull(state.settings);
+    const { db, sha } = await pull(state.settings);
     if (!db) {
       setSheet({ ...state.sheet, msg: "No file there yet. Push first to create it.", err: false });
       return;
@@ -2898,12 +2936,17 @@ async function pullNow() {
     const { db: merged, notes } = mergeSnapshots(state.db, db);
     state.db = merged;
     await saveDb(state.db);
-    state.settings = { ...state.settings, lastPull: new Date().toISOString() };
+    state.settings = {
+      ...state.settings,
+      lastPull: new Date().toISOString(),
+      lastSha: sha || "",
+    };
     await saveSettings(state.settings);
 
     const bits = [];
-    if (notes.added) bits.push(`${notes.added} new item${notes.added === 1 ? "" : "s"}`);
-    if (notes.updated) bits.push(`${notes.updated} price${notes.updated === 1 ? "" : "s"} newer than yours`);
+    if (notes.added) bits.push(`${notes.added} new`);
+    if (notes.updated) bits.push(`${notes.updated} newer than yours`);
+    if (notes.removed) bits.push(`${notes.removed} they removed`);
     if (notes.kept) bits.push(`${notes.kept} of yours kept`);
     bits.push(`meal plan from ${notes.planFrom === "remote" ? "the repo" : "this device"}`);
     setSheet({ ...state.sheet, msg: `Merged: ${bits.join(", ")}.`, err: false });
@@ -2917,10 +2960,9 @@ async function pushNow() {
   try {
     let remoteNewer = false;
     try {
-      const { db } = await pull(state.settings);
-      if (db && db.updatedAt && state.settings.lastPull && db.updatedAt > state.settings.lastPull) {
-        remoteNewer = true;
-      }
+      const { db, sha } = await pull(state.settings);
+      // the file has moved since this device last saw it, whoever moved it
+      if (db && sha && state.settings.lastSha && sha !== state.settings.lastSha) remoteNewer = true;
     } catch (err) {
       /* a missing file is fine, push will create it */
     }
@@ -2933,8 +2975,13 @@ async function pushNow() {
       return;
     }
     state.db.lastPushedBy = (state.settings.person || "").trim();
-    await push(state.settings, state.db);
-    state.settings = { ...state.settings, lastPush: new Date().toISOString(), lastPull: new Date().toISOString() };
+    const { sha } = await push(state.settings, state.db);
+    state.settings = {
+      ...state.settings,
+      lastPush: new Date().toISOString(),
+      lastPull: new Date().toISOString(),
+      lastSha: sha || "",
+    };
     await saveSettings(state.settings);
     setSheet({ ...state.sheet, msg: "Pushed. Git now holds this snapshot.", err: false });
   } catch (err) {
@@ -3419,6 +3466,7 @@ const actions = {
     if (!confirm(`Stop buying ${ing.name} as ${(product && product.name) || "this"}?`)) return;
     forgetOpenProduct();
     commit((db) => {
+      markDeleted(db, "prod", ing.id, el.dataset.product);
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
       const was = db.ingredients[i];
@@ -3430,14 +3478,21 @@ const actions = {
         products: (was.products || []).filter((p) => p.id !== el.dataset.product),
       };
       // a meal naming this one now means "any", which is better than nothing
-      db.meals = db.meals.map((m) => ({
-        ...m,
-        items: m.items.map((it) =>
-          it.ingredientId === ing.id && it.productId === el.dataset.product
-            ? { ...it, productId: "" }
-            : it
-        ),
-      }));
+      const names = (m) =>
+        m.items.some((it) => it.ingredientId === ing.id && it.productId === el.dataset.product);
+      db.meals = db.meals.map((m) =>
+        names(m)
+          ? {
+              ...m,
+              updatedAt: now(),
+              items: m.items.map((it) =>
+                it.ingredientId === ing.id && it.productId === el.dataset.product
+                  ? { ...it, productId: "" }
+                  : it
+              ),
+            }
+          : m
+      );
     });
   },
   pinProduct: (el) => {
@@ -3477,15 +3532,17 @@ const actions = {
       const people = [...(db.people || ["Person 1", "Person 2"])];
       people[which] = el.value.trim() || `Person ${which + 1}`;
       db.people = people;
+      touchPlan(db);
     });
   },
-  setPlanStart: (el) => commit((db) => { db.planStart = el.value || ""; }),
+  setPlanStart: (el) => commit((db) => { db.planStart = el.value || ""; touchPlan(db); }),
   copySlot: (el) =>
     commit((db) => {
       const day = db.plan[Number(el.dataset.idx)];
       if (!day) return;
       const pair = day[el.dataset.slot] || [null, null];
       day[el.dataset.slot] = [pair[0], pair[0]];
+      touchPlan(db);
     }),
 
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
@@ -3496,6 +3553,7 @@ const actions = {
       const pair = Array.isArray(day[el.dataset.slot]) ? [...day[el.dataset.slot]] : [null, null];
       pair[Number(el.dataset.person) || 0] = el.value || null;
       day[el.dataset.slot] = pair;
+      touchPlan(db);
     }),
   fillSlot: (el) => {
     const slot = el.dataset.slot;
@@ -3511,6 +3569,7 @@ const actions = {
         // only the empty places, so a day you have already decided is safe
         day[slot] = [pair[0] || first[0], pair[1] || first[1]];
       });
+      touchPlan(db);
     });
   },
   clearPlan: () => {
@@ -3519,6 +3578,7 @@ const actions = {
         db.plan = Array.from({ length: 14 }, () => ({
           breakfast: [null, null], lunch: [null, null], dinner: [null, null],
         }));
+        touchPlan(db);
       });
   },
 
@@ -3548,8 +3608,18 @@ const actions = {
     const ing = ingredient(id);
     if (!confirm(`Delete ${ing ? ing.name : "this item"}? It will be removed from every meal too.`)) return;
     commit((db) => {
+      markDeleted(db, "ing", id);
       db.ingredients = db.ingredients.filter((i) => i.id !== id);
-      db.meals = db.meals.map((m) => ({ ...m, items: m.items.filter((it) => it.ingredientId !== id) }));
+      // the meals that used it changed, so they are edits like any other
+      db.meals = db.meals.map((m) =>
+        m.items.some((it) => it.ingredientId === id)
+          ? {
+              ...m,
+              items: m.items.filter((it) => it.ingredientId !== id),
+              updatedAt: new Date().toISOString(),
+            }
+          : m
+      );
     });
     setSheet(null);
   },
@@ -3588,7 +3658,7 @@ const actions = {
     setSheet(open ? null : { kind: "meal", id });
   },
   addMeal: () => {
-    const meal = { id: uid(), name: "New meal", items: [] };
+    const meal = { id: uid(), name: "New meal", items: [], updatedAt: new Date().toISOString() };
     commit((db) => db.meals.push(meal));
     setSheet({ kind: "meal", id: meal.id });
   },
@@ -3596,7 +3666,9 @@ const actions = {
     const id = el.dataset.id;
     if (!confirm("Delete this meal? Any planned days using it will empty.")) return;
     commit((db) => {
+      markDeleted(db, "meal", id);
       db.meals = db.meals.filter((m) => m.id !== id);
+      touchPlan(db);
       db.plan = db.plan.map((day) => {
         const next = { ...day };
         SLOTS.forEach((slot) => {
@@ -3608,42 +3680,39 @@ const actions = {
     setSheet(null);
   },
   setMealName: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.name = el.value;
-    }),
+    commit((db) => editMeal(db, el.dataset.id, (m) => { m.name = el.value; })),
   addMealIng: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
+    commit((db) =>
       // blank product: any of that ingredient will do, which is the usual case
-      if (m) m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5 });
-    }),
+      editMeal(db, el.dataset.id, (m) =>
+        m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5 })
+      )
+    ),
   delMealIng: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.items.splice(Number(el.dataset.i), 1);
-    }),
+    commit((db) => editMeal(db, el.dataset.id, (m) => m.items.splice(Number(el.dataset.i), 1))),
   setMealIng: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (!m) return;
-      // a product of the old ingredient means nothing under the new one
-      m.items[Number(el.dataset.i)] = {
-        ...m.items[Number(el.dataset.i)],
-        ingredientId: el.value,
-        productId: "",
-      };
-    }),
+    commit((db) =>
+      editMeal(db, el.dataset.id, (m) => {
+        // a product of the old ingredient means nothing under the new one
+        m.items[Number(el.dataset.i)] = {
+          ...m.items[Number(el.dataset.i)],
+          ingredientId: el.value,
+          productId: "",
+        };
+      })
+    ),
   setMealProduct: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.items[Number(el.dataset.i)].productId = el.value || "";
-    }),
+    commit((db) =>
+      editMeal(db, el.dataset.id, (m) => {
+        m.items[Number(el.dataset.i)].productId = el.value || "";
+      })
+    ),
   setMealPortions: (el) =>
-    commit((db) => {
-      const m = db.meals.find((x) => x.id === el.dataset.id);
-      if (m) m.items[Number(el.dataset.i)].portions = Number(el.value) || 0;
-    }),
+    commit((db) =>
+      editMeal(db, el.dataset.id, (m) => {
+        m.items[Number(el.dataset.i)].portions = Number(el.value) || 0;
+      })
+    ),
 
   shootReceipt: () => shootReceipt(),
   setReceiptStore: (el) => {
@@ -3842,20 +3911,29 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 /* On a phone the tab is rarely "closed", it is backgrounded. This is the only
-   reliable moment to save, so push quietly then rather than nagging. */
+   reliable moment to save, so push quietly then rather than nagging.
+
+   Coming back is the other half, and it was missing. A phone that keeps the
+   app in the background never reloads, so the check on opening never ran
+   again and the other person's changes sat in the file unseen for days. */
 let leaving = false;
 document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible") {
+    if (!leaving) checkForChanges();
+    return;
+  }
   if (document.visibilityState !== "hidden") return;
   if (!state.settings || !state.settings.warnOnLeave) return;
   if (!isDirty() || leaving) return;
   leaving = true;
   try {
     state.db.lastPushedBy = (state.settings.person || "").trim();
-    await push(state.settings, state.db);
+    const { sha } = await push(state.settings, state.db);
     state.settings = {
       ...state.settings,
       lastPush: new Date().toISOString(),
       lastPull: new Date().toISOString(),
+      lastSha: sha || "",
     };
     await saveSettings(state.settings);
   } catch (err) {
