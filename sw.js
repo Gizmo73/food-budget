@@ -7,7 +7,7 @@
    half new set of files. */
 
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}23`;
+const CACHE = `${PREFIX}24`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will

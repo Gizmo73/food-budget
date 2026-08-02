@@ -380,6 +380,16 @@ Three things do that together, because no one of them is enough:
 
 Sheets keep a scroll gesture to themselves rather than chaining it to the page underneath, which is the other half of a sheet that feels stuck.
 
+## Folding an item's editor away
+
+A product carries four sections that can be put away: **pack and portion**, **offer**, **nutrition** and **barcodes**. Only pack and portion is open to begin with.
+
+Each folded section still shows a summary, because a fold that does not say what is inside just makes you open all of them: *"4 a pack, 142g each"*, *"3 for £8"*, *"117 kcal a portion"*, *"1 scanned"*.
+
+Which sections are open is remembered **by kind, not by product**. Somebody who is not editing calories does not want to see them on any of forty items, and would not want to close them forty times either. Open nutrition on one item and it is open on all of them.
+
+A folded section renders nothing at all rather than hiding it with CSS, so a long item editor is genuinely shorter to scroll rather than only appearing to be.
+
 ## Appearance
 
 Light, dark or follow the system, under Settings. The theme is applied before first paint, so a dark-mode phone never flashes white on open.

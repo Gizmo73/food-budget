@@ -2,19 +2,24 @@
    Material-leaning surfaces and elevation, keeping the shelf-edge character:
    one yellow accent, monospace tabular figures for anything that is money.
    Light and dark are the same token names with different values, so nothing
-   downstream needs to know which is active. */
+   downstream needs to know which is active.
+
+   Every step between these surfaces is about 8% more contrast than it was,
+   measured as a WCAG ratio rather than judged by eye: a card lifts off the
+   page, a panel lifts off the card, and a rule is visible on a phone held at
+   arm's length in a shop. */
 
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
   color-scheme: light;
-  --bg:#F2F2ED;
+  --bg:#E9E9E4;
   --surface:#FFFFFF;
-  --surface-2:#E9E9E2;
-  --surface-3:#DFDFD6;
+  --surface-2:#E1E1DA;
+  --surface-3:#CFCFC7;
   --ink:#16181C;
-  --ink-2:#5A5E66;
-  --outline:#CFD0C8;
+  --ink-2:#555961;
+  --outline:#C7C8C0;
   --accent:#F5C400;
   --on-accent:#16181C;
   --alert:#B3301A;
@@ -32,12 +37,12 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg:#141619;
-  --surface:#1E2126;
-  --surface-2:#262A30;
-  --surface-3:#31363D;
+  --surface:#24272D;
+  --surface-2:#30353C;
+  --surface-3:#3F454E;
   --ink:#ECEDEE;
-  --ink-2:#A2A7AF;
-  --outline:#3A4048;
+  --ink-2:#AFB4BD;
+  --outline:#434A53;
   --accent:#F5C400;
   --on-accent:#16181C;
   --alert:#FF8A73;
@@ -217,6 +222,30 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
   width:auto; flex:1 1 130px; min-width:0; padding:7px 10px; min-height:36px;
   border-radius:var(--r-full); background:var(--surface-2); border-color:transparent;
 }
+
+/* ------------------------------- folds --------------------------------- */
+/* A section of an editor that can be put away. The header is the whole width
+   so it is easy to hit, and carries a summary on the right, because a folded
+   section that does not say what is in it just makes you open all of them. */
+.fold {
+  border:1px solid var(--outline); border-radius:var(--r-s);
+  background:var(--surface-2); margin-bottom:8px; overflow:hidden;
+}
+.fold.open { background:var(--surface-3); }
+.foldhead {
+  display:flex; align-items:flex-start; gap:8px; width:100%; text-align:left;
+  border:0; background:none; color:var(--ink); padding:10px 12px; min-height:44px;
+}
+.fold.open .foldhead { border-bottom:1px solid var(--outline); }
+.foldhead .chev { margin-top:2px; }
+/* Name over summary rather than beside it. Side by side, a phone this narrow
+   truncated the summary to "4 a pack, no wei…", which is worse than useless:
+   the whole point of a summary is reading it without opening the section. */
+.foldtext { min-width:0; flex:1; }
+.foldname { display:block; font-size:13px; font-weight:700; letter-spacing:0.02em; }
+.foldsum { display:block; font-size:12.5px; color:var(--ink-2); margin-top:1px; }
+.foldbody { padding:10px 12px 12px; background:var(--surface-2); }
+.foldbody > *:last-child { margin-bottom:0; }
 
 .slot { display:flex; align-items:center; gap:8px; margin-top:6px; }
 /* "=" is a short glyph and sits high in most faces. Mono and a size up so it

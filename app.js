@@ -915,8 +915,10 @@ function viewMeals() {
       ? `<div class="empty">Nothing can be made from what is in right now. The List tab knows what to buy.</div>`
       : "";
 
-  return `${filter}${nothing}${cards}
-    <button class="btn wide" data-act="addMeal">Add a meal</button><div class="spacer"></div>`;
+  /* Adding sits at the top, as it does on Items. It is the only thing you
+     come to this screen to press that is not one of the meals themselves. */
+  return `<button class="btn tonal wide" style="margin-bottom:10px" data-act="addMeal">Add a meal</button>
+    ${filter}${nothing}${cards}<div class="spacer"></div>`;
 }
 
 /* ---- items ---- */
@@ -1008,6 +1010,31 @@ function moveControl(ing, product) {
     </select>`;
 }
 
+/* A section of the product editor that can be folded away.
+
+   Which sections are open is remembered by kind rather than per product, so
+   closing nutrition closes it everywhere. That is the point of the request:
+   somebody who is not editing calories does not want to see them on any of
+   forty items, and would not want to close them forty times either.
+
+   A closed section still carries its summary, so the fold hides the controls
+   without hiding the state. A section you cannot read at a glance is worse
+   than one that is simply long. */
+function fold(kind, title, summary, body) {
+  const open = (state.settings.openSections || []).includes(kind);
+  return `<section class="fold${open ? " open" : ""}">
+    <button class="foldhead" data-act="toggleSection" data-kind="${kind}"
+      aria-expanded="${open ? "true" : "false"}">
+      <span class="chev">${open ? "\u25BE" : "\u25B8"}</span>
+      <span class="foldtext">
+        <span class="foldname">${title}</span>
+        <span class="foldsum">${summary}</span>
+      </span>
+    </button>
+    ${open ? `<div class="foldbody">${body}</div>` : ""}
+  </section>`;
+}
+
 /* Nutrition as the label prints it: per 100. What a portion comes to is
    derived from the portion size and shown underneath, so redefining a portion
    visibly moves the calories rather than leaving a stale figure behind. */
@@ -1025,9 +1052,20 @@ function nutritionEditor(ing, product) {
       product.id
     )}" data-field="${key}100" aria-label="${label} per 100${unit}"></label>`;
 
-  return `<div style="margin-bottom:8px">
-    <div class="row" style="margin-bottom:6px">
-      <span class="eyebrow grow">Nutrition, per 100${unit}</span>
+  /* The summary is what a closed section has to earn its place with: the
+     calories a portion, which is the number anybody opening this wanted. */
+  const summary = !known
+    ? "not filled in"
+    : per > 0
+    ? `${Math.round(portion.kcal)} kcal a portion`
+    : `${trim2(Number(product.kcal100) || 0)} kcal per 100${unit}, no portion weight`;
+
+  return fold(
+    "nutrition",
+    `Nutrition`,
+    summary,
+    `<div class="row" style="margin-bottom:6px">
+      <span class="eyebrow grow">Per 100${unit}, as the label prints it</span>
       <button class="btn small tonal" data-act="shootLabel" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan the label</button>
     </div>
@@ -1046,8 +1084,8 @@ function nutritionEditor(ing, product) {
         : `Set a pack size and portion above and this becomes a figure per portion.`
     }${
     product.nutritionUpdated && known ? ` Read ${esc(ago(product.nutritionUpdated))}.` : ""
-  }</p>
-  </div>`;
+  }</p>`
+  );
 }
 
 /* Pack size and what a portion of it is. These two decide the portion weight,
@@ -1078,8 +1116,17 @@ function portionEditor(ing, product) {
     ? `That makes a portion <b>${trim2(per)}${unit}</b>.`
     : `Add a pack size and a portion gets a weight, which is what calories are worked out from.`;
 
-  return `<div style="margin-bottom:8px">
-    <div class="grid2" style="margin-bottom:6px">
+  const summary = !product.packUnit
+    ? `${trim2(count)} a pack, no weight`
+    : byWeight
+    ? `${trim2(Number(product.portionGrams) || 0)}${unit} each, ${trim2(count)} a pack`
+    : `${trim2(count)} a pack${per > 0 ? `, ${trim2(Math.round(per))}${unit} each` : ""}`;
+
+  return fold(
+    "portion",
+    "Pack and portion",
+    summary,
+    `<div class="grid2" style="margin-bottom:6px">
       <label class="field"><span class="eyebrow">Pack size</span>
         <input class="inp mono" type="number" step="1" min="0" value="${trim2(pack)}"
           ${attrs("setProductNumber", "packAmount")} aria-label="How much is in a pack"></label>
@@ -1108,8 +1155,8 @@ function portionEditor(ing, product) {
     }
     <p class="why" style="margin:0">${
       product.packUnit ? derived : "This pack has no weight, so calories cannot be worked out from a label."
-    }</p>
-  </div>`;
+    }</p>`
+  );
 }
 
 /* One product: a thing you can actually put in a trolley. It has a name of its
@@ -1176,19 +1223,28 @@ function productCard(ing, product, chosen, stores) {
       <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
         data-product="${esc(product.id)}" title="Put a pack into stock">+ pack</button>
     </div>
-    ${offerEditor(product, {
-      kind: "setProductOfferKind",
-      field: "setProductOfferField",
-      id: ing.id,
-      product: product.id,
-    })}
+    ${fold(
+      "offer",
+      "Offer",
+      offerLabel(product) || (offerExpired(product) ? "ended, full price" : "none"),
+      offerEditor(product, {
+        kind: "setProductOfferKind",
+        field: "setProductOfferField",
+        id: ing.id,
+        product: product.id,
+      })
+    )}
     ${nutritionEditor(ing, product)}
-    <div style="margin-bottom:8px">
-      <span class="eyebrow" style="display:block;margin-bottom:6px">Barcodes</span>
-      <div style="margin-bottom:8px">${codes}</div>
+    ${fold(
+      "barcodes",
+      "Barcodes",
+      (product.barcodes || []).length
+        ? `${product.barcodes.length} scanned`
+        : "none yet",
+      `<div style="margin-bottom:8px">${codes}</div>
       <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}"
-        data-product="${esc(product.id)}">Scan a barcode</button>
-    </div>
+        data-product="${esc(product.id)}">Scan a barcode</button>`
+    )}
     <p class="muted${stale ? " stale" : ""}" style="margin:0 0 8px">${
     product.priceUpdated ? `priced ${esc(ago(product.priceUpdated))}` : "never priced"
   }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</p>
@@ -2976,6 +3032,16 @@ const actions = {
   toggleFlag: async (el) => {
     const key = el.dataset.key;
     state.settings = { ...state.settings, [key]: !state.settings[key] };
+    await saveSettings(state.settings);
+    draw();
+  },
+  toggleSection: async (el) => {
+    const kind = el.dataset.kind;
+    const open = state.settings.openSections || [];
+    state.settings = {
+      ...state.settings,
+      openSections: open.includes(kind) ? open.filter((k) => k !== kind) : [...open, kind],
+    };
     await saveSettings(state.settings);
     draw();
   },
