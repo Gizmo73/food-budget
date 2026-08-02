@@ -35,7 +35,7 @@ Matching gets better every shop, because confirming a line saves that receipt's 
 
 So the first receipt needs the most tapping and later ones need almost none. This is why the barcode step during receipt review is worth doing even though it is optional: it builds the barcode library that makes in-store scanning work.
 
-**Offers** are recorded per item on the Items tab, and there are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
+**Offers** are recorded per shop on the Items tab, since a Clubcard price is Tesco's business and not Aldi's. There are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
 
 Base price and offer price are kept apart on purpose. A loyalty price applies to every pack, so it feeds portion costs and meal costs. A multibuy depends on how many packs you buy, so it only affects the shopping list total. A meal is not cheaper because you bought three.
 
@@ -67,7 +67,8 @@ The QR code is generated on the device by `lib/qr.js`, written for this app rath
 
 | What | Rule |
 |---|---|
-| Prices and offers | Per item, whoever priced it most recently wins |
+| Prices and offers | Per shop, whoever priced that shop most recently wins it |
+| Sources | The union, since a shop one of you found is real information |
 | Items | The union of both sides, nothing is dropped |
 | Stock and hand-added packs | The higher count, since a bought pack is a physical fact. Stock compares in portions |
 | Barcodes and aliases | Combined, never replaced |
@@ -79,6 +80,179 @@ The meal plan is the one thing that cannot merge sensibly, since two different f
 Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
 
 Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
+
+## Ingredients, and the products under them
+
+**An ingredient is what a recipe asks for. A product is what you put in a trolley.** "Cheddar" is the ingredient; Cathedral City at Tesco, Tesco Finest at Tesco and the Asda own brand are three of its products. Two products may share a shop, because two of those are both cheddar and both Tesco.
+
+| On the ingredient | On each product |
+|---|---|
+| Name, aliases | Its own name, and the shop |
+| What meals ask for | Price per pack, portions per pack |
+| Hand-added packs | **Stock, in portions** |
+| | Pack size, portion, nutrition, offer, barcodes |
+
+**Stock sits on the product**, because a meal is allowed to demand one specific one and the app has to be able to answer "have I got *that*". An ingredient's stock is the sum of its products', so "any cheddar will do" still pools exactly as it did.
+
+**A meal item can name a product, or not.** Blank is the useful default: the meal wants cheddar, any cheddar in the house counts, and the list buys the cheapest per portion. Name one and only that one satisfies it, so it goes on the list even with other cheddar in the fridge. Named demands are worked out first and eat their own product's stock, leaving whatever they cannot eat for the loose demand to use.
+
+**Scanning is two steps**: what kind of thing this is, then which one of them. A barcode names one exact product, so it binds there and nowhere else. **Receipts** do the same with the shop already known: the wording picks the ingredient, then the product at that shop by its printed name, or the only one you buy there, or something new with its name already tidied of the shop and the pack size.
+
+## One ingredient, several shops
+
+**An item is an ingredient, not a product.** "Cheddar" is one thing you cook with; Tesco's and Aldi's are two places to buy it, at two prices, in two pack sizes. Those are its **sources**.
+
+What lives where follows from that:
+
+| On the ingredient | On each source |
+|---|---|
+| Name, aliases | Shop |
+| **Stock, in portions** | Price per pack |
+| What meals ask for | Portions per pack |
+| Hand-added packs | Pack size, portion, nutrition, offer, barcodes |
+
+**Stock is pooled, and that is the whole point.** A block of cheese in the fridge does not remember which shop it came from, so buying cheddar at Asda cancels the cheddar a meal needs even though the plan was priced against Tesco. Before this, the Asda cheddar was a separate item, its stock invisible to the meal, and the list would send you back to Tesco for cheese you already had.
+
+The shopping list buys from **whichever source is cheapest per portion**, and says so on the line: *cheapest of 2 shops · Tesco is £0.15 more a portion*. Per portion, not per pack, so a bigger pack at a higher price can still win. **Pin** a source to override that when you would rather always buy it in one place, and the line says *pinned* instead.
+
+Everything that records a price records it against a shop. A receipt from Asda adds an Asda price to the cheddar you already have, rather than a second cheddar; the flash says *1 new shop price on items you already had*. Scanning does the same, defaulting to the shop that item is normally bought from, and binding the barcode to that shop only, since an own-brand code belongs to one shop.
+
+One item holds **at most one source per shop**, and a source's identity is its shop name. That makes the id the same on every device, so two people who both add Aldi end up with one Aldi rather than two. Renaming a shop onto one the item already has is refused rather than silently swallowing an entry. Two genuinely different cheddars in the same shop are two items, which is what you want, because they are two things.
+
+Receipts print legal names: `TESCO STORES LTD`, `ASDA STORES LIMITED`. Those now fold onto the shop you already have. Left alone they used to make an untidy second heading; under sources they would split one shop's price into two, which is exactly what this is here to prevent.
+
+Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco one, and both survive rather than the later push winning.
+
+## The plan, and who is eating
+
+Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the **`=`** beside a slot gives the second person the first one's choice, which is most dinners.
+
+**Portions on a meal are for one person.** Plan it for both and it counts twice.
+
+Set a **start date** at the top and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so a fortnight starting on a Thursday says Thursday.
+
+Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
+
+## Filing something under the right ingredient
+
+The ingredient is the category a meal asks for; the product is the thing you put in the trolley. Scanning a new item makes both at once, which is right the first time and wrong the second: "Arla Lactofree Semi Skimmed Milk" becomes its own kind of food when it is really one of the milks.
+
+Each product card carries a **Move to…** picker to correct that. Choose another ingredient and the product moves under it, keeping its price, stock, pack size, portion, nutrition and barcode.
+
+What follows it matters more than the move:
+
+| | What happens |
+|---|---|
+| A meal naming that exact product | Follows it, still naming it |
+| A meal asking for the old ingredient in general | Follows only if the old ingredient is left empty, since otherwise it still means whatever remains |
+| Aliases | Move across when the old ingredient goes, so receipts still recognise the wording |
+| Hand-added packs | Move across too, since they are a request that has not been met |
+| A pin naming the product that left | Cleared, because it points at nothing |
+
+**Moving the only thing an ingredient can buy removes that ingredient.** There is nothing left to buy under it, and an ingredient with no products cannot produce a pack count. The picker says so before you choose, and the banner afterwards says it has gone, so it does not read as a deletion that ate your data.
+
+Stock pools automatically once they are together, because stock lives on the product and an ingredient's stock is the sum. Two cartons of milk from different shops are two cartons of milk.
+
+## The same thing at another shop
+
+A product card carries **Copy to a shop**. It clones the product and blanks only the two things that actually differ between shops.
+
+| Comes with it | Left blank |
+|---|---|
+| Name, pack size, portion, nutrition, barcode, pack size note | Shop, price |
+
+Stock does not travel, because that is a physical pack sitting in your cupboard from one shop. The offer does not travel, because a Clubcard price is Tesco's shelf and not Asda's. And the copy is not stamped as priced, because it has not been — so it shows as never priced rather than inheriting a date it did not earn.
+
+The barcode does travel. It is the same tin.
+
+### Which means a scan can be ambiguous
+
+Once the same barcode is on two shops' entries, scanning it cannot tell which shop you are standing in. Taking the first match would write tonight's shelf price onto the wrong shop, quietly.
+
+So the scan asks. It lists every entry carrying that barcode with its shop, its price and when it was last priced, and **nothing is editable until you pick one**. A barcode on only one entry never asks, so the ordinary case is unchanged.
+
+## Pack size, and what a portion is
+
+Two fields decide everything nutritional, and one of them decides the shopping list too.
+
+**Pack size** is a number and a unit — `600` `g`, `1.5` `kg` entered as `1500 g`, `500 ml` — rather than the free text it used to be, so nothing has to be parsed or guessed. "No weight" is a real choice, for six eggs or a roll of kitchen towel.
+
+**A portion is** either a count or a weight, and the app works out whichever you did not give:
+
+| You enter | It derives |
+|---|---|
+| 2 portions per pack | a portion is 300g |
+| 300 g per portion | 2 portions per pack |
+
+Portions per pack is what the whole shopping engine runs on — stock is counted in portions and pack counts are the shortfall divided by it — so defining a portion by weight still produces a correct list, worked out from the pack size rather than guessed.
+
+Neither is stored twice. The derived side is shown as a sentence under the boxes, so the two can never drift apart.
+
+## Calories and macros
+
+Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food.
+
+**They are stored per 100g or 100ml, exactly as the label prints them.** That is the fact that does not change. What a portion comes to is worked out from the portion size at the moment it is needed, so redefining a portion moves the calories with it. Under the old per-portion storage, changing portions per pack left the calories stale and wrong, silently.
+
+The editor shows both: the per-100 figures you type, and a line underneath saying what one portion of that works out at.
+
+A 600g pot of soup at 40kcal per 100g:
+
+| Portions per pack | A portion is | Which is |
+|---|---|---|
+| 2 | 300g | 120 kcal |
+| 3 | 200g | 80 kcal |
+| 1 | the whole pot | 240 kcal |
+
+Change the portion count and all three move on their own.
+
+### Photographing the label
+
+**Scan the label** sends the panel to whichever provider you set up for receipts and shows you what it read before anything is saved.
+
+Because the app stores per 100, a normal label needs **no conversion at all** — the per 100g column goes straight in. The only conversion left is a label that prints a serving column but no per-100 column, which is divided back down by the weight of that serving. If that weight is not printed there is nothing to divide by, so the figures come back flagged rather than silently rescaled.
+
+The photograph usually shows enough to size a portion as well, so the sheet offers that, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
+
+### Raw and cooked weights
+
+Frozen and raw food is the case that quietly goes wrong. A pack of sausage patties is **342g in the freezer and 248g once grilled**, and its nutrition table is headed *"when grilled according to instructions"*, so the per-100g figures describe the cooked food. Pair those figures with the 342g on the front and every portion reads about **forty per cent too heavy**: 162 kcal a patty against the 117 the label prints.
+
+The label answers this itself, if you read the right line. It quotes **one patty at 41g** and **six a pack**, and that serving weight is on the same basis as the nutrition beside it. Six times 41 is 246g, which is the pack weight those figures belong to, so the two can never disagree.
+
+That is what the scan now uses, most trusted first:
+
+| | Source | When |
+|---|---|---|
+| 1 | **Your** pack size × the label's shrink | The label gives both a raw and a cooked weight |
+| 2 | The label's serving weight × servings a pack | Whenever both are printed |
+| 3 | The cooked pack weight from a footnote | When the table is for cooked food |
+| 4 | The weight on the front | Anything you do not cook |
+
+The first one matters more than it looks. **A label's cooked weight only describes the pack that label was printed for.** Two different authorities are at work: your pack size is the authority on what you have, and the label is the authority on what cooking does to it, so it is the *proportion* that travels rather than the number. A 342g pack that grills down to 248g has lost 27%; record a 346g pack of the same thing and it comes out at 251g, not 248g.
+
+That needs no threshold to tune, because where the two packs match it produces the label's own answer anyway. Where they differ by more than 1% the sheet says so, since a label quoting one cooked weight while the app shows another looks like an error until it is explained.
+
+When the servings count is known it is stored as a **count**, not a weight. Six patties are exactly six; the weight of one is a division with a remainder, and rounding it would leave the pack holding 6.005 portions.
+
+When the printed pack size is more than 5% away from what the servings come to, the sheet says so in plain words rather than silently picking one — that gap is nearly always raw against cooked, and it looks like an error until it is named.
+
+The shopping list is unaffected by any of it: six patties is still one pack, because the servings-a-pack figure comes from the same line.
+
+### Nutrition is merged on its own clock
+
+A shop trip updates prices and nothing else. Merging by the price stamp alone would let a phone that had only done a shop drag its blank label over one the other phone had actually read. Nutrition therefore carries its own stamp: a filled-in label always beats a blank one, and between two filled-in ones the more recent reading wins.
+
+## Recipes in grams
+
+A meal ingredient is written **either in portions or in grams**, chosen per line.
+
+Grams is what a recipe actually says. "400g mince" is exact; "2.67 portions" is the same thing said awkwardly. Switching between the two carries the amount across rather than blanking it.
+
+The two are used differently, and deliberately:
+
+- **Nutrition** from a gram line is exact — 400g at 250kcal per 100g is 1000kcal, full stop. It never passes through a portion count, so it cannot pick up rounding, and changing how you portion that product does not change what the recipe contains.
+- **The shopping list** still needs packs, so a gram line is divided by that product's portion size to get portions. Without a portion weight there is nothing to divide by, so the line counts as nothing and the list names the product as a problem rather than dropping it in silence.
 
 ## When things were last updated
 
@@ -98,9 +272,9 @@ The price stamp and the last-updated stamp are separate. Renaming an item or fix
 
 New items default to **1**, meaning one pack is one use. That is right for water, kitchen roll, cleaning products and anything else you do not divide into servings, and it is the safe default because it can never under-order.
 
-Raise it for genuinely portioned things: a 500g bag of pasta that does four meals is 4, a jar of sauce that does two is 2.
+Raise it for genuinely portioned things: a 500g bag of pasta that does four meals is 4, a jar of sauce that does two is 2. Or switch that product to **Weight** and say a portion is 125g, which is the same statement made precisely, and give the calories something to scale by at the same time.
 
-Setting it to 0 is a trap the app now guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list now names those items in red instead.
+Setting it to 0 is a trap the app guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list names those items in red instead.
 
 ## Stock is counted in portions
 
@@ -134,6 +308,8 @@ Both the shopping list and the Items tab group by store, and each store heading 
 
 `prices.json` holds items, meals, the plan and the budget. Tokens and API keys live in IndexedDB on the device and are never written into that file, so nothing secret can end up committed.
 
+The manual backup lists items in the same order the Items tab groups them: by the shop the list would send you to, alphabetical within each, anything unfiled first. It is read by people at least as often as it is pasted back, and a flat array in creation order is hard to check against a shopping trip. Restoring ignores the order entirely, so nothing depends on it.
+
 IndexedDB is the source of truth. Sync is a deliberate snapshot push, not a live database, because a commit per keystroke would be slow and would conflict across devices. Git history then gives you free price history: `git log -p prices.json` shows every price change you have ever made.
 
 If the remote copy is newer than your last pull, Push warns before overwriting. Last write wins otherwise, so pull before editing on a second device.
@@ -152,7 +328,7 @@ Everything on a Pages site is public, whether through the repo itself or through
 index.html              shell
 styles.css              shelf-edge ticket design system
 app.js                  state, rendering, actions
-lib/calc.js             shopping maths, ported from the spreadsheet
+lib/calc.js             shopping maths, sources, ported from the spreadsheet
 lib/store.js            IndexedDB, seed data, receipt line matching
 lib/scan.js             live barcode and QR scanning
 lib/qr.js               QR encoder for invite codes
@@ -165,11 +341,40 @@ manifest.webmanifest    home screen install
 
 No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing. The camera overlay lives outside the render tree because a rebuild would kill the video stream.
 
+## Sheets and scroll position
+
+**Tapping beside a sheet no longer closes it.** Nearly every sheet holds something half finished, and a receipt is twenty lines of review that a thumb landing on the edge used to discard without a word. Close is always in the top corner. Only genuinely read-only sheets, like the invite QR and the long-way instructions, still dismiss on a tap outside.
+
+**An edit that moves a card keeps the card under your thumb.** Giving a product a shop files its item under a different heading, so restoring the old scroll offset left you staring at whatever slid into that gap. The card being edited is measured before the rebuild and the page is scrolled to put it back on the same line of the screen afterwards, which it does to the pixel. On a list of forty items that is the difference between a scroll of two thousand pixels and none at all.
+
+Restoring focus uses `preventScroll` for the same reason: without it the browser drags the page to wherever the field ended up and undoes the anchoring.
+
+## Phones, zooming and Safari
+
+The page is pinned at 1:1 and pinch zoom is refused. Zooming out used to shrink the app inside a blank page it could not scroll back from, which reads as a broken layout rather than a zoom.
+
+Three things do that together, because no one of them is enough:
+
+| | What it stops |
+|---|---|
+| `user-scalable=no, maximum-scale=1, minimum-scale=1` | Zoom in Chrome and most browsers |
+| `touch-action: manipulation` | Double-tap-to-zoom, which a fast scroll triggers by accident |
+| Refusing `gesturestart` | Pinch on iOS Safari, which has ignored `user-scalable` since iOS 10 |
+
+**Nothing focusable is ever under 16px.** Safari on iOS zooms the whole page in the moment you tap a control smaller than that, and does not zoom back out. The meal pickers on the Plan tab were 15px and the backup box was 12px, which is what made them feel like they would not scroll: the page had silently zoomed and the gesture was landing somewhere else. It is a hard floor now, not a preference, and a test walks every tab asserting it.
+
+Sheets keep a scroll gesture to themselves rather than chaining it to the page underneath, which is the other half of a sheet that feels stuck.
+
 ## Appearance
 
 Light, dark or follow the system, under Settings. The theme is applied before first paint, so a dark-mode phone never flashes white on open.
 
 ## Finding things
+
+**Sort by shop or A to Z**, from the toggle at the top of the Items tab. Grouping by shop made sense when an item lived in exactly one; now that it can be sold in three, the heading it sits under is a judgement the app made rather than a fact, and hunting for cheese under whichever shop happens to be cheapest is worse than reading one list. A to Z drops the headings and names the shop on each line instead, so nothing is lost. The choice is remembered per device, like the collapsed groups, since it is a view preference rather than data.
+
+The shopping list still groups by shop always, because that is the order you walk round in.
+
 
 The Items tab has a search box that matches loosely: `chkkrm` finds Chicken Korma, and it searches store names, barcodes and remembered receipt wording as well as item names. Searching temporarily opens every store group that has a hit, and clearing it puts your collapsed groups back as they were.
 

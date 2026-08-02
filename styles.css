@@ -168,9 +168,11 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
   flex:1; border:0; background:none; padding:8px 4px 10px; color:var(--ink-2);
   font-size:11px; font-weight:600; letter-spacing:0.02em;
 }
+/* min-width, not width: five tabs share the bar and a day's calories is a
+   four figure number that must not spill out of its pill. */
 .tabs .cnt {
   display:block; font-family:var(--mono); font-size:15px; font-weight:700;
-  margin:0 auto 3px; padding:2px 0; width:52px; border-radius:var(--r-full);
+  margin:0 auto 3px; padding:2px 6px; min-width:52px; border-radius:var(--r-full);
 }
 .tabs button[data-on="1"] { color:var(--ink); }
 .tabs button[data-on="1"] .cnt { background:var(--accent); color:var(--on-accent); }
@@ -180,7 +182,44 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .dayblock:last-child { border-bottom:0; }
 .dayblock .dname { font-size:12px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-2); }
 .dayblock .cost { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; }
+/* -------------------------------- food --------------------------------- */
+/* One line per person per day. The calorie figure is the number you scan for,
+   so it leads; the macros trail it in a quieter size. */
+.foodrow { display:flex; align-items:baseline; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.foodrow .pname { font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.foodrow .kcal { font-size:16px; font-weight:700; }
+.foodrow .kcal .unit { font-size:11px; font-weight:600; color:var(--ink-2); }
+.foodrow .macros { display:flex; gap:8px; }
+.foodrow .macro {
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+  font-size:11px; color:var(--ink-2);
+}
+.foodrow .macro b { color:var(--ink); font-size:13px; font-weight:700; }
+.part { color:var(--alert); font-weight:700; }
+
+/* One shop to pick from when a barcode is on more than one entry. A whole
+   row is the target, since it is tapped in a shop with one hand. */
+.pickrow {
+  display:block; width:100%; text-align:left; border:1px solid var(--outline);
+  color:var(--ink); font:inherit; cursor:pointer;
+}
+.pickrow .shop { display:block; font-size:16px; font-weight:700; margin-bottom:2px; }
+.pickrow .detail { display:block; font-size:13px; font-weight:400; color:var(--ink-2); }
+.pickrow:active { background:var(--surface-3); }
+
+/* The actions under a product. Three controls will not fit one line on a
+   narrow phone, so they wrap rather than crushing each other, and the picker
+   is allowed to shrink because its options are longer than any row. */
+.prodacts { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.prodacts .move {
+  width:auto; flex:1 1 130px; min-width:0; padding:7px 10px; min-height:36px;
+  border-radius:var(--r-full); background:var(--surface-2); border-color:transparent;
+}
+
 .slot { display:flex; align-items:center; gap:8px; margin-top:6px; }
+/* "=" is a short glyph and sits high in most faces. Mono and a size up so it
+   reads as a control rather than a stray character between two dropdowns. */
+.slot .copy { font-family:var(--mono); font-size:17px; font-weight:700; line-height:1; padding:6px 9px; }
 .slot .slabel { width:14px; font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); text-align:center; }
 .slot select {
   flex:1; min-width:0; padding:10px; border:1px solid var(--outline);
