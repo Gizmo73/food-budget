@@ -9,7 +9,7 @@ import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
   resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
-  findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop,
+  findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop, moveProduct,
   tidyProductName, SLOTS,
 } from "./lib/store.js";
 import {
@@ -884,6 +884,30 @@ function offerEditor(subject, acts) {
   </div>`;
 }
 
+/* Filing a product under a different ingredient. The ingredient is the
+   category a meal asks for, so something recorded as its own kind of thing
+   when it is really one of the milks gets corrected here rather than deleted
+   and retyped. Hidden when there is nowhere to move it to. */
+function moveControl(ing, product) {
+  const others = state.db.ingredients.filter((i) => i.id !== ing.id);
+  if (!others.length) return "";
+  // moving the only thing you can buy leaves the ingredient with nothing, so
+  // it goes; the label says so rather than letting it look like a deletion
+  const last = productsOf(ing).length === 1;
+
+  return `<select class="inp" style="width:auto;padding:7px 10px;font-size:13px"
+      data-act="moveProduct" data-id="${ing.id}" data-product="${esc(product.id)}"
+      title="${last ? `Moving this leaves ${esc(ing.name)} empty, so it goes too` : "File this one under a different ingredient"}"
+      aria-label="File ${esc(product.name || "this")} under a different ingredient">
+      <option value="" selected>${last ? "Move, and drop " + esc(ing.name) : "Move to"}&hellip;</option>
+      ${others
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((i) => `<option value="${i.id}">${esc(i.name)}</option>`)
+        .join("")}
+    </select>`;
+}
+
 /* Nutrition as the label prints it: per 100. What a portion comes to is
    derived from the portion size and shown underneath, so redefining a portion
    visibly moves the calories rather than leaving a stale figure behind. */
@@ -1072,6 +1096,7 @@ function productCard(ing, product, chosen, stores) {
       <button class="btn small tonal" data-act="copyProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}" title="Same thing, another shop">Copy to a shop</button>
+      ${moveControl(ing, product)}
       <button class="btn small ghost" data-act="delProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}"${only ? " disabled" : ""} title="${
@@ -2891,7 +2916,7 @@ const actions = {
         : {};
     patchProduct(s.id, s.productId, { ...per100, ...size, nutritionUpdated: now() });
     setSheet(null);
-    flash(`Nutrition saved to ${(product && product.name) || "the product"}.`);
+    flash("ok", `Nutrition saved to ${(product && product.name) || "the product"}.`);
   },
 
   setPackUnit: (el) =>
@@ -2952,7 +2977,25 @@ const actions = {
       const made = copyToShop(from, products.map((p) => p.id));
       db.ingredients[i] = { ...db.ingredients[i], updatedAt: now(), products: [...products, made] };
     });
-    flash("Copied. Set the shop and its price on the new one.");
+    flash("ok", "Copied. Set the shop and its price on the new one.");
+  },
+
+  moveProduct: (el) => {
+    const toId = el.value;
+    if (!toId) return;
+    let done = null;
+    commit((db) => {
+      done = moveProduct(db, el.dataset.id, el.dataset.product, toId);
+    });
+    if (!done) return;
+    /* Say what happened, because emptying the old ingredient removes it from
+       the list entirely and that would otherwise look like a deletion. */
+    flash(
+      "ok",
+      done.removedSource
+        ? `Now filed under ${done.to}. ${done.from} had nothing else to buy, so that entry has gone.`
+        : `${done.product.name || "It"} moved from ${done.from} to ${done.to}.`
+    );
   },
 
   addProduct: (el) => {

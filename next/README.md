@@ -140,6 +140,26 @@ Set a **start date** at the top and every row shows the date it falls on, which 
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
+## Filing something under the right ingredient
+
+The ingredient is the category a meal asks for; the product is the thing you put in the trolley. Scanning a new item makes both at once, which is right the first time and wrong the second: "Arla Lactofree Semi Skimmed Milk" becomes its own kind of food when it is really one of the milks.
+
+Each product card carries a **Move to…** picker to correct that. Choose another ingredient and the product moves under it, keeping its price, stock, pack size, portion, nutrition and barcode.
+
+What follows it matters more than the move:
+
+| | What happens |
+|---|---|
+| A meal naming that exact product | Follows it, still naming it |
+| A meal asking for the old ingredient in general | Follows only if the old ingredient is left empty, since otherwise it still means whatever remains |
+| Aliases | Move across when the old ingredient goes, so receipts still recognise the wording |
+| Hand-added packs | Move across too, since they are a request that has not been met |
+| A pin naming the product that left | Cleared, because it points at nothing |
+
+**Moving the only thing an ingredient can buy removes that ingredient.** There is nothing left to buy under it, and an ingredient with no products cannot produce a pack count. The picker says so before you choose, and the banner afterwards says it has gone, so it does not read as a deletion that ate your data.
+
+Stock pools automatically once they are together, because stock lives on the product and an ingredient's stock is the sum. Two cartons of milk from different shops are two cartons of milk.
+
 ## The same thing at another shop
 
 A product card carries **Copy to a shop**. It clones the product and blanks only the two things that actually differ between shops.

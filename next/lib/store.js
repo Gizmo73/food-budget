@@ -193,6 +193,67 @@ export function findAllByBarcode(ingredients, code) {
   return out;
 }
 
+/* Move one product under a different ingredient, which is how something files
+   itself wrong and gets corrected: "Arla Lactofree" was recorded as its own
+   kind of thing when it is really one of the milks you can buy.
+
+   Mutates a draft db in place, the way commit() hands one over. Returns what
+   happened so the caller can say so, or null if it could not be done.
+
+   The awkward part is not the move itself, it is everything pointing at the
+   old home. A meal asking for that ingredient has to be repointed, or it ends
+   up asking for something that no longer exists. */
+export function moveProduct(db, fromId, productId, toId) {
+  if (!db || fromId === toId) return null;
+  const from = db.ingredients.find((i) => i.id === fromId);
+  const to = db.ingredients.find((i) => i.id === toId);
+  if (!from || !to) return null;
+
+  const product = (from.products || []).find((p) => p.id === productId);
+  if (!product) return null;
+
+  const stamp = new Date().toISOString();
+
+  // an id only has to be unique within its ingredient, so it may need one here
+  const moved = { ...product, id: uniqueId(product.id, (to.products || []).map((p) => p.id)) };
+  to.products = [...(to.products || []), moved];
+  from.products = (from.products || []).filter((p) => p.id !== productId);
+
+  // a pin naming the product that just left is a pin at nothing
+  if (from.preferredProductId === productId) from.preferredProductId = "";
+
+  /* A meal asking for this exact product by name must follow it. One asking
+     for the old ingredient in general only follows if the ingredient is being
+     emptied out, since otherwise it still means the things left behind. */
+  const emptied = from.products.length === 0;
+  for (const meal of db.meals || []) {
+    for (const it of meal.items || []) {
+      if (it.ingredientId !== fromId) continue;
+      if (it.productId === productId) {
+        it.ingredientId = toId;
+        it.productId = moved.id;
+      } else if (emptied) {
+        it.ingredientId = toId;
+        it.productId = "";
+      }
+    }
+  }
+
+  from.updatedAt = stamp;
+  to.updatedAt = stamp;
+
+  /* Nothing left to buy means the old ingredient is not a thing any more. Its
+     aliases are how receipts recognise this product, so they have to survive,
+     and its hand-added packs are a request that has not been met yet. */
+  if (emptied) {
+    to.aliases = [...new Set([...(to.aliases || []), ...(from.aliases || [])])];
+    to.extraPacks = (Number(to.extraPacks) || 0) + (Number(from.extraPacks) || 0);
+    db.ingredients = db.ingredients.filter((i) => i.id !== fromId);
+  }
+
+  return { product: moved, from: from.name, to: to.name, removedSource: emptied };
+}
+
 /* Everything about a product except where you buy it and what it costs there.
    The same jam at a different shop is the same size, the same portions and
    the same label; only the price and the shop differ. */
