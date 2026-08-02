@@ -1459,13 +1459,21 @@ function shell(title, blurb, inner, dismissable = false) {
     ${inner}</div></div>`;
 }
 
+/* The item a typed new-item name will actually land on. A receipt saying
+   "Milk" when Milk is already kept should join it, so this is what decides
+   that, and it is shown while typing rather than sprung afterwards. */
+function sameNamed(name) {
+  const want = norm((name || "").trim());
+  return want ? state.db.ingredients.find((i) => norm(i.name) === want) || null : null;
+}
+
 /* The stock control on a receipt line. Counted in portions like everywhere
    else, stepped by whole packs because that is how a receipt counts, and
    pre-filled from the quantity the model read off the paper. */
 function receiptStockRow(r, i, store) {
   const add = rowStock(r, store);
   const perPack = rowPackPortions(r, store);
-  const known = r.targetId !== "__new__" ? ingredient(r.targetId) : null;
+  const known = r.targetId === "__new__" ? sameNamed(r.newName) : ingredient(r.targetId);
   const now = known ? stockPortions(known) : 0;
   const packs = perPack > 0 ? add / perPack : 0;
   const plural = (n) => (Math.abs(n - 1) < 0.001 ? "" : "s");
@@ -1536,7 +1544,15 @@ function sheetReceipt(s) {
         )
         .join("");
 
+    /* The ingredients you already keep, offered to the new-item name box.
+       Typing one of these files the new product under it instead of starting
+       a second category with the same name. */
+    const known = state.db.ingredients
+      .map((i) => `<option value="${esc(i.name)}"></option>`)
+      .join("");
+
     inner.push(
+      `<datalist id="fb-ingredients">${known}</datalist>` +
       `<div class="card">` +
         s.rows
           .map(
@@ -1557,23 +1573,37 @@ function sheetReceipt(s) {
         }
         ${
           r.targetId === "__new__" || r.productId === "__new__"
-            ? `<div class="grid2" style="margin-top:5px">
-                 <label class="field"><span class="eyebrow">${
-                   r.targetId === "__new__" ? "Ingredient" : "What it is called"
-                 }</span>
-                   <input class="inp" value="${esc(
-                     r.targetId === "__new__" ? r.newName : r.newProductName
-                   )}" data-act="${
-                r.targetId === "__new__" ? "setRowName" : "setRowProductName"
-              }" data-i="${i}"></label>
+            ? `${
+                /* A brand new item needs both names, and they are different
+                   things. The ingredient is the category a meal asks for; the
+                   product is the thing on the shelf. Asking once and using the
+                   answer for both left every scanned item as its own category,
+                   which is how "Arla Lactofree Semi Skimmed Milk" ended up
+                   being a kind of food rather than a kind of milk. */
+                r.targetId === "__new__"
+                  ? `<label class="field" style="margin-top:5px">
+                       <span class="eyebrow">Ingredient, the kind of thing this is</span>
+                       <input class="inp" list="fb-ingredients" value="${esc(r.newName)}"
+                         placeholder="Milk" data-act="setRowName" data-i="${i}"></label>`
+                  : ""
+              }
+               <div class="grid2" style="margin-top:5px">
+                 <label class="field"><span class="eyebrow">What it is called</span>
+                   <input class="inp" value="${esc(r.newProductName)}"
+                     placeholder="Arla Lactofree Semi Skimmed"
+                     data-act="setRowProductName" data-i="${i}"></label>
                  <label class="field"><span class="eyebrow">Portions per pack</span>
                    <input class="inp mono" type="number" step="0.5" min="0.5" value="${r.newPortions}"
                      data-act="setRowPortions" data-i="${i}"></label>
                </div>
                <p class="why" style="margin:3px 0 0">${
-                 r.targetId === "__new__"
-                   ? "The ingredient is what a meal asks for, so keep it general: Cheddar, not Tesco Finest Mature 320g."
-                   : "A new kind of this, alongside the ones you already buy."
+                 r.targetId !== "__new__"
+                   ? "A new kind of this, alongside the ones you already buy."
+                   : sameNamed(r.newName)
+                   ? `Goes under <strong>${esc(
+                       sameNamed(r.newName).name
+                     )}</strong>, which you already keep, rather than making a second one.`
+                   : "Keep the ingredient general, since that is what a meal asks for: Milk, not Arla Lactofree 2l. Type one you already have and it files itself there instead."
                }</p>`
             : ""
         }
@@ -1585,6 +1615,8 @@ function sheetReceipt(s) {
                   )} was priced after ${esc(dayOf(s.date))}`
                 : r.barcode
                 ? "barcode " + esc(r.barcode)
+                : r.targetId === "__new__" && sameNamed(r.newName)
+                ? "nothing matched the wording, so the name you typed decides"
                 : esc(r.why)
             }${r.qty > 1 ? ` &middot; ${r.qty} bought` : ""}</span>
           <button class="btn small ghost" data-act="scanRow" data-i="${i}">${
@@ -2520,23 +2552,32 @@ function applyReceipt() {
     for (const r of rows) {
       const alias = norm(r.raw);
       let target = r.targetId;
+      let fresh = false;
 
       if (target === "__new__") {
-        // The receipt genuinely tells us the shop, so that one is not a guess.
-        const made = newIngredient(s.store, (r.newName || "").trim() || titleise(r.raw));
-        made.updatedAt = stamp;
-        made.products = [
-          newProduct((r.newProductName || "").trim() || made.name, s.store, {
-            portionsPerPack: Math.max(0.5, Number(r.newPortions) || 1),
-          }),
-        ];
-        made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
-        db.ingredients.push(made);
-        target = made.id;
-        created += 1;
-      } else {
-        updated += 1;
+        const wanted = (r.newName || "").trim() || titleise(r.raw);
+        /* Typing the name of something already kept files this under it
+           rather than starting a second one. Without this, "Milk" typed on a
+           receipt would sit beside the Milk already there, holding its own
+           stock that no meal ever counts. */
+        const same = db.ingredients.find((i) => norm(i.name) === norm(wanted));
+        if (same) {
+          target = same.id;
+        } else {
+          // The receipt genuinely tells us the shop, so that one is not a guess.
+          const made = newIngredient(s.store, wanted);
+          made.updatedAt = stamp;
+          // the product is built once below, for every case, so that a blank
+          // product name cannot leave two of them under the same new item
+          made.products = [];
+          made.id = uniqueId(made.name, db.ingredients.map((i) => i.id));
+          db.ingredients.push(made);
+          target = made.id;
+          fresh = true;
+          created += 1;
+        }
       }
+      if (!fresh) updated += 1;
 
       const idx = db.ingredients.findIndex((i) => i.id === target);
       if (idx < 0) continue;
@@ -2556,7 +2597,7 @@ function applyReceipt() {
           });
       // a brand new ingredient always brings a product, and the count above
       // already says so, so only count one added under something you had
-      if (!existing && r.targetId !== "__new__") addedProducts += 1;
+      if (!existing && !fresh) addedProducts += 1;
 
       // An offer price must not overwrite the base price, or the base price
       // drifts down every time a promotion runs and never comes back up.
@@ -3523,7 +3564,9 @@ const actions = {
   setRowName: (el) => {
     const rows = state.sheet.rows.slice();
     rows[Number(el.dataset.i)] = { ...rows[Number(el.dataset.i)], newName: el.value };
-    state.sheet = { ...state.sheet, rows };
+    // a redraw, because the name now decides something visible: whether this
+    // joins an item you already keep, and what its stock will read
+    setSheet({ ...state.sheet, rows });
   },
   setRowPortions: (el) => {
     const rows = state.sheet.rows.slice();
