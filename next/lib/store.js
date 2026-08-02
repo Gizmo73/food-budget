@@ -565,19 +565,25 @@ function productsFrom(i, fixStore) {
     return products;
   }
 
-  /* v4 and earlier: everything was on the item */
-  const store = fixStore(i.store);
-  return [
-    newProduct(i.name || "Item", store, {
-      pricePerPack: Number(i.pricePerPack) || 0,
-      portionsPerPack: Number(i.portionsPerPack) || 0,
-      stockPortions: stockOf(i),
-      packLabel: i.packLabel || "",
-      barcodes: Array.isArray(i.barcodes) ? i.barcodes : i.barcode ? [i.barcode] : [],
-      offer: cleanOffer(i.offer),
-      priceUpdated: i.priceUpdated || "",
-    }),
-  ];
+  /* v4 and earlier: everything was on the item. Pass it through the same
+     normaliser as every other version rather than building it by hand, or the
+     fields added since would quietly never be filled in. */
+  return named(
+    [
+      {
+        name: i.name || "Item",
+        store: i.store,
+        pricePerPack: Number(i.pricePerPack) || 0,
+        portionsPerPack: Number(i.portionsPerPack) || 0,
+        stockPortions: stockOf(i),
+        packLabel: i.packLabel || "",
+        barcodes: Array.isArray(i.barcodes) ? i.barcodes : i.barcode ? [i.barcode] : [],
+        offer: i.offer,
+        priceUpdated: i.priceUpdated || "",
+      },
+    ],
+    i.name
+  );
 }
 
 /* Fill in anything an older snapshot is missing, so a restored backup
