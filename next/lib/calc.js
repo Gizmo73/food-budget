@@ -366,6 +366,82 @@ export function labelToPer100(out) {
 
 const trimNum = (n) => String(Math.round(n * 100) / 100);
 
+/* How big a portion of this is, and how many are in a pack, worked out from
+   the label rather than from the number on the front.
+
+   Frozen and raw food is the awkward case. A pack of sausage patties is 342g
+   in the freezer and 248g once grilled, and its nutrition table is headed
+   "when grilled", so the per-100g figures describe the cooked food. Pair
+   those figures with the 342g on the front and every portion comes out about
+   forty per cent too big.
+
+   The way out is that the label's own serving weight is quoted on whatever
+   basis its nutrition is: 41g a patty, six a pack. Six times 41 is the pack
+   weight those figures belong to, so the two always agree. */
+export function labelSizing(out) {
+  if (!out) return null;
+  const unit = out.packUnit === "ml" ? "ml" : "g";
+  const serving = Number(out.servingGrams) || 0;
+  const count = Number(out.servingsPerPack) || 0;
+  const printed = Number(out.packAmount) || 0;
+  const cooked = Number(out.preparedAmount) || 0;
+
+  /* 1. the label's own serving and how many of them. Self-consistent by
+        construction, whatever the food does in the oven. */
+  if (serving > 0 && count > 0) {
+    const packAmount = Math.round(serving * count);
+    const gap = printed > 0 ? Math.abs(printed - packAmount) / printed : 0;
+    return {
+      packAmount,
+      packUnit: unit,
+      portionBy: "weight",
+      portionGrams: serving,
+      portionsPerPack: count,
+      why: `${count} servings of ${trimNum(serving)}${unit} on the label`,
+      /* A printed pack size well away from that is the raw against cooked
+         gap, and it is worth naming rather than quietly ignoring. */
+      note:
+        gap > 0.05
+          ? `The pack says ${trimNum(printed)}${unit}, but its ${count} servings of ${trimNum(
+              serving
+            )}${unit} come to ${packAmount}${unit}. That gap is normally raw against cooked weight${
+              cooked > 0 ? `, and the label agrees: ${trimNum(cooked)}${unit} once cooked` : ""
+            }. The nutrition describes the ${
+              out.basis === "as prepared" ? "cooked" : "served"
+            } food, so ${packAmount}${unit} is the one that matches it.`
+          : "",
+    };
+  }
+
+  /* 2. a stated cooked pack weight, when the table is for cooked food */
+  if (cooked > 0 && out.basis === "as prepared") {
+    return {
+      packAmount: cooked,
+      packUnit: unit,
+      why: `the ${trimNum(cooked)}${unit} the label says the pack weighs once cooked`,
+      note: printed > 0
+        ? `The front says ${trimNum(printed)}${unit}, which is the raw weight. The nutrition is for the cooked food, so the cooked weight is the one to pair it with.`
+        : "",
+    };
+  }
+
+  /* 3. what is printed on the front, which is right for anything you do not
+        cook, and is all there is otherwise */
+  if (printed > 0) {
+    return {
+      packAmount: printed,
+      packUnit: unit,
+      why: `the ${trimNum(printed)}${unit} printed on the pack`,
+      note:
+        out.basis === "as prepared"
+          ? `Careful: this table is for cooked food but the only pack size printed is the raw one, so a portion will read heavier than it eats. Set the cooked weight by hand if you know it.`
+          : "",
+    };
+  }
+
+  return null;
+}
+
 /* ------------------------------- stock --------------------------------- */
 
 /* Stock is counted in portions, not packs, because an opened pack is the

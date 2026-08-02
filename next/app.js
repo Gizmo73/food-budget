@@ -18,7 +18,8 @@ import {
   ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
   stockPortions, stockPacks, packPortions, productStock,
   productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan,
-  NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion, labelToPer100,
+  NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
+  labelToPer100, labelSizing,
   portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
   nutritionUsable,
 } from "./lib/calc.js";
@@ -2175,6 +2176,19 @@ function bumpRowStock(i, dir) {
 
 /* ---------------------------- nutrition labels ------------------------- */
 
+/* What a worked-out sizing changes on the product. Kept in one place so the
+   figure previewed in the sheet is the one that gets saved. */
+function sizingChanges(sizing) {
+  if (!sizing) return {};
+  const out = { packAmount: sizing.packAmount, packUnit: sizing.packUnit };
+  if (sizing.portionGrams > 0) {
+    out.portionBy = "weight";
+    out.portionGrams = sizing.portionGrams;
+  }
+  if (sizing.portionsPerPack > 0) out.portionsPerPack = sizing.portionsPerPack;
+  return out;
+}
+
 async function shootLabel(id, productId) {
   const ing = ingredient(id);
   const product = productOf(id, productId);
@@ -2195,10 +2209,10 @@ async function shootLabel(id, productId) {
         values: read ? read.values : null,
         why: read ? read.why : "",
         warn: !!(read && read.warn),
-        /* The photograph often shows the pack size too, and a pack size is
-           what turns these figures into a portion. Offer it rather than
-           making them go and type it, but never apply it silently. */
-        takeSize: !!(out.packAmount > 0 && out.packUnit),
+        /* The photograph usually shows enough to size a portion as well, and
+           without one these figures cannot reach a plate. Offer it rather
+           than making them go and work it out, but never apply it silently. */
+        sizing: labelSizing(out),
       });
     } catch (err) {
       setSheet({ kind: "label", id, productId, busy: false, err: err.message });
@@ -2238,31 +2252,40 @@ function sheetLabel(s) {
 
     /* What it will come to on a plate, worked out now, so a wrong portion size
        is obvious here rather than three screens away on the Food tab. */
-    const grams = s.takeSize && (!product.packUnit || Number(product.packAmount) <= 0)
-      ? (Number(out.packAmount) || 0) / (portionsPer(product) || 1)
-      : gramsPerPortion(product);
+    const sizing = s.sizing;
+    const use = sizing && s.useSize !== false;
+    const after = use ? { ...product, ...sizingChanges(sizing) } : product;
+    const grams = gramsPerPortion(after);
+
     if (grams > 0) {
       const kcal = ((s.values.kcal || 0) * grams) / 100;
-      inner.push(`<p class="muted">A ${trim2(Math.round(grams))}${unit} portion of this works out at
-        <strong>${Math.round(kcal)} kcal</strong>.</p>`);
+      inner.push(`<p class="muted">A ${trim2(Math.round(grams))}${unit} portion works out at
+        <strong>${Math.round(kcal)} kcal</strong>${
+        portionsPer(after) > 0 ? `, and a pack holds ${trim2(portionsPer(after))}` : ""
+      }.</p>`);
     } else {
       inner.push(`<p class="muted">This product has no portion weight yet, so these will not count
         towards a day until you set a pack size and a portion on it.</p>`);
     }
 
-    if (s.takeSize) {
-      const same =
-        Number(product.packAmount) === Number(s.out.packAmount) && product.packUnit === s.out.packUnit;
+    if (sizing) {
+      const changes = sizingChanges(sizing);
+      const same = Object.entries(changes).every(([k, v]) =>
+        typeof v === "number" ? Math.abs((Number(product[k]) || 0) - v) < 0.01 : product[k] === v
+      );
       if (!same) {
-        inner.push(`<label class="row" style="margin-bottom:8px">
+        inner.push(`<label class="row" style="margin-bottom:6px">
           <input type="checkbox" data-act="toggleLabelSize"${s.useSize === false ? "" : " checked"}>
-          <span class="grow">Also set the pack size to ${trim2(s.out.packAmount)}${esc(
-          s.out.packUnit
-        )}, read off the pack${
-          Number(product.packAmount) > 0
-            ? ` (it currently says ${trim2(product.packAmount)}${esc(product.packUnit || "")})`
+          <span class="grow">Also set the pack size to ${trim2(sizing.packAmount)}${esc(
+          sizing.packUnit
+        )}${
+          sizing.portionGrams
+            ? `, with a ${trim2(sizing.portionGrams)}${esc(sizing.packUnit)} portion`
             : ""
-        }</span></label>`);
+        }, from ${esc(sizing.why)}</span></label>`);
+        /* The raw against cooked gap gets its own sentence. It is the one
+           thing here that looks like an error until it is explained. */
+        if (sizing.note) inner.push(`<p class="why" style="margin:0 0 8px">${esc(sizing.note)}</p>`);
       }
     }
 
@@ -2926,10 +2949,7 @@ const actions = {
     const product = productOf(s.id, s.productId);
     // the four figures land under their per-100 names, never per portion
     const per100 = Object.fromEntries(NUTRIENTS.map((k) => [`${k}100`, s.values[k] || 0]));
-    const size =
-      s.takeSize && s.useSize !== false
-        ? { packAmount: s.out.packAmount, packUnit: s.out.packUnit }
-        : {};
+    const size = s.sizing && s.useSize !== false ? sizingChanges(s.sizing) : {};
     patchProduct(s.id, s.productId, { ...per100, ...size, nutritionUpdated: now() });
     setSheet(null);
     flash("ok", `Nutrition saved to ${(product && product.name) || "the product"}.`);

@@ -219,7 +219,25 @@ Change the portion count and all three move on their own.
 
 Because the app stores per 100, a normal label needs **no conversion at all** — the per 100g column goes straight in. The only conversion left is a label that prints a serving column but no per-100 column, which is divided back down by the weight of that serving. If that weight is not printed there is nothing to divide by, so the figures come back flagged rather than silently rescaled.
 
-The photograph usually shows the pack size too, so the sheet offers to set it, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
+The photograph usually shows enough to size a portion as well, so the sheet offers that, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
+
+### Raw and cooked weights
+
+Frozen and raw food is the case that quietly goes wrong. A pack of sausage patties is **342g in the freezer and 248g once grilled**, and its nutrition table is headed *"when grilled according to instructions"*, so the per-100g figures describe the cooked food. Pair those figures with the 342g on the front and every portion reads about **forty per cent too heavy**: 162 kcal a patty against the 117 the label prints.
+
+The label answers this itself, if you read the right line. It quotes **one patty at 41g** and **six a pack**, and that serving weight is on the same basis as the nutrition beside it. Six times 41 is 246g, which is the pack weight those figures belong to, so the two can never disagree.
+
+That is what the scan now uses, most trusted first:
+
+| | Source | When |
+|---|---|---|
+| 1 | The label's serving weight × servings a pack | Whenever both are printed |
+| 2 | The cooked pack weight from a footnote | When the table is for cooked food |
+| 3 | The weight on the front | Anything you do not cook |
+
+When the printed pack size is more than 5% away from what the servings come to, the sheet says so in plain words rather than silently picking one — that gap is nearly always raw against cooked, and it looks like an error until it is named.
+
+The shopping list is unaffected by any of it: six patties is still one pack, because the servings-a-pack figure comes from the same line.
 
 ### Nutrition is merged on its own clock
 

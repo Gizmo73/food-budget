@@ -61,7 +61,8 @@ function parseJson(text) {
 const NUTRITION_PROMPT = `You are reading the nutrition information panel on a UK food package.
 
 Return ONLY a JSON object, with no preamble and no markdown fences:
-{"name": string|null, "packSize": string|null, "servingSize": string|null, "servingsPerPack": number|null,
+{"name": string|null, "packSize": string|null, "preparedSize": string|null, "basis": "as sold"|"as prepared"|null,
+ "servingSize": string|null, "servingsPerPack": number|null,
  "per100": {"kcal": number, "protein": number, "carbs": number, "fat": number}|null,
  "perServing": {"kcal": number, "protein": number, "carbs": number, "fat": number}|null}
 
@@ -72,9 +73,11 @@ Rules:
 - kcal is energy in kilocalories, not kilojoules. A row reading "167kJ 40kcal" has kcal 40.
 - carbs means total carbohydrate, NOT the "of which sugars" line underneath it. fat means total fat, NOT "of which saturates". Take the parent row every time.
 - All four numbers are in grams except kcal. Strip units and return plain numbers.
-- packSize is the total weight or volume printed on the front of the pack, such as "600g" or "1.5kg".
-- servingSize is the weight of one serving, in grams, if it can be read anywhere: from the serving column heading such as "per 1/2 pot (300g)", or from a line like "Serving size 125g".
-- servingsPerPack is how many servings the pack says it holds, including footnotes such as "Contains 2 portions".
+- packSize is the total weight or volume of the pack as sold, such as "600g" or "1.5kg".
+- basis says what the nutrition figures describe. A table headed "when grilled according to instructions", "when cooked", "as prepared" or "as consumed" is "as prepared". A plain table with no such heading is "as sold".
+- preparedSize is the weight of the WHOLE PACK after cooking, when the label states it. Raw meat and frozen food often carry a footnote like "when grilled according to instructions 342g typically weighs 248g": there packSize is "342g" and preparedSize is "248g". Leave it null when no cooked weight is printed.
+- servingSize is the weight of ONE serving, in grams, if it can be read anywhere: from the serving column heading such as "per 1/2 pot (300g)" or "One sausage patty (41g)", or from a line like "Serving size 125g". Take it from the same column the perServing figures came from, so it is on the same basis as them.
+- servingsPerPack is how many servings the pack says it holds, including footnotes such as "Contains 2 portions" or "Pack contains 6 servings".
 - name is the product name if it is legible in the photograph.
 - If no nutrition panel is legible, return every field as null.`;
 
@@ -99,18 +102,24 @@ function parseNutrition(text) {
   };
 
   const packSize = String(parsed.packSize || "").trim();
+  const preparedSize = String(parsed.preparedSize || "").trim();
   const servingSize = String(parsed.servingSize || "").trim();
   const pack = parsePackSize(packSize);
+  const prepared = parsePackSize(preparedSize);
+  const serving = parsePackSize(servingSize);
 
   return {
     name: String(parsed.name || "").trim(),
     packSize,
+    preparedSize,
     servingSize,
     // resolved here so callers never have to parse a size string themselves
     packAmount: pack.amount,
-    packUnit: pack.unit,
-    servingGrams: parsePackSize(servingSize).amount,
+    packUnit: pack.unit || prepared.unit || serving.unit,
+    preparedAmount: prepared.amount,
+    servingGrams: serving.amount,
     servingsPerPack: Math.max(0, Number(parsed.servingsPerPack) || 0),
+    basis: parsed.basis === "as prepared" ? "as prepared" : parsed.basis === "as sold" ? "as sold" : "",
     per100: column(parsed.per100),
     perServing: column(parsed.perServing),
   };
