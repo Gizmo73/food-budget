@@ -17,7 +17,9 @@ import {
   ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
   stockPortions, stockPacks, packPortions, productStock,
   productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan,
-  NUTRIENTS, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion, labelToPortion,
+  NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion, labelToPer100,
+  portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
+  nutritionUsable,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -185,6 +187,19 @@ function renameProduct(ing, product, changes) {
         ),
       }));
     }
+  });
+}
+
+/* Edit one line of a meal. The mutator is handed the line and the ingredient
+   it points at, since deciding what to change usually means knowing how big a
+   portion of that product is. */
+function patchMealItem(mealId, index, changes) {
+  commit((db) => {
+    const meal = db.meals.find((m) => m.id === mealId);
+    const it = meal && meal.items[index];
+    if (!it) return;
+    const ing = db.ingredients.find((i) => i.id === it.ingredientId) || null;
+    Object.assign(it, changes(it, ing) || {});
   });
 }
 
@@ -722,25 +737,60 @@ function viewMeals() {
         .map((it, i) => {
           const ing = byId[it.ingredientId];
           const named = it.productId && ing ? productById(ing, it.productId) : null;
+          const grams = itemIsGrams(it);
+          const product = ing ? itemProduct(ing, it) : null;
+          const per = gramsPerPortion(product);
+          const unit = (product && product.packUnit) === "ml" ? "ml" : "g";
+
+          /* Written in grams, the line still has to become portions for the
+             shopping list, and that needs a portion size on the product. Say
+             so here rather than letting the line quietly count as nothing. */
+          const sum = grams
+            ? per > 0
+              ? `${trim2(Number(it.grams) || 0)}${unit} is ${trim2(
+                  itemPortions(ing, it)
+                )} portions of ${trim2(per)}${unit}`
+              : `Set a pack size and portion on ${esc(
+                  (product && product.name) || (ing && ing.name) || "this"
+                )} so the list can turn ${unit} into packs`
+            : `${trim2(Number(it.portions) || 0)} portion${
+                Math.abs((Number(it.portions) || 0) - 1) < 0.001 ? "" : "s"
+              }${per > 0 ? ` of ${trim2(per)}${unit}` : ""}`;
+
           return `<div class="subcard">
         <div class="row" style="margin-bottom:6px">
           <select class="inp grow" data-act="setMealIng" data-id="${meal.id}" data-i="${i}">${picker(
             it.ingredientId
           )}</select>
-          <input class="inp mono" style="width:74px;text-align:right" type="number" step="0.05" min="0"
-            value="${it.portions}" data-act="setMealPortions" data-id="${meal.id}" data-i="${i}" aria-label="Portions each">
           <button class="btn small danger" data-act="delMealIng" data-id="${meal.id}" data-i="${i}" aria-label="Remove">×</button>
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <div class="seg" style="flex:0 0 auto">
+            <button data-act="setMealBy" data-id="${meal.id}" data-i="${i}" data-by="portions"
+              data-on="${grams ? 0 : 1}">Portions</button>
+            <button data-act="setMealBy" data-id="${meal.id}" data-i="${i}" data-by="grams"
+              data-on="${grams ? 1 : 0}">${unit}</button>
+          </div>
+          ${
+            grams
+              ? `<input class="inp mono grow" style="text-align:right" type="number" step="1" min="0"
+                  value="${trim2(Number(it.grams) || 0)}" data-act="setMealGrams" data-id="${meal.id}"
+                  data-i="${i}" aria-label="${unit} of ${esc((ing && ing.name) || "it")} in this meal">`
+              : `<input class="inp mono grow" style="text-align:right" type="number" step="0.05" min="0"
+                  value="${it.portions}" data-act="setMealPortions" data-id="${meal.id}"
+                  data-i="${i}" aria-label="Portions each">`
+          }
         </div>
         <select class="inp" data-act="setMealProduct" data-id="${meal.id}" data-i="${i}">${
             ing ? which(ing, it.productId) : ""
           }</select>
-        <p class="why" style="margin:4px 0 0">${
-          named
-            ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
-                ing.name
-              )} in.`
-            : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
-        }</p>
+        <p class="why" style="margin:4px 0 0">${sum}. ${
+            named
+              ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
+                  ing.name
+                )} in.`
+              : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
+          }</p>
       </div>`;
         })
         .join("");
@@ -833,47 +883,107 @@ function offerEditor(subject, acts) {
   </div>`;
 }
 
-/* The four numbers, per portion, plus the shortcut of photographing the panel.
-   Kept below the price because it is reference data: you fill it in once and
-   then never look at it again, while the price changes every shop. */
+/* Nutrition as the label prints it: per 100. What a portion comes to is
+   derived from the portion size and shown underneath, so redefining a portion
+   visibly moves the calories rather than leaving a stale figure behind. */
 function nutritionEditor(ing, product) {
   const per = gramsPerPortion(product);
+  const unit = product.packUnit === "ml" ? "ml" : "g";
   const known = hasNutrition(product);
-  const box = (field, label, unit) =>
+  const portion = productNutrition(product);
+
+  const box = (key, label) =>
     `<label class="field"><span class="eyebrow">${label}</span>
       <input class="inp mono" type="number" step="0.1" min="0" value="${trim2(
-        Number(product[field]) || 0
+        Number(product[`${key}100`]) || 0
       )}" data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
       product.id
-    )}" data-field="${field}" aria-label="${label} per portion${unit ? ` in ${unit}` : ""}"></label>`;
+    )}" data-field="${key}100" aria-label="${label} per 100${unit}"></label>`;
 
   return `<div style="margin-bottom:8px">
     <div class="row" style="margin-bottom:6px">
-      <span class="eyebrow grow">Nutrition, per portion</span>
+      <span class="eyebrow grow">Nutrition, per 100${unit}</span>
       <button class="btn small tonal" data-act="shootLabel" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan the label</button>
     </div>
-    <div class="grid2" style="margin-bottom:6px">${box("kcal", "Calories", "kcal")}${box(
+    <div class="grid2" style="margin-bottom:6px">${box("kcal", "Calories")}${box(
     "protein",
-    "Protein g",
-    "grams"
+    "Protein g"
   )}</div>
-    <div class="grid2" style="margin-bottom:6px">${box("carbs", "Carbs g", "grams")}${box(
-    "fat",
-    "Fat g",
-    "grams"
-  )}</div>
+    <div class="grid2" style="margin-bottom:6px">${box("carbs", "Carbs g")}${box("fat", "Fat g")}</div>
     <p class="why" style="margin:0">${
-      known
-        ? `${esc(
-            product.nutritionUpdated ? `read ${ago(product.nutritionUpdated)}` : "entered by hand"
-          )}`
-        : "Not filled in yet, so meals using this will not count towards the day"
+      !known
+        ? "Not filled in yet, so meals using this will not count towards the day."
+        : per > 0
+        ? `A ${trim2(per)}${unit} portion is <b>${Math.round(portion.kcal)} kcal</b>, ${trim2(
+            portion.protein
+          )}g protein, ${trim2(portion.carbs)}g carbs, ${trim2(portion.fat)}g fat.`
+        : `Set a pack size and portion above and this becomes a figure per portion.`
     }${
-    per > 0
-      ? ` &middot; a portion is about ${trim2(Math.round(per))}g`
-      : " &middot; set the pack size note and portions per pack to convert a per 100g label"
+    product.nutritionUpdated && known ? ` Read ${esc(ago(product.nutritionUpdated))}.` : ""
   }</p>
+  </div>`;
+}
+
+/* Pack size and what a portion of it is. These two decide the portion weight,
+   which is what every calorie figure is scaled by and what turns a recipe
+   written in grams into packs on the list. */
+function portionEditor(ing, product) {
+  const byWeight = product.portionBy === "weight";
+  const unit = product.packUnit === "ml" ? "ml" : "g";
+  const pack = Number(product.packAmount) || 0;
+  const per = gramsPerPortion(product);
+  const count = portionsPer(product);
+
+  const attrs = (act, field) =>
+    `data-act="${act}" data-id="${ing.id}" data-product="${esc(product.id)}"${
+      field ? ` data-field="${field}"` : ""
+    }`;
+
+  const unitOption = (value, label) =>
+    `<option value="${value}"${product.packUnit === value ? " selected" : ""}>${label}</option>`;
+
+  /* Whichever side you are not editing is the derived one, so it is shown as
+     a sentence rather than a box you could contradict. */
+  const derived = byWeight
+    ? pack > 0 && per > 0
+      ? `That makes <b>${trim2(count)} portions</b> in a ${trim2(pack)}${unit} pack.`
+      : `Add a pack size and the list can work out how many portions a pack holds.`
+    : per > 0
+    ? `That makes a portion <b>${trim2(per)}${unit}</b>.`
+    : `Add a pack size and a portion gets a weight, which is what calories are worked out from.`;
+
+  return `<div style="margin-bottom:8px">
+    <div class="grid2" style="margin-bottom:6px">
+      <label class="field"><span class="eyebrow">Pack size</span>
+        <input class="inp mono" type="number" step="1" min="0" value="${trim2(pack)}"
+          ${attrs("setProductNumber", "packAmount")} aria-label="How much is in a pack"></label>
+      <label class="field"><span class="eyebrow">Unit</span>
+        <select class="inp" ${attrs("setPackUnit")} aria-label="Pack size unit">
+          ${unitOption("g", "grams")}${unitOption("ml", "millilitres")}${unitOption("", "no weight")}
+        </select></label>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <span class="eyebrow grow">A portion is</span>
+      <div class="seg">
+        <button ${attrs("setPortionBy")} data-by="count" data-on="${byWeight ? 0 : 1}">Count</button>
+        <button ${attrs("setPortionBy")} data-by="weight" data-on="${byWeight ? 1 : 0}">Weight</button>
+      </div>
+    </div>
+    ${
+      byWeight
+        ? `<label class="field" style="margin-bottom:6px"><span class="eyebrow">${unit} per portion</span>
+            <input class="inp mono" type="number" step="1" min="0" value="${trim2(
+              Number(product.portionGrams) || 0
+            )}" ${attrs("setProductNumber", "portionGrams")} aria-label="How much one portion weighs"></label>`
+        : `<label class="field" style="margin-bottom:6px"><span class="eyebrow">Portions per pack</span>
+            <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(
+              Number(product.portionsPerPack) || 0
+            )}" ${attrs("setProductNumber", "portionsPerPack")} aria-label="Portions per pack"></label>`
+    }
+    <p class="why" style="margin:0">${
+      product.packUnit ? derived : "This pack has no weight, so calories cannot be worked out from a label."
+    }</p>
   </div>`;
 }
 
@@ -884,7 +994,7 @@ function productCard(ing, product, chosen, stores) {
   const age = daysSince(product.priceUpdated);
   const stale = age > STALE_DAYS;
   const pinned = isPinned(ing, product);
-  const pp = Number(product.portionsPerPack) || 0;
+  const pp = portionsPer(product);
   const only = productsOf(ing).length === 1;
   const stock = productStock(product);
 
@@ -923,29 +1033,18 @@ function productCard(ing, product, chosen, stores) {
       <label class="field"><span class="eyebrow">Base price £ per pack</span>
         <input class="inp mono" type="number" step="0.01" min="0" value="${product.pricePerPack}"
           data-act="setProductPrice" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
-      <label class="field"><span class="eyebrow">Portions per pack</span>
-        <input class="inp mono" type="number" step="0.5" min="0" value="${product.portionsPerPack}"
-          data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
-    product.id
-  )}" data-field="portionsPerPack"></label>
-    </div>
-    <div class="grid2" style="margin-bottom:6px">
       <label class="field"><span class="eyebrow">In stock (portions)</span>
         <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(stock)}"
           data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
     product.id
   )}" data-field="stockPortions"></label>
-      <label class="field"><span class="eyebrow">Pack size note</span>
-        <input class="inp" placeholder="500g" value="${esc(product.packLabel || "")}"
-          data-act="setProductField" data-id="${ing.id}" data-product="${esc(
-    product.id
-  )}" data-field="packLabel"></label>
     </div>
+    ${portionEditor(ing, product)}
     <div class="row" style="margin-bottom:8px">
       <span class="muted grow">${
         pp > 0
           ? `${trim2(stock / pp)} pack${Math.abs(stock / pp - 1) < 0.001 ? "" : "s"} of ${trim2(pp)}`
-          : "Set portions per pack and this counts packs too"
+          : "Set how big a portion is and this counts packs too"
       }</span>
       <button class="btn small tonal" data-act="lessStockPack" data-id="${ing.id}"
         data-product="${esc(product.id)}" title="Take a pack out of stock">&minus; pack</button>
@@ -1006,7 +1105,7 @@ function viewItems() {
     const extra = Number(ing.extraPacks) || 0;
     const live = activeOffer(chosen);
     const stock = stockPortions(ing);
-    const pp = Number(chosen && chosen.portionsPerPack) || 0;
+    const pp = portionsPer(chosen);
 
     const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
       <div class="grow">
@@ -1982,7 +2081,7 @@ async function shootLabel(id, productId) {
   filePicker(async (file) => {
     try {
       const out = await readNutrition(state.settings, file);
-      const read = labelToPortion(product, out);
+      const read = labelToPer100(out);
       setSheet({
         kind: "label",
         id,
@@ -1993,6 +2092,10 @@ async function shootLabel(id, productId) {
         values: read ? read.values : null,
         why: read ? read.why : "",
         warn: !!(read && read.warn),
+        /* The photograph often shows the pack size too, and a pack size is
+           what turns these figures into a portion. Offer it rather than
+           making them go and type it, but never apply it silently. */
+        takeSize: !!(out.packAmount > 0 && out.packUnit),
       });
     } catch (err) {
       setSheet({ kind: "label", id, productId, busy: false, err: err.message });
@@ -2007,23 +2110,59 @@ function sheetLabel(s) {
 
   const inner = [];
   if (s.err) inner.push(`<div class="err">${esc(s.err)}</div>`);
-  if (s.busy) inner.push(`<p class="muted">Reading the label…</p>`);
+  if (s.busy) inner.push(`<p class="muted">Reading the label\u2026</p>`);
 
   if (s.values) {
-    const row = (label, value, unit) =>
+    const out = s.out || {};
+    const unit = out.packUnit === "ml" || product.packUnit === "ml" ? "ml" : "g";
+    const row = (label, value, suffix) =>
       `<div class="row" style="margin-bottom:4px"><span class="grow">${label}</span>
-        <span class="num" style="font-weight:600">${trim2(value)}${unit}</span></div>`;
+        <span class="num" style="font-weight:600">${trim2(value)}${suffix}</span></div>`;
+
     inner.push(`<div class="subcard">
+      <span class="eyebrow" style="display:block;margin-bottom:6px">Per 100${unit}</span>
       ${row("Calories", s.values.kcal, " kcal")}
       ${row("Protein", s.values.protein, " g")}
       ${row("Carbs", s.values.carbs, " g")}
       ${row("Fat", s.values.fat, " g")}
-      <p class="why" style="margin:6px 0 0">From ${s.why}.</p>
+      <p class="why" style="margin:6px 0 0">From ${esc(s.why)}.</p>
     </div>`);
+
     if (s.warn) {
-      inner.push(`<p class="muted">Check these before saving. Set the pack size note and portions
-        per pack on the product and photograph it again for a portion-sized figure.</p>`);
+      inner.push(`<p class="muted">Check these before saving. The label gave a serving column with no
+        weight against it, so there is nothing to convert it to per 100${unit} with.</p>`);
     }
+
+    /* What it will come to on a plate, worked out now, so a wrong portion size
+       is obvious here rather than three screens away on the Food tab. */
+    const grams = s.takeSize && (!product.packUnit || Number(product.packAmount) <= 0)
+      ? (Number(out.packAmount) || 0) / (portionsPer(product) || 1)
+      : gramsPerPortion(product);
+    if (grams > 0) {
+      const kcal = ((s.values.kcal || 0) * grams) / 100;
+      inner.push(`<p class="muted">A ${trim2(Math.round(grams))}${unit} portion of this works out at
+        <strong>${Math.round(kcal)} kcal</strong>.</p>`);
+    } else {
+      inner.push(`<p class="muted">This product has no portion weight yet, so these will not count
+        towards a day until you set a pack size and a portion on it.</p>`);
+    }
+
+    if (s.takeSize) {
+      const same =
+        Number(product.packAmount) === Number(s.out.packAmount) && product.packUnit === s.out.packUnit;
+      if (!same) {
+        inner.push(`<label class="row" style="margin-bottom:8px">
+          <input type="checkbox" data-act="toggleLabelSize"${s.useSize === false ? "" : " checked"}>
+          <span class="grow">Also set the pack size to ${trim2(s.out.packAmount)}${esc(
+          s.out.packUnit
+        )}, read off the pack${
+          Number(product.packAmount) > 0
+            ? ` (it currently says ${trim2(product.packAmount)}${esc(product.packUnit || "")})`
+            : ""
+        }</span></label>`);
+      }
+    }
+
     inner.push(`<div class="row">
       <button class="btn solid grow" data-act="applyLabel">Save to ${esc(
         product.name || ing.name
@@ -2041,7 +2180,7 @@ function sheetLabel(s) {
     "Nutrition label",
     `Point the camera at the panel on ${esc(product.name || ing.name)}${
       product.store ? ` from ${esc(product.store)}` : ""
-    }. The figures are stored per portion, so a per 100g table is converted for you.`,
+    }. Figures are stored exactly as the label prints them, per 100g or 100ml.`,
     inner.join("")
   );
 }
@@ -2659,7 +2798,7 @@ const actions = {
       [field]: Math.max(0, Number(el.value) || 0),
       // a hand-typed macro is a reading in its own right, and has to be
       // stamped or the other phone's older label would win the merge
-      ...(NUTRIENTS.includes(field) ? { nutritionUpdated: now() } : {}),
+      ...(PER100.includes(field) ? { nutritionUpdated: now() } : {}),
     });
   },
   setProductField: (el) =>
@@ -2667,14 +2806,65 @@ const actions = {
 
   shootLabel: (el) => shootLabel(el.dataset.id, el.dataset.product),
 
+  toggleLabelSize: (el) => setSheet({ ...state.sheet, useSize: el.checked }),
+
   applyLabel: () => {
     const s = state.sheet;
     if (!s || !s.values) return;
     const product = productOf(s.id, s.productId);
-    patchProduct(s.id, s.productId, { ...s.values, nutritionUpdated: now() });
+    // the four figures land under their per-100 names, never per portion
+    const per100 = Object.fromEntries(NUTRIENTS.map((k) => [`${k}100`, s.values[k] || 0]));
+    const size =
+      s.takeSize && s.useSize !== false
+        ? { packAmount: s.out.packAmount, packUnit: s.out.packUnit }
+        : {};
+    patchProduct(s.id, s.productId, { ...per100, ...size, nutritionUpdated: now() });
     setSheet(null);
     flash(`Nutrition saved to ${(product && product.name) || "the product"}.`);
   },
+
+  setPackUnit: (el) =>
+    patchProduct(el.dataset.id, el.dataset.product, { packUnit: el.value === "ml" ? "ml" : el.value === "g" ? "g" : "" }),
+
+  /* Switching how a portion is defined seeds the other side from what is
+     already known, so the figures do not lurch when you flip the toggle. */
+  setPortionBy: (el) => {
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (!product) return;
+    const to = el.dataset.by === "weight" ? "weight" : "count";
+    const changes = { portionBy: to };
+    if (to === "weight" && !(Number(product.portionGrams) > 0)) {
+      const grams = gramsPerPortion(product);
+      if (grams > 0) changes.portionGrams = Math.round(grams * 100) / 100;
+    }
+    if (to === "count" && !(Number(product.portionsPerPack) > 0)) {
+      const count = portionsPer(product);
+      if (count > 0) changes.portionsPerPack = Math.round(count * 100) / 100;
+    }
+    patchProduct(el.dataset.id, el.dataset.product, changes);
+  },
+
+  setMealBy: (el) => {
+    const by = el.dataset.by === "grams" ? "grams" : "portions";
+    patchMealItem(el.dataset.id, Number(el.dataset.i), (it, ing) => {
+      const changes = { by };
+      // seed the empty side from the other, so the amount does not vanish
+      if (by === "grams" && !(Number(it.grams) > 0)) {
+        const per = gramsPerPortion(itemProduct(ing, it));
+        if (per > 0) changes.grams = Math.round((Number(it.portions) || 0) * per);
+      }
+      if (by === "portions" && !(Number(it.portions) > 0)) {
+        const per = gramsPerPortion(itemProduct(ing, it));
+        if (per > 0) changes.portions = Math.round(((Number(it.grams) || 0) / per) * 100) / 100;
+      }
+      return changes;
+    });
+  },
+
+  setMealGrams: (el) =>
+    patchMealItem(el.dataset.id, Number(el.dataset.i), () => ({
+      grams: Math.max(0, Number(el.value) || 0),
+    })),
 
   addProduct: (el) => {
     const ing = ingredient(el.dataset.id);

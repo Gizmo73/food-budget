@@ -2,6 +2,8 @@
    Keys live in device settings and are sent straight to the provider.
    Nothing is stored or proxied anywhere else. */
 
+import { parsePackSize } from "./store.js";
+
 const PROMPT = `You are reading a photograph of a UK supermarket receipt.
 
 Return ONLY a JSON object, with no preamble and no markdown fences:
@@ -96,10 +98,18 @@ function parseNutrition(text) {
     return Object.values(out).some((v) => v > 0) ? out : null;
   };
 
+  const packSize = String(parsed.packSize || "").trim();
+  const servingSize = String(parsed.servingSize || "").trim();
+  const pack = parsePackSize(packSize);
+
   return {
     name: String(parsed.name || "").trim(),
-    packSize: String(parsed.packSize || "").trim(),
-    servingSize: String(parsed.servingSize || "").trim(),
+    packSize,
+    servingSize,
+    // resolved here so callers never have to parse a size string themselves
+    packAmount: pack.amount,
+    packUnit: pack.unit,
+    servingGrams: parsePackSize(servingSize).amount,
     servingsPerPack: Math.max(0, Number(parsed.servingsPerPack) || 0),
     per100: column(parsed.per100),
     perServing: column(parsed.perServing),

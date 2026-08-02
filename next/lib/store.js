@@ -6,7 +6,7 @@
 const DB_NAME = "fortnight-shop-next";
 const STORE = "kv";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SLOTS = [
   { key: "breakfast", label: "Breakfast", short: "B" },
@@ -98,26 +98,70 @@ export function newProduct(name, store, fields = {}) {
     portionsPerPack: 1,
     stockPortions: 0,
     packLabel: "",
+    /* How much is in a pack, as a number and a unit rather than free text, so
+       nothing has to be parsed or guessed. An empty unit means the pack has no
+       useful weight: six eggs, a lettuce, a roll of kitchen towel. */
+    packAmount: 0,
+    packUnit: "",
+    /* A portion is defined one of two ways, and whichever you do not give is
+       worked out from the pack size. "count" is 4 portions in this pack;
+       "weight" is a portion is 125g. Weight is what a recipe actually means. */
+    portionBy: "count",
+    portionGrams: 0,
     barcodes: [],
     offer: null,
     priceUpdated: "",
-    /* Nutrition is per portion, like everything else here. A label states it
-       per 100g, so the scan converts on the way in and you can correct it. */
-    kcal: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
+    /* Nutrition is stored PER 100g or 100ml, exactly as the label prints it,
+       because that is the fact that does not change. Per portion is worked out
+       from the portion size whenever it is needed, so changing how big a
+       portion is moves the calories with it instead of leaving them stale. */
+    kcal100: 0,
+    protein100: 0,
+    carbs100: 0,
+    fat100: 0,
     nutritionUpdated: "",
     ...fields,
   };
 }
 
-/* The four macros, sanitised. Kept in one place because they travel together
-   through migration, merging and the label scan. */
+/* The four macros. NUTRIENTS are the logical names used everywhere a figure is
+   handled; PER100 are the fields they are stored under. The "100" suffix is
+   deliberate: it makes a per-portion figure impossible to write into a
+   per-100g slot by accident. */
 export const NUTRIENTS = ["kcal", "protein", "carbs", "fat"];
+export const PER100 = NUTRIENTS.map((k) => `${k}100`);
 
 export const cleanNutrition = (src) =>
-  Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, Number(src && src[k]) || 0)]));
+  Object.fromEntries(PER100.map((k) => [k, Math.max(0, Number(src && src[k]) || 0)]));
+
+/* Read a pack size out of the free text older versions stored, so "1.5kg",
+   "500 ml", "1 litre" and "6x125g" all migrate to a number and a unit. Returns
+   a zero amount when there is nothing weighable in the text. */
+export function parsePackSize(raw) {
+  const text = String(raw || "").toLowerCase();
+  const none = { amount: 0, unit: "" };
+  if (!text) return none;
+
+  const scale = (n, unit) => {
+    if (unit === "kg") return { amount: n * 1000, unit: "g" };
+    if (unit === "g") return { amount: n, unit: "g" };
+    if (unit === "l" || unit === "litre" || unit === "litres") {
+      return { amount: n * 1000, unit: "ml" };
+    }
+    return { amount: n, unit: "ml" };
+  };
+  const UNIT = "(kg|g|ml|l|litres|litre)";
+
+  // a multipack states the count and the unit size: 6x125g is 750g
+  const multi = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*[x×]\\s*(\\d+(?:\\.\\d+)?)\\s*${UNIT}\\b`));
+  if (multi) {
+    const each = scale(Number(multi[2]), multi[3]);
+    return { amount: each.amount * Number(multi[1]), unit: each.unit };
+  }
+
+  const one = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${UNIT}\\b`));
+  return one ? scale(Number(one[1]), one[2]) : none;
+}
 
 /* Add or replace a product on an ingredient, matched by id. */
 export function withProduct(ing, product) {
@@ -425,23 +469,68 @@ function stockOf(i) {
 
    Nothing needs re-entering at any step. A v4 item becomes an ingredient with
    one product; a v5 source becomes a product named after its ingredient. */
+/* Nutrition moved from per portion to per 100g at v7. Convert rather than
+   discard, and never change what the app shows you.
+
+   Where the pack size and the portion count are both known the conversion is
+   exact: a 300g portion at 120kcal was 40kcal per 100g. Where they are not,
+   there is nothing to divide by, so the old per-portion figures are carried
+   across as if a portion were 100g. Every displayed figure stays identical and
+   the product simply says its portion is 100g, which you can correct. Losing
+   the numbers, or silently rescaling them by a guess, would both be worse. */
+function nutritionFrom(p, size, portionsPerPack) {
+  // already per 100: a v7 product, or one that has been round-tripped
+  if (PER100.some((k) => Number(p[k]) > 0)) {
+    return { ...cleanNutrition(p), portionGrams: Math.max(0, Number(p.portionGrams) || 0) };
+  }
+
+  const old = Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, Number(p[k]) || 0)]));
+  if (!NUTRIENTS.some((k) => old[k] > 0)) return cleanNutrition({});
+
+  const grams = size.amount > 0 && portionsPerPack > 0 ? size.amount / portionsPerPack : 0;
+  if (grams > 0) {
+    return Object.fromEntries(
+      NUTRIENTS.map((k) => [`${k}100`, Math.round((old[k] * 100) / grams * 100) / 100])
+    );
+  }
+  return {
+    ...Object.fromEntries(NUTRIENTS.map((k) => [`${k}100`, old[k]])),
+    portionBy: "weight",
+    portionGrams: 100,
+  };
+}
+
 function productsFrom(i, fixStore) {
   const named = (list, fallbackName) =>
     list.map((p) => {
       const store = fixStore(p.store);
       const name = p.name || fallbackName || "Item";
+      const portionsPerPack = Number(p.portionsPerPack) || 0;
+
+      /* Pack size was free text until v7. Read it once here so nothing has to
+         parse it again, and keep the text as a note since it may say more than
+         a number can ("6 x 125g", "family size"). */
+      const size =
+        Number(p.packAmount) > 0 && p.packUnit
+          ? { amount: Number(p.packAmount), unit: p.packUnit }
+          : parsePackSize(p.packLabel);
+
       return {
         id: p.id && p.name ? p.id : productKey(name, store),
         name,
         store,
         pricePerPack: Number(p.pricePerPack) || 0,
-        portionsPerPack: Number(p.portionsPerPack) || 0,
+        portionsPerPack,
         stockPortions: Math.max(0, Number(p.stockPortions) || 0),
         packLabel: p.packLabel || "",
+        packAmount: Math.max(0, size.amount),
+        packUnit: ["g", "ml"].includes(size.unit) ? size.unit : "",
+        portionBy: p.portionBy === "weight" ? "weight" : "count",
+        portionGrams: Math.max(0, Number(p.portionGrams) || 0),
         barcodes: Array.isArray(p.barcodes) ? p.barcodes : [],
         offer: cleanOffer(p.offer),
         priceUpdated: p.priceUpdated || "",
-        ...cleanNutrition(p),
+        ...nutritionFrom(p, size, portionsPerPack),
         nutritionUpdated: p.nutritionUpdated || "",
       };
     });
@@ -557,6 +646,12 @@ export function migrate(db) {
           // blank means any product of that ingredient will do
           productId: it.productId || "",
           portions: perPerson(it.portions),
+          /* A recipe line can be written either way. "grams" is what a recipe
+             actually says, and is converted to portions for the shopping list
+             using that product's portion size. Portions stay the default,
+             since not everything worth planning has a weight. */
+          by: it.by === "grams" ? "grams" : "portions",
+          grams: Math.max(0, Number(it.grams) || 0),
         })),
     })),
     ingredients: dedupeIds(db.ingredients).map((i) => {
@@ -612,8 +707,8 @@ function mergeProducts(mine, theirs) {
     /* Nutrition has its own clock. A shop trip updates the price and nothing
        else, so the newer price must not drag a blank label back over one the
        other phone actually read. */
-    const fed = NUTRIENTS.some((k) => Number(m[k]) > 0) ? m : null;
-    const theirFed = NUTRIENTS.some((k) => Number(t[k]) > 0) ? t : null;
+    const fed = PER100.some((k) => Number(m[k]) > 0) ? m : null;
+    const theirFed = PER100.some((k) => Number(t[k]) > 0) ? t : null;
     const label =
       fed && theirFed
         ? (t.nutritionUpdated || "") > (m.nutritionUpdated || "")

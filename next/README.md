@@ -97,7 +97,7 @@ Times are shown in UK wall-clock time, so they read correctly through British Su
 | Name, aliases | Its own name, and the shop |
 | What meals ask for | Price per pack, portions per pack |
 | Hand-added packs | **Stock, in portions** |
-| | Pack size note, offer, barcodes |
+| | Pack size, portion, nutrition, offer, barcodes |
 
 **Stock sits on the product**, because a meal is allowed to demand one specific one and the app has to be able to answer "have I got *that*". An ingredient's stock is the sum of its products', so "any cheddar will do" still pools exactly as it did.
 
@@ -116,7 +116,7 @@ What lives where follows from that:
 | Name, aliases | Shop |
 | **Stock, in portions** | Price per pack |
 | What meals ask for | Portions per pack |
-| Hand-added packs | Pack size note, offer, barcodes |
+| Hand-added packs | Pack size, portion, nutrition, offer, barcodes |
 
 **Stock is pooled, and that is the whole point.** A block of cheese in the fridge does not remember which shop it came from, so buying cheddar at Asda cancels the cheddar a meal needs even though the plan was priced against Tesco. Before this, the Asda cheddar was a separate item, its stock invisible to the meal, and the list would send you back to Tesco for cheese you already had.
 
@@ -140,48 +140,63 @@ Set a **start date** at the top and every row shows the date it falls on, which 
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
+## Pack size, and what a portion is
+
+Two fields decide everything nutritional, and one of them decides the shopping list too.
+
+**Pack size** is a number and a unit — `600` `g`, `1.5` `kg` entered as `1500 g`, `500 ml` — rather than the free text it used to be, so nothing has to be parsed or guessed. "No weight" is a real choice, for six eggs or a roll of kitchen towel.
+
+**A portion is** either a count or a weight, and the app works out whichever you did not give:
+
+| You enter | It derives |
+|---|---|
+| 2 portions per pack | a portion is 300g |
+| 300 g per portion | 2 portions per pack |
+
+Portions per pack is what the whole shopping engine runs on — stock is counted in portions and pack counts are the shortfall divided by it — so defining a portion by weight still produces a correct list, worked out from the pack size rather than guessed.
+
+Neither is stored twice. The derived side is shown as a sentence under the boxes, so the two can never drift apart.
+
 ## Calories and macros
 
-Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food, and the plan should say which one you actually ate.
+Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food.
 
-**The figures are per portion**, like the price and the stock. That is what lets the Food tab add up a day without any unit conversion.
+**They are stored per 100g or 100ml, exactly as the label prints them.** That is the fact that does not change. What a portion comes to is worked out from the portion size at the moment it is needed, so redefining a portion moves the calories with it. Under the old per-portion storage, changing portions per pack left the calories stale and wrong, silently.
+
+The editor shows both: the per-100 figures you type, and a line underneath saying what one portion of that works out at.
+
+A 600g pot of soup at 40kcal per 100g:
+
+| Portions per pack | A portion is | Which is |
+|---|---|---|
+| 2 | 300g | 120 kcal |
+| 3 | 200g | 80 kcal |
+| 1 | the whole pot | 240 kcal |
+
+Change the portion count and all three move on their own.
 
 ### Photographing the label
 
-The **Photograph the label** button on a product sends the panel to whichever provider you set up for receipts, and puts the answer in the four boxes for you to check before saving. Nothing is saved until you press save.
+**Scan the label** sends the panel to whichever provider you set up for receipts and shows you what it read before anything is saved.
 
-A label is printed per 100g, so the app has to work out how big *your* portion is before it can fill anything in. It tries three things in order:
+Because the app stores per 100, a normal label needs **no conversion at all** — the per 100g column goes straight in. The only conversion left is a label that prints a serving column but no per-100 column, which is divided back down by the weight of that serving. If that weight is not printed there is nothing to divide by, so the figures come back flagged rather than silently rescaled.
 
-| | Source | Trusted |
-|---|---|---|
-| 1 | Your **pack size note** divided by your **portions per pack** | Yes |
-| 2 | The **pack size printed on the label** divided by your portions per pack | Yes |
-| 3 | The **serving the label itself quotes** | Flagged for a look |
-
-The first two use your own portion count, so they are right by definition. The third is the pack's idea of a serving rather than yours, so those figures come back marked for checking.
-
-Worked example, from a 600g pot of soup labelled 40kcal per 100g and "contains 2 portions":
-
-- Pack size note `600g`, portions per pack `2` → a 300g portion → **120 kcal**, which is the 119 kcal the label prints for half a pot.
-- Same pack, but you eat the lot in one go: portions per pack `1` → **240 kcal**.
-
-That is the point of storing per portion. The same label gives a different answer depending on how you actually eat it, and only you know that.
-
-If the panel cannot be read, or there is no way to size a portion at all, nothing is filled in silently — the app says so and you can type the numbers in yourself. A hand-typed figure is stamped the same way a scanned one is, so it survives a merge with the other phone.
+The photograph usually shows the pack size too, so the sheet offers to set it, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
 
 ### Nutrition is merged on its own clock
 
-A shop trip updates prices and nothing else. Merging by the price stamp alone would let a phone that had only done a shop drag its blank label over one the other phone had actually read. Nutrition therefore carries its own stamp and is merged separately: a filled-in label always beats a blank one, and between two filled-in ones the more recent reading wins.
+A shop trip updates prices and nothing else. Merging by the price stamp alone would let a phone that had only done a shop drag its blank label over one the other phone had actually read. Nutrition therefore carries its own stamp: a filled-in label always beats a blank one, and between two filled-in ones the more recent reading wins.
 
-## The Food tab
+## Recipes in grams
 
-The same fortnight, the same two people, read a second way: what the meals add up to rather than what they cost.
+A meal ingredient is written **either in portions or in grams**, chosen per line.
 
-Each day lists both people separately with calories and the three macros, driven entirely by the meals on the Plan tab. Change a meal there and this moves with it. The card at the top averages **over the days that have meals on them**, not over all fourteen, since dividing nine planned days by fourteen would read as a crash diet.
+Grams is what a recipe actually says. "400g mince" is exact; "2.67 portions" is the same thing said awkwardly. Switching between the two carries the amount across rather than blanking it.
 
-A red `*` beside a figure means at least one thing in that day has no nutrition filled in, so the true number is higher. It is deliberately not hidden: a half-filled day that looked complete would be worse than one that admits it.
+The two are used differently, and deliberately:
 
-Calories stay off the Plan tab on purpose. Planning meals and counting them are two different jobs, and the plan was already six dropdowns a day.
+- **Nutrition** from a gram line is exact — 400g at 250kcal per 100g is 1000kcal, full stop. It never passes through a portion count, so it cannot pick up rounding, and changing how you portion that product does not change what the recipe contains.
+- **The shopping list** still needs packs, so a gram line is divided by that product's portion size to get portions. Without a portion weight there is nothing to divide by, so the line counts as nothing and the list names the product as a problem rather than dropping it in silence.
 
 ## When things were last updated
 
@@ -201,9 +216,9 @@ The price stamp and the last-updated stamp are separate. Renaming an item or fix
 
 New items default to **1**, meaning one pack is one use. That is right for water, kitchen roll, cleaning products and anything else you do not divide into servings, and it is the safe default because it can never under-order.
 
-Raise it for genuinely portioned things: a 500g bag of pasta that does four meals is 4, a jar of sauce that does two is 2.
+Raise it for genuinely portioned things: a 500g bag of pasta that does four meals is 4, a jar of sauce that does two is 2. Or switch that product to **Weight** and say a portion is 125g, which is the same statement made precisely, and give the calories something to scale by at the same time.
 
-Setting it to 0 is a trap the app now guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list now names those items in red instead.
+Setting it to 0 is a trap the app guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list names those items in red instead.
 
 ## Stock is counted in portions
 
