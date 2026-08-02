@@ -259,6 +259,14 @@ function draw() {
     }
   }
 
+  /* An edit can move the card you are working on: giving a product a shop
+     files its item under a different heading. Restoring the old pixel offset
+     then leaves you staring at whatever slid into that spot, which is the
+     clunky part. Remember where the open card sits on screen instead. */
+  const openId = state.sheet && state.sheet.kind === "item" ? state.sheet.id : null;
+  const openCard = openId ? root.querySelector(`[data-scroll="${openId}"]`) : null;
+  const anchorWas = openCard ? openCard.getBoundingClientRect().top : null;
+
   root.innerHTML = [
     viewMasthead(),
     `<div class="wrap">`,
@@ -273,6 +281,20 @@ function draw() {
 
   root.dataset.booted = "1";
   window.scrollTo(0, pageScroll);
+
+  /* Put the card back under your thumb, wherever the rebuild moved it to.
+     Twice, because the first correction can be cut short: restoring the old
+     offset on a page that has become shorter clamps at the bottom, and the
+     move then starts from somewhere other than where it was measured. */
+  if (anchorWas !== null) {
+    for (let i = 0; i < 2; i++) {
+      const now = root.querySelector(`[data-scroll="${openId}"]`);
+      if (!now) break;
+      const off = now.getBoundingClientRect().top - anchorWas;
+      if (Math.abs(off) < 1) break;
+      window.scrollBy(0, off);
+    }
+  }
   if (sheetScroll !== null) {
     const s = document.querySelector(".sheet");
     if (s) s.scrollTop = sheetScroll;
@@ -295,7 +317,9 @@ function draw() {
   if (focusKey) {
     const again = [...root.querySelectorAll("[data-act]")].find((el) => fieldKey(el) === focusKey);
     if (again) {
-      again.focus();
+      /* preventScroll, or restoring focus drags the page to wherever the
+         field ended up and undoes the anchoring just done above. */
+      again.focus({ preventScroll: true });
       if (selStart !== null && again.setSelectionRange) {
         try {
           again.setSelectionRange(selStart, selEnd);
@@ -1299,8 +1323,15 @@ function viewSheet() {
   return "";
 }
 
-function shell(title, blurb, inner) {
-  return `<div class="scrim" data-act="closeSheet"><div class="sheet" data-stop="1">
+/* Sheets do not close when you tap beside them. Every one of these holds
+   something half finished, and a receipt is twenty lines of review that a
+   misjudged tap on the edge used to throw away without asking. Close is
+   always in the corner. Pass dismissable for a sheet that is only reading
+   material, where there is nothing to lose. */
+function shell(title, blurb, inner, dismissable = false) {
+  return `<div class="scrim"${
+    dismissable ? ' data-dismiss="1"' : ""
+  }><div class="sheet" data-stop="1">
     <button class="btn small ghost close" data-act="closeSheet">Close</button>
     <h2>${title}</h2>
     <p class="muted" style="margin-top:0">${blurb}</p>
@@ -1806,7 +1837,8 @@ function sheetInvite(s) {
       "Invite someone",
       "Nothing to share yet.",
       `<div class="err">${esc(err)}</div>
-       <button class="btn tonal wide" data-act="openSettings">Back to settings</button>`
+       <button class="btn tonal wide" data-act="openSettings">Back to settings</button>`,
+      true
     );
   }
 
@@ -1916,7 +1948,8 @@ function sheetHelp() {
     <p class="muted">Removing someone: take them off Collaborators on GitHub, and their token stops
     working. If instead you shared a code from <strong>Invite someone</strong>, that one token is the
     key for everybody, so revoking means making a new token on GitHub and re-inviting whoever stays.</p>
-    <button class="btn tonal wide" style="margin-top:10px" data-act="openSettings">Back to settings</button>`
+    <button class="btn tonal wide" style="margin-top:10px" data-act="openSettings">Back to settings</button>`,
+    true
   );
 }
 
@@ -3498,9 +3531,12 @@ function dispatch(e) {
 }
 
 root.addEventListener("click", (e) => {
-  // a tap on the dim area behind a sheet closes it, a tap inside must not
+  /* A tap on the dim area beside a sheet closes it only where the sheet says
+     it may. Most of them hold something half finished, and a receipt is
+     twenty lines of review that a thumb landing on the edge used to discard
+     without a word. Close is always in the corner. */
   if (e.target.classList && e.target.classList.contains("scrim")) {
-    setSheet(null);
+    if (e.target.dataset.dismiss === "1") setSheet(null);
     return;
   }
   if (e.target.closest("[data-stop]") && e.target.closest(".scrim") && !e.target.closest("[data-act]")) return;

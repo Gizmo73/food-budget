@@ -358,6 +358,14 @@ manifest.webmanifest    home screen install
 
 No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing. The camera overlay lives outside the render tree because a rebuild would kill the video stream.
 
+## Sheets and scroll position
+
+**Tapping beside a sheet no longer closes it.** Nearly every sheet holds something half finished, and a receipt is twenty lines of review that a thumb landing on the edge used to discard without a word. Close is always in the top corner. Only genuinely read-only sheets, like the invite QR and the long-way instructions, still dismiss on a tap outside.
+
+**An edit that moves a card keeps the card under your thumb.** Giving a product a shop files its item under a different heading, so restoring the old scroll offset left you staring at whatever slid into that gap. The card being edited is measured before the rebuild and the page is scrolled to put it back on the same line of the screen afterwards, which it does to the pixel. On a list of forty items that is the difference between a scroll of two thousand pixels and none at all.
+
+Restoring focus uses `preventScroll` for the same reason: without it the browser drags the page to wherever the field ended up and undoes the anchoring.
+
 ## Phones, zooming and Safari
 
 The page is pinned at 1:1 and pinch zoom is refused. Zooming out used to shrink the app inside a blank page it could not scroll back from, which reads as a broken layout rather than a zoom.

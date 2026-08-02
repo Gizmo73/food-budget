@@ -8,7 +8,7 @@
    under this prefix are ever deleted. Note the trailing "v": the test build's
    caches are named "fortnight-shop-next-…" and do not match it. */
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}18`;
+const CACHE = `${PREFIX}19`;
 
 /* Where the test build sits, resolved from this script's own URL so it stays
    right wherever the app is served from. */

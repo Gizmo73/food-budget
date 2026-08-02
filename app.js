@@ -216,7 +216,9 @@ function draw() {
   if (focusKey) {
     const again = [...root.querySelectorAll("[data-act]")].find((el) => fieldKey(el) === focusKey);
     if (again) {
-      again.focus();
+      /* preventScroll, or restoring focus drags the page to wherever the
+         field ended up after the rebuild. */
+      again.focus({ preventScroll: true });
       if (selStart !== null && again.setSelectionRange) {
         try {
           again.setSelectionRange(selStart, selEnd);
@@ -2244,10 +2246,10 @@ function dispatch(e) {
 
 root.addEventListener("click", (e) => {
   // a tap on the dim area behind a sheet closes it, a tap inside must not
-  if (e.target.classList && e.target.classList.contains("scrim")) {
-    setSheet(null);
-    return;
-  }
+  /* A tap beside a sheet no longer closes it. Most of them hold something
+     half finished, and a receipt is twenty lines of review that a thumb on
+     the edge used to discard without a word. Close is always in the corner. */
+  if (e.target.classList && e.target.classList.contains("scrim")) return;
   if (e.target.closest("[data-stop]") && e.target.closest(".scrim") && !e.target.closest("[data-act]")) return;
   dispatch(e);
 });
