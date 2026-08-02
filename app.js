@@ -287,6 +287,13 @@ function renameProduct(ing, product, changes) {
     return;
   }
 
+  /* A product's id is made from its name and its shop, so both of those are
+     renames. The editor you are typing in has to follow it, or setting a shop
+     folds the editor shut under your hands. */
+  if (state.sheet && state.sheet.kind === "item" && state.sheet.openProduct === product.id) {
+    showProduct(nextId);
+  }
+
   commit((db) => {
     const i = db.ingredients.findIndex((x) => x.id === ing.id);
     if (i < 0) return;
@@ -300,14 +307,22 @@ function renameProduct(ing, product, changes) {
       ),
     };
     if (nextId !== product.id) {
-      db.meals = db.meals.map((m) => ({
-        ...m,
-        items: m.items.map((it) =>
-          it.ingredientId === ing.id && it.productId === product.id
-            ? { ...it, productId: nextId }
-            : it
-        ),
-      }));
+      const names = (m) =>
+        m.items.some((it) => it.ingredientId === ing.id && it.productId === product.id);
+      db.meals = db.meals.map((m) =>
+        names(m)
+          ? {
+              ...m,
+              // the meal now names a different id, which is an edit like any other
+              updatedAt: now(),
+              items: m.items.map((it) =>
+                it.ingredientId === ing.id && it.productId === product.id
+                  ? { ...it, productId: nextId }
+                  : it
+              ),
+            }
+          : m
+      );
     }
   });
 }
@@ -1427,13 +1442,13 @@ function viewItems() {
 
     if (ing.id !== open) return `<section class="card" data-scroll="${ing.id}">${head}</section>`;
 
-    /* Which of this ingredient's products is open. Unset means the one the
-       list would buy, which is the one you almost always came for; tapping
-       another header moves the open one rather than stacking editors, so the
-       remaining headers stay on screen as a way of getting to them. */
+    /* Which of this ingredient's products is open. Nothing, until you say so:
+       opening an ingredient is how you look at what is under it, and a list of
+       headers answers that in one screen where an editor already unfolded
+       pushes the rest of them off the bottom. Tapping a header moves the open
+       one rather than stacking editors, so the list stays put. */
     const sheet = state.sheet || {};
-    const openProduct =
-      "openProduct" in sheet ? sheet.openProduct : (chosen && chosen.id) || null;
+    const openProduct = "openProduct" in sheet ? sheet.openProduct : null;
 
     return `<section class="card editing" data-scroll="${ing.id}">${head}
       <div style="border-top:1px solid var(--outline);margin-top:12px;padding-top:12px">
