@@ -2175,7 +2175,8 @@ const actions = {
     }
     try {
       state.db = migrate(JSON.parse(text));
-      await saveDb(state.db);
+      // forced: restoring is exactly what you do when the read failed
+      await saveDb(state.db, true);
       setSheet({ ...state.sheet, msg: "Restored.", err: false });
     } catch (err) {
       setSheet({ ...state.sheet, msg: "That is not valid JSON.", err: true });
@@ -2184,7 +2185,7 @@ const actions = {
   resetAll: async () => {
     if (!confirm("Reset to the starting items and meals? Local changes will be lost.")) return;
     state.db = seed();
-    await saveDb(state.db);
+    await saveDb(state.db, true);
     setSheet(null);
     flash("ok", "Reset to the starting data.");
   },
