@@ -9,7 +9,8 @@ import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
   resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
-  findProductByBarcode, findByBarcode, tidyProductName, SLOTS,
+  findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop,
+  tidyProductName, SLOTS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, itemPortionCost, packCost, activeOffer,
@@ -1068,6 +1069,9 @@ function productCard(ing, product, chosen, stores) {
       <span class="muted grow${stale ? " stale" : ""}">${
     product.priceUpdated ? `priced ${esc(ago(product.priceUpdated))}` : "never priced"
   }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</span>
+      <button class="btn small tonal" data-act="copyProduct" data-id="${ing.id}" data-product="${esc(
+    product.id
+  )}" title="Same thing, another shop">Copy to a shop</button>
       <button class="btn small ghost" data-act="delProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}"${only ? " disabled" : ""} title="${
@@ -1447,6 +1451,34 @@ function sheetReceipt(s) {
    nothing touches the item until you save. An abandoned scan halfway down an
    aisle therefore leaves no half-finished edits behind. */
 function sheetScanned(s) {
+  /* A barcode on more than one shop's entry. Which shop you are in is the
+     only thing the scan cannot tell, so it is the only thing asked, and
+     nothing else is shown until it is answered. */
+  if (s.matches && s.matches.length > 1 && !s.chose) {
+    const rows = s.matches
+      .map((m) => {
+        const ing = ingredient(m.ingId);
+        const product = ing ? productById(ing, m.productId) : null;
+        if (!product) return "";
+        const age = product.priceUpdated ? ago(product.priceUpdated) : "never priced";
+        return `<button class="pickrow subcard"
+          data-act="pickScanMatch" data-id="${esc(m.ingId)}" data-product="${esc(m.productId)}">
+          <span class="shop">${esc(product.store || "No shop set")}</span>
+          <span class="detail">${esc(product.name || (ing && ing.name) || "")} &middot; £${money(
+          product.pricePerPack
+        )} &middot; priced ${esc(age)}</span>
+        </button>`;
+      })
+      .join("");
+
+    return shell(
+      "Which shop are you in?",
+      `That barcode is on ${s.matches.length} entries. They are the same thing in different shops,
+       so pick where you are and the price you type lands on that one.`,
+      `${rows}<p class="why">Scanned ${esc(s.code)}.</p>`
+    );
+  }
+
   const known = s.targetId ? ingredient(s.targetId) : null;
   const stores = storeNames(state.db.ingredients);
   const base = Number(s.price) || 0;
@@ -1938,11 +1970,41 @@ function scanState(code, hit, keep = {}) {
      the one this ingredient is normally bought as. */
   const byCode = hit && code ? findProductByBarcode(hit, code) : null;
   const asked = hit && keep.productId ? productById(hit, keep.productId) : null;
-  const here = byCode || asked || (hit ? chooseProduct(hit) : null);
+  /* A product you named beats one the barcode found. Both shops' entries carry
+     the same barcode, so the lookup cannot tell them apart and would keep
+     snapping back to whichever is listed first. */
+  const here = asked || byCode || (hit ? chooseProduct(hit) : null);
+
+  /* The same tin has the same barcode everywhere, so once it is recorded at
+     two shops a scan cannot say which one you are standing in. Ask, rather
+     than taking the first and writing tonight's price onto the wrong shop. */
+  const matches = findAllByBarcode(state.db.ingredients, code);
+  const ambiguous = matches.length > 1 && !keep.chose;
+
+  if (ambiguous) {
+    return {
+      kind: "scanned",
+      code: code || "",
+      matches: matches.map((m) => ({ ingId: m.ing.id, productId: m.product.id })),
+      // nothing is chosen yet, and nothing is editable until it is
+      targetId: "",
+      productId: "",
+      name: "",
+      productName: "",
+      portions: 1,
+      store: "",
+      price: "",
+      offer: null,
+      bought: 0,
+      err: "",
+    };
+  }
 
   return {
     kind: "scanned",
     code: code || "",
+    matches: matches.map((m) => ({ ingId: m.ing.id, productId: m.product.id })),
+    chose: true,
     targetId: hit ? hit.id : "",
     productId: here ? here.id : hit ? "__new__" : "",
     // the ingredient's name, when this is a whole new kind of thing
@@ -2512,11 +2574,20 @@ const actions = {
     }
     setSheet({ ...state.sheet, code });
   },
+  pickScanMatch: (el) => {
+    const hit = ingredient(el.dataset.id);
+    if (!hit) return;
+    setSheet({
+      ...scanState(state.sheet.code, hit, { chose: true, productId: el.dataset.product }),
+      bought: state.sheet.bought,
+    });
+  },
+
   setScanTarget: (el) => {
     const hit = el.value ? ingredient(el.value) : null;
     // pull that shop's price and offer in, so you edit what it really has
     setSheet({
-      ...scanState(state.sheet.code, hit, state.sheet.store),
+      ...scanState(state.sheet.code, hit, { chose: true, store: state.sheet.store }),
       bought: state.sheet.bought,
     });
   },
@@ -2865,6 +2936,24 @@ const actions = {
     patchMealItem(el.dataset.id, Number(el.dataset.i), () => ({
       grams: Math.max(0, Number(el.value) || 0),
     })),
+
+  /* The same product at another shop. Everything carries over except where
+     you buy it and what it costs, because that is the only thing that
+     actually differs, and retyping a label and a pack size is the tedious
+     part. The barcode comes too: it is the same tin. */
+  copyProduct: (el) => {
+    const ing = ingredient(el.dataset.id);
+    const from = productOf(el.dataset.id, el.dataset.product);
+    if (!ing || !from) return;
+    commit((db) => {
+      const i = db.ingredients.findIndex((x) => x.id === ing.id);
+      if (i < 0) return;
+      const products = db.ingredients[i].products || [];
+      const made = copyToShop(from, products.map((p) => p.id));
+      db.ingredients[i] = { ...db.ingredients[i], updatedAt: now(), products: [...products, made] };
+    });
+    flash("Copied. Set the shop and its price on the new one.");
+  },
 
   addProduct: (el) => {
     const ing = ingredient(el.dataset.id);

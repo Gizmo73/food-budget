@@ -189,6 +189,16 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .foodrow .macro b { color:var(--ink); font-size:13px; font-weight:700; }
 .part { color:var(--alert); font-weight:700; }
 
+/* One shop to pick from when a barcode is on more than one entry. A whole
+   row is the target, since it is tapped in a shop with one hand. */
+.pickrow {
+  display:block; width:100%; text-align:left; border:1px solid var(--outline);
+  color:var(--ink); font:inherit; cursor:pointer;
+}
+.pickrow .shop { display:block; font-size:16px; font-weight:700; margin-bottom:2px; }
+.pickrow .detail { display:block; font-size:13px; font-weight:400; color:var(--ink-2); }
+.pickrow:active { background:var(--surface-3); }
+
 .slot { display:flex; align-items:center; gap:8px; margin-top:6px; }
 /* "=" is a short glyph and sits high in most faces. Mono and a size up so it
    reads as a control rather than a stray character between two dropdowns. */

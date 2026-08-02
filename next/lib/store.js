@@ -172,14 +172,44 @@ export function withProduct(ing, product) {
 export const findProductByBarcode = (ing, code) =>
   (ing.products || []).find((p) => (p.barcodes || []).includes(code)) || null;
 
-/* Which ingredient and product a barcode belongs to, across the whole list. */
+/* Which ingredient and product a barcode belongs to, across the whole list.
+   Returns the first match, which is all most callers want. */
 export function findByBarcode(ingredients, code) {
-  if (!code) return null;
+  const all = findAllByBarcode(ingredients, code);
+  return all.length ? all[0] : null;
+}
+
+/* Every product carrying that barcode. The same tin has the same barcode in
+   every shop, so once you record it in two places a scan is ambiguous, and
+   picking the first silently would write the price onto the wrong shop. */
+export function findAllByBarcode(ingredients, code) {
+  if (!code) return [];
+  const out = [];
   for (const ing of ingredients || []) {
-    const product = findProductByBarcode(ing, code);
-    if (product) return { ing, product };
+    for (const product of ing.products || []) {
+      if ((product.barcodes || []).includes(code)) out.push({ ing, product });
+    }
   }
-  return null;
+  return out;
+}
+
+/* Everything about a product except where you buy it and what it costs there.
+   The same jam at a different shop is the same size, the same portions and
+   the same label; only the price and the shop differ. */
+export function copyToShop(product, taken = []) {
+  const made = {
+    ...product,
+    store: "",
+    pricePerPack: 0,
+    // an offer belongs to one shop's shelf, so it never travels
+    offer: null,
+    // stock is physical, and this is a different pack in a different shop
+    stockPortions: 0,
+    // never priced here, so it must not inherit a stamp that says otherwise
+    priceUpdated: "",
+  };
+  made.id = uniqueId(productKey(made.name, ""), taken);
+  return made;
 }
 
 /* Receipts and shelves name products, not ingredients: "TESCO FINEST MATURE

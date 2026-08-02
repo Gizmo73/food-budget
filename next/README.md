@@ -140,6 +140,24 @@ Set a **start date** at the top and every row shows the date it falls on, which 
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
+## The same thing at another shop
+
+A product card carries **Copy to a shop**. It clones the product and blanks only the two things that actually differ between shops.
+
+| Comes with it | Left blank |
+|---|---|
+| Name, pack size, portion, nutrition, barcode, pack size note | Shop, price |
+
+Stock does not travel, because that is a physical pack sitting in your cupboard from one shop. The offer does not travel, because a Clubcard price is Tesco's shelf and not Asda's. And the copy is not stamped as priced, because it has not been — so it shows as never priced rather than inheriting a date it did not earn.
+
+The barcode does travel. It is the same tin.
+
+### Which means a scan can be ambiguous
+
+Once the same barcode is on two shops' entries, scanning it cannot tell which shop you are standing in. Taking the first match would write tonight's shelf price onto the wrong shop, quietly.
+
+So the scan asks. It lists every entry carrying that barcode with its shop, its price and when it was last priced, and **nothing is editable until you pick one**. A barcode on only one entry never asks, so the ordinary case is unchanged.
+
 ## Pack size, and what a portion is
 
 Two fields decide everything nutritional, and one of them decides the shopping list too.
