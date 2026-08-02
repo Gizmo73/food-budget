@@ -378,13 +378,56 @@ const trimNum = (n) => String(Math.round(n * 100) / 100);
    The way out is that the label's own serving weight is quoted on whatever
    basis its nutrition is: 41g a patty, six a pack. Six times 41 is the pack
    weight those figures belong to, so the two always agree. */
-export function labelSizing(out) {
+export function labelSizing(out, product) {
   if (!out) return null;
-  const unit = out.packUnit === "ml" ? "ml" : "g";
+  const unit = out.packUnit === "ml" ? "ml" : (product && product.packUnit) === "ml" ? "ml" : "g";
   const serving = Number(out.servingGrams) || 0;
   const count = Number(out.servingsPerPack) || 0;
   const printed = Number(out.packAmount) || 0;
   const cooked = Number(out.preparedAmount) || 0;
+  const yours = Number(product && product.packAmount) || 0;
+
+  /* What the food loses in the pan, as a proportion. That is the part of a
+     cooked-weight footnote worth keeping: the two absolute numbers only
+     describe the pack the label was printed for, but the shrink between them
+     holds for the pack you actually have. */
+  const shrink = printed > 0 && cooked > 0 ? cooked / printed : 0;
+  const gap = yours > 0 && printed > 0 ? Math.abs(yours - printed) / printed : 0;
+
+  /* 0. your own pack weight, shrunk by the label's own ratio.
+
+     Two different authorities, each used for what it actually knows. Your
+     pack size is the authority on what you have; the label is the authority
+     on what cooking does to it. The absolute cooked weight on a label only
+     describes the pack that label was printed for, so it is the proportion
+     that travels, not the number. Where the two packs match this gives the
+     label's own answer anyway, so there is no threshold to tune. */
+  if (shrink > 0 && yours > 0) {
+    const packAmount = Math.round(yours * shrink);
+    return {
+      packAmount,
+      packUnit: unit,
+      /* Defined as a count, not a weight. The count is the exact fact here
+         (six patties are six patties) while the portion weight is a division
+         with a remainder, and rounding that would leave the pack holding
+         6.005 portions instead of six. The weight still derives from it. */
+      ...(count > 0 ? { portionsPerPack: count, portionBy: "count" } : {}),
+      why: `your ${trimNum(yours)}${unit} pack and the label's shrink from ${trimNum(
+        printed
+      )}${unit} to ${trimNum(cooked)}${unit}`,
+      /* Worth saying out loud only when the packs actually differ, which is
+         the case that looks like an error: the label quotes one cooked
+         weight and the app shows another. */
+      note:
+        gap > 0.01
+          ? `The label is printed for a ${trimNum(printed)}${unit} pack and you have ${trimNum(
+              yours
+            )}${unit} recorded. Rather than take its ${trimNum(
+              cooked
+            )}${unit} cooked as read, that is your own weight shrunk by the same proportion, which comes to ${packAmount}${unit}. Correct the pack size if yours is the one that is wrong.`
+          : `Cooked weight, from the ${Math.round(shrink * 100)}% the label says is left after grilling.`,
+    };
+  }
 
   /* 1. the label's own serving and how many of them. Self-consistent by
         construction, whatever the food does in the oven. */

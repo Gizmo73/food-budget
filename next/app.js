@@ -2212,7 +2212,9 @@ async function shootLabel(id, productId) {
         /* The photograph usually shows enough to size a portion as well, and
            without one these figures cannot reach a plate. Offer it rather
            than making them go and work it out, but never apply it silently. */
-        sizing: labelSizing(out),
+        // the product is passed in so a pack size you already recorded wins
+        // over the one the label happens to be printed for
+        sizing: labelSizing(out, product),
       });
     } catch (err) {
       setSheet({ kind: "label", id, productId, busy: false, err: err.message });

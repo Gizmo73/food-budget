@@ -231,9 +231,16 @@ That is what the scan now uses, most trusted first:
 
 | | Source | When |
 |---|---|---|
-| 1 | The label's serving weight × servings a pack | Whenever both are printed |
-| 2 | The cooked pack weight from a footnote | When the table is for cooked food |
-| 3 | The weight on the front | Anything you do not cook |
+| 1 | **Your** pack size × the label's shrink | The label gives both a raw and a cooked weight |
+| 2 | The label's serving weight × servings a pack | Whenever both are printed |
+| 3 | The cooked pack weight from a footnote | When the table is for cooked food |
+| 4 | The weight on the front | Anything you do not cook |
+
+The first one matters more than it looks. **A label's cooked weight only describes the pack that label was printed for.** Two different authorities are at work: your pack size is the authority on what you have, and the label is the authority on what cooking does to it, so it is the *proportion* that travels rather than the number. A 342g pack that grills down to 248g has lost 27%; record a 346g pack of the same thing and it comes out at 251g, not 248g.
+
+That needs no threshold to tune, because where the two packs match it produces the label's own answer anyway. Where they differ by more than 1% the sheet says so, since a label quoting one cooked weight while the app shows another looks like an error until it is explained.
+
+When the servings count is known it is stored as a **count**, not a weight. Six patties are exactly six; the weight of one is a division with a remainder, and rounding it would leave the pack holding 6.005 portions.
 
 When the printed pack size is more than 5% away from what the servings come to, the sheet says so in plain words rather than silently picking one — that gap is nearly always raw against cooked, and it looks like an error until it is named.
 
