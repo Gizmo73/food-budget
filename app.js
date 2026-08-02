@@ -17,7 +17,7 @@ import {
   offerLabel, offerExpired, anyOfferExpired, offerMeaning, groupByStore, searchItems,
   ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
   stockPortions, stockPacks, packPortions, productStock,
-  productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan,
+  productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan, mealStock,
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
   labelToPer100, labelSizing,
   portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
@@ -540,10 +540,12 @@ function viewPlan() {
   const people = state.db.people || ["Person 1", "Person 2"];
   const start = state.db.planStart || "";
 
+  // the same order as the Meals tab, since this is the other place you pick one
+  const inOrder = state.db.meals.slice().sort((a, b) => a.name.localeCompare(b.name));
   const options = (selected) =>
     [`<option value="">\u2014</option>`]
       .concat(
-        state.db.meals.map(
+        inOrder.map(
           (m) => `<option value="${m.id}"${m.id === selected ? " selected" : ""}>${esc(m.name)}</option>`
         )
       )
@@ -747,14 +749,50 @@ function viewMeals() {
   const byId = Object.fromEntries(state.db.ingredients.map((i) => [i.id, i]));
   const open = state.sheet && state.sheet.kind === "meal" ? state.sheet.id : null;
 
-  const cards = state.db.meals
+  const stockOnly = state.settings.mealFilter === "stock";
+  const makeable = Object.fromEntries(state.db.meals.map((m) => [m.id, mealStock(m, byId)]));
+  const canCount = state.db.meals.filter((m) => makeable[m.id].canMake).length;
+
+  /* Sorted by name, and the one being edited is never filtered away: having a
+     meal vanish because you just used up its last ingredient would be a
+     strange way to find out. */
+  const shown = state.db.meals
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((m) => !stockOnly || makeable[m.id].canMake || m.id === open);
+
+  const filter = `<div class="row" style="margin-bottom:10px">
+    <span class="eyebrow grow">Show</span>
+    <div class="seg">
+      <button data-act="setMealFilter" data-filter="all" data-on="${stockOnly ? 0 : 1}">All ${
+    state.db.meals.length
+  }</button>
+      <button data-act="setMealFilter" data-filter="stock" data-on="${stockOnly ? 1 : 0}">Can make ${canCount}</button>
+    </div>
+  </div>`;
+
+  const cards = shown
     .map((meal) => {
       const cost = mealCost(meal, byId);
       if (meal.id !== open) {
+        const can = makeable[meal.id];
+        /* What is stopping you, named. "Not enough in" is a dead end; "short
+           of mince" is something you can act on. */
+        const note = can.canMake
+          ? `<span class="ok-note">everything in</span>`
+          : can.lines === 0
+          ? "nothing in it yet"
+          : `short of ${can.short
+              .slice(0, 2)
+              .map((x) => esc(x.name).toLowerCase())
+              .join(" and ")}${can.short.length > 2 ? ` and ${can.short.length - 2} more` : ""}`;
+
         return `<section class="card"><div class="row" data-act="openMeal" data-id="${meal.id}">
           <div class="grow">
             <div style="font-weight:700">${esc(meal.name)}</div>
-            <div class="muted">${meal.items.length} ingredient${meal.items.length === 1 ? "" : "s"}</div>
+            <div class="muted">${meal.items.length} ingredient${
+          meal.items.length === 1 ? "" : "s"
+        } &middot; ${note}</div>
           </div>
           <span class="num" style="font-weight:700">£${money(cost)}</span>
           <button class="btn small ghost" data-act="openMeal" data-id="${meal.id}">Edit</button>
@@ -872,7 +910,13 @@ function viewMeals() {
     })
     .join("");
 
-  return `${cards}<button class="btn wide" data-act="addMeal">Add a meal</button><div class="spacer"></div>`;
+  const nothing =
+    stockOnly && !shown.length
+      ? `<div class="empty">Nothing can be made from what is in right now. The List tab knows what to buy.</div>`
+      : "";
+
+  return `${filter}${nothing}${cards}
+    <button class="btn wide" data-act="addMeal">Add a meal</button><div class="spacer"></div>`;
 }
 
 /* ---- items ---- */
@@ -2932,6 +2976,11 @@ const actions = {
   toggleFlag: async (el) => {
     const key = el.dataset.key;
     state.settings = { ...state.settings, [key]: !state.settings[key] };
+    await saveSettings(state.settings);
+    draw();
+  },
+  setMealFilter: async (el) => {
+    state.settings = { ...state.settings, mealFilter: el.dataset.filter };
     await saveSettings(state.settings);
     draw();
   },

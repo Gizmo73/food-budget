@@ -123,6 +123,21 @@ Receipts print legal names: `TESCO STORES LTD`, `ASDA STORES LIMITED`. Those now
 
 Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco one, and both survive rather than the later push winning.
 
+## Choosing a meal
+
+Meals are listed **in name order**, on the Meals tab and in the plan's dropdowns, which are the two places you pick one.
+
+Each meal says whether you could cook it tonight without shopping, and names what is stopping you: *"short of mince and pasta"* rather than a bare no. **Can make N** filters the list down to those, with the count on the button so you can see at a glance how many nights are already covered.
+
+Two decisions inside that:
+
+- **A meal is judged on its own, not against the fortnight.** Two meals may each be makeable while sharing the last portion of mince between them. "Can I cook this one now" is the question being asked when you are standing in the kitchen; worrying about the fortnight as a whole is the shopping list's job.
+- **A meal with nothing in it cannot be made.** Vacuously true is the wrong answer: it would put every half-written meal at the top of a list of things you can cook tonight.
+
+A line naming one specific product can only be met by that product's own stock. A line asking for the ingredient in general can be met by any of it, which is what pooling stock across shops is for.
+
+The meal you are editing is never filtered away, since having it vanish because you just used up its last ingredient would be a strange way to find out.
+
 ## The plan, and who is eating
 
 Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the **`=`** beside a slot gives the second person the first one's choice, which is most dinners.

@@ -112,6 +112,8 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .ticket .meta.save { color:var(--ok); font-weight:700; font-family:var(--sans); }
 
 .stale { color:var(--alert); font-weight:600; }
+/* the good half of the same signal: everything for this meal is already in */
+.ok-note { color:var(--ok); font-weight:600; }
 .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--alert); margin-right:6px; vertical-align:1px; }
 
 /* -------------------------------- total -------------------------------- */
