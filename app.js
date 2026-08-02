@@ -56,6 +56,55 @@ function applyTheme(choice) {
   if (meta) meta.setAttribute("content", wanted === "dark" ? "#1E2126" : "#FFFFFF");
 }
 
+/* The colours offered. Not a free-for-all: every one of these has been checked
+   for legible black or white text on top, because the accent is a background
+   as often as it is a stroke. A custom colour is still allowed below, and gets
+   the same check rather than being trusted. */
+const ACCENTS = [
+  { hex: "", name: "Shelf yellow" },
+  { hex: "#F08A24", name: "Orange" },
+  { hex: "#E05A47", name: "Tomato" },
+  { hex: "#D9457F", name: "Pink" },
+  { hex: "#9B6BE0", name: "Violet" },
+  { hex: "#4C8DF6", name: "Blue" },
+  { hex: "#28A79B", name: "Teal" },
+  { hex: "#5AA83C", name: "Green" },
+];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/* Relative luminance, the WCAG definition. Used to decide whether writing on
+   the accent should be dark or light, which is not a thing to judge by eye:
+   the yellow needs black on it and the violet needs white, and picking wrong
+   makes every solid button unreadable. */
+function luminance(hex) {
+  const parts = [1, 3, 5].map((at) => {
+    const v = parseInt(hex.slice(at, at + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2];
+}
+
+const onAccent = (hex) => (luminance(hex) > 0.42 ? "#16181C" : "#FFFFFF");
+
+function applyAccent(hex) {
+  const el = document.documentElement.style;
+  if (!HEX.test(hex || "")) {
+    // back to whatever the stylesheet says, which differs by theme
+    el.removeProperty("--accent");
+    el.removeProperty("--on-accent");
+  } else {
+    el.setProperty("--accent", hex);
+    el.setProperty("--on-accent", onAccent(hex));
+  }
+  // same reason as the theme: so it is right before the first paint, not after
+  try {
+    localStorage.setItem("fs-accent", hex || "");
+  } catch (err) {
+    /* storage can be blocked; the colour still applies for this session */
+  }
+}
+
 /* Safari on iOS has ignored user-scalable=no since iOS 10, so the meta tag
    alone leaves pinch zoom live. Zooming out then shrinks the app inside a
    blank page it can never scroll back from, which reads as a broken layout.
@@ -141,7 +190,28 @@ function flash(kind, text) {
   draw();
 }
 
+/* Which of an ingredient's products is unfolded. It lives on the open sheet so
+   it forgets itself when you close the ingredient, and these two are set just
+   before a commit, whose redraw shows the result. Adding or copying something
+   opens it, because a new product is blank and a blank collapsed header says
+   nothing at all; removing one forgets the choice so the default takes over. */
+function showProduct(id) {
+  if (state.sheet && state.sheet.kind === "item") state.sheet = { ...state.sheet, openProduct: id };
+}
+
+function forgetOpenProduct() {
+  if (!state.sheet || state.sheet.kind !== "item") return;
+  const { openProduct, ...rest } = state.sheet;
+  state.sheet = rest;
+}
+
 const ingredient = (id) => state.db.ingredients.find((i) => i.id === id);
+
+/* Every list you pick an ingredient from, in the order you would look for one.
+   The stored order is whatever things happened to be added in, which is fine
+   for a database and useless for a dropdown of forty. */
+const ingredientsAZ = () =>
+  state.db.ingredients.slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
 const isShut = (which, name) => (state.settings[which] || []).includes(name);
 
@@ -800,7 +870,7 @@ function viewMeals() {
       }
 
       const picker = (selected) =>
-        state.db.ingredients
+        ingredientsAZ()
           .map((i) => `<option value="${i.id}"${i.id === selected ? " selected" : ""}>${esc(i.name)}</option>`)
           .join("");
 
@@ -1162,7 +1232,7 @@ function portionEditor(ing, product) {
 /* One product: a thing you can actually put in a trolley. It has a name of its
    own, because "which cheddar is this" is a question the app has to be able to
    answer, and its own stock, because a meal may ask for this one specifically. */
-function productCard(ing, product, chosen, stores) {
+function productCard(ing, product, chosen, stores, expanded) {
   const age = daysSince(product.priceUpdated);
   const stale = age > STALE_DAYS;
   const pinned = isPinned(ing, product);
@@ -1180,19 +1250,32 @@ function productCard(ing, product, chosen, stores) {
         .join("")
     : `<span class="muted">none yet</span>`;
 
-  return `<div class="subcard">
-    <div class="row" style="margin-bottom:8px">
-      <span class="grow" style="font-weight:600">${esc(product.name || "Unnamed")}${
+  /* The header stands alone, because with several kinds of the same thing
+     under one ingredient the headers are how you find the one you want. It
+     carries enough to choose by without opening anything: what it is, where
+     it is from, what it costs, and how much of it is in. */
+  const head = `<div class="prodhead">
+    <button class="prodtitle" data-act="openProduct" data-product="${esc(product.id)}"
+      data-open="${expanded ? 1 : 0}" aria-expanded="${expanded ? "true" : "false"}">
+      <span class="chev">${expanded ? "▾" : "▸"}</span>
+      <span class="ptext">
+        <span class="pname">${esc(product.name || "Unnamed")}${
     product.store ? ` <span class="muted">at ${esc(product.store)}</span>` : ""
   }</span>
-      ${
-        chosen
-          ? `<span class="pill on">${pinned ? "pinned" : "cheapest"}</span>`
-          : `<span class="muted num">£${money(productPortionCost(product))} a portion</span>`
-      }
-      <button class="pill${pinned ? " on" : ""}" data-act="pinProduct" data-id="${ing.id}"
-        data-product="${esc(product.id)}" title="Always buy this one">${pinned ? "Unpin" : "Pin"}</button>
-    </div>
+        <span class="pmeta num${stale ? " stale" : ""}">£${money(product.pricePerPack)} a pack${
+    pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : ""
+  } &middot; ${trim2(stock)} in stock</span>
+      </span>
+      ${chosen ? `<span class="pill on">${pinned ? "pinned" : "cheapest"}</span>` : ""}
+    </button>
+    <button class="pill${pinned ? " on" : ""}" data-act="pinProduct" data-id="${ing.id}"
+      data-product="${esc(product.id)}" title="Always buy this one">${pinned ? "Unpin" : "Pin"}</button>
+  </div>`;
+
+  if (!expanded) return `<div class="subcard shut">${head}</div>`;
+
+  return `<div class="subcard">
+    ${head}
     <div class="grid2" style="margin-bottom:8px">
       <label class="field"><span class="eyebrow">What it is called</span>
         <input class="inp" value="${esc(product.name || "")}" placeholder="Cathedral City"
@@ -1323,7 +1406,15 @@ function viewItems() {
 
     if (ing.id !== open) return `<section class="card" data-scroll="${ing.id}">${head}</section>`;
 
-    return `<section class="card" data-scroll="${ing.id}">${head}
+    /* Which of this ingredient's products is open. Unset means the one the
+       list would buy, which is the one you almost always came for; tapping
+       another header moves the open one rather than stacking editors, so the
+       remaining headers stay on screen as a way of getting to them. */
+    const sheet = state.sheet || {};
+    const openProduct =
+      "openProduct" in sheet ? sheet.openProduct : (chosen && chosen.id) || null;
+
+    return `<section class="card editing" data-scroll="${ing.id}">${head}
       <div style="border-top:1px solid var(--outline);margin-top:12px;padding-top:12px">
         <label class="field" style="margin-bottom:6px"><span class="eyebrow">Ingredient</span>
           <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
@@ -1343,7 +1434,11 @@ function viewItems() {
         </div>
         <p class="muted" style="margin:0 0 8px">Whichever is cheapest a portion is what the list
         uses, unless you pin one. A meal can also ask for one of these by name.</p>
-        ${all.map((product) => productCard(ing, product, product === chosen, stores)).join("")}
+        ${all
+          .map((product) =>
+            productCard(ing, product, product === chosen, stores, product.id === openProduct)
+          )
+          .join("")}
         <button class="btn small tonal wide" style="margin-bottom:10px" data-act="addProduct"
           data-id="${ing.id}">Add another one</button>
 
@@ -1536,7 +1631,7 @@ function sheetReceipt(s) {
       [`<option value=""${sel ? "" : " selected"}>Ignore this line</option>`,
        `<option value="__new__"${sel === "__new__" ? " selected" : ""}>+ Add as a new item</option>`]
         .concat(
-          state.db.ingredients.map(
+          ingredientsAZ().map(
             (i) => `<option value="${i.id}"${i.id === sel ? " selected" : ""}>${esc(i.name)} (now £${money(
               (chooseProduct(i) || {}).pricePerPack
             )})</option>`
@@ -1547,7 +1642,7 @@ function sheetReceipt(s) {
     /* The ingredients you already keep, offered to the new-item name box.
        Typing one of these files the new product under it instead of starting
        a second category with the same name. */
-    const known = state.db.ingredients
+    const known = ingredientsAZ()
       .map((i) => `<option value="${esc(i.name)}"></option>`)
       .join("");
 
@@ -1717,7 +1812,7 @@ function sheetScanned(s) {
 
   const kinds = [`<option value=""${s.targetId ? "" : " selected"}>A new ingredient</option>`]
     .concat(
-      state.db.ingredients.map(
+      ingredientsAZ().map(
         (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)}</option>`
       )
     )
@@ -1868,6 +1963,17 @@ function sheetSettings(s) {
   const themeBtn = (key, label) =>
     `<button data-act="setTheme" data-theme="${key}" data-on="${set.theme === key ? 1 : 0}">${label}</button>`;
 
+  /* The swatch shows the colour itself and a tick in whatever writing that
+     colour takes, so the choice previews the contrast it will produce. */
+  const current = HEX.test(set.accent || "") ? set.accent : "#F5C400";
+  const swatches = ACCENTS.map((a) => {
+    const on = (set.accent || "") === a.hex;
+    const shown = a.hex || "#F5C400";
+    return `<button class="swatch${on ? " on" : ""}" data-act="setAccent" data-accent="${a.hex}"
+      style="background:${shown};color:${onAccent(shown)}" title="${a.name}"
+      aria-label="${a.name}"${on ? ' aria-current="true"' : ""}>${on ? "&#10003;" : ""}</button>`;
+  }).join("");
+
   const flag = (key, label, note) => `<div class="row" style="margin-bottom:10px">
       <span class="grow"><span style="font-weight:600">${label}</span><br>
         <span class="muted">${note}</span></span>
@@ -1958,9 +2064,24 @@ function sheetSettings(s) {
       <input class="inp" value="${esc(set.person)}" placeholder="Lee" data-act="setSetting" data-key="person"></label>
 
     <h3>Appearance</h3>
-    <div class="seg" style="margin-bottom:14px">
+    <div class="seg" style="margin-bottom:12px">
       ${themeBtn("light", "Light")}${themeBtn("dark", "Dark")}${themeBtn("system", "System")}
     </div>
+    <span class="eyebrow" style="display:block;margin-bottom:6px">Accent colour</span>
+    <div class="swatches">${swatches}</div>
+    <label class="row" style="margin-bottom:6px">
+      <span class="grow muted">Or pick your own</span>
+      <input class="pickcol" type="color" value="${esc(current)}" data-act="setAccent"
+        aria-label="A colour of your own">
+    </label>
+    <p class="muted" style="margin:0 0 14px">${
+      set.accent
+        ? `Set to ${esc(set.accent)}. Writing on it is ${
+            onAccent(set.accent) === "#16181C" ? "black" : "white"
+          }, worked out from the colour rather than guessed.`
+        : "The app's own yellow."
+    } This is kept on this device, like the theme, so you and anyone
+    sharing the list can each have your own.</p>
 
     <h3>Syncing</h3>
     ${flag("autoMerge", "Merge on opening", "Pick up the other person's changes automatically.")}
@@ -3070,6 +3191,13 @@ const actions = {
     applyTheme(state.settings.theme);
     draw();
   },
+  setAccent: async (el) => {
+    const hex = el.dataset.accent || el.value || "";
+    state.settings = { ...state.settings, accent: HEX.test(hex) ? hex.toUpperCase() : "" };
+    await saveSettings(state.settings);
+    applyAccent(state.settings.accent);
+    draw();
+  },
   toggleFlag: async (el) => {
     const key = el.dataset.key;
     state.settings = { ...state.settings, [key]: !state.settings[key] };
@@ -3232,12 +3360,16 @@ const actions = {
     const ing = ingredient(el.dataset.id);
     const from = productOf(el.dataset.id, el.dataset.product);
     if (!ing || !from) return;
+    const made = copyToShop(from, productsOf(ing).map((p) => p.id));
+    showProduct(made.id);
     commit((db) => {
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
-      const products = db.ingredients[i].products || [];
-      const made = copyToShop(from, products.map((p) => p.id));
-      db.ingredients[i] = { ...db.ingredients[i], updatedAt: now(), products: [...products, made] };
+      db.ingredients[i] = {
+        ...db.ingredients[i],
+        updatedAt: now(),
+        products: [...(db.ingredients[i].products || []), made],
+      };
     });
     flash("ok", "Copied. Set the shop and its price on the new one.");
   },
@@ -3246,6 +3378,7 @@ const actions = {
     const toId = el.value;
     if (!toId) return;
     let done = null;
+    forgetOpenProduct();
     commit((db) => {
       done = moveProduct(db, el.dataset.id, el.dataset.product, toId);
     });
@@ -3266,11 +3399,12 @@ const actions = {
     // pack size copied from what it is bought as now, since the same thing in
     // two guises is usually a similar pack. Editable either way.
     const from = chooseProduct(ing);
+    const made = newProduct("", "", { portionsPerPack: from ? from.portionsPerPack : 1 });
+    made.id = uniqueId(made.id, productsOf(ing).map((p) => p.id));
+    showProduct(made.id);
     commit((db) => {
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
-      const made = newProduct("", "", { portionsPerPack: from ? from.portionsPerPack : 1 });
-      made.id = uniqueId(made.id, (db.ingredients[i].products || []).map((p) => p.id));
       db.ingredients[i] = {
         ...db.ingredients[i],
         updatedAt: now(),
@@ -3283,6 +3417,7 @@ const actions = {
     if (!ing || productsOf(ing).length < 2) return;
     const product = productOf(ing.id, el.dataset.product);
     if (!confirm(`Stop buying ${ing.name} as ${(product && product.name) || "this"}?`)) return;
+    forgetOpenProduct();
     commit((db) => {
       const i = db.ingredients.findIndex((x) => x.id === ing.id);
       if (i < 0) return;
@@ -3391,6 +3526,16 @@ const actions = {
     const id = el.dataset.id;
     const open = state.sheet && state.sheet.kind === "item" && state.sheet.id === id;
     setSheet(open ? null : { kind: "item", id });
+  },
+  /* One product open at a time. Opening a second one closing the first is the
+     point rather than a limitation: with five kinds of yoghurt under one
+     ingredient, five open editors is the thing that made them hard to get at. */
+  openProduct: (el) => {
+    if (!state.sheet || state.sheet.kind !== "item") return;
+    setSheet({
+      ...state.sheet,
+      openProduct: el.dataset.open === "1" ? null : el.dataset.product,
+    });
   },
   addItem: async () => {
     const made = newIngredient();
@@ -3759,6 +3904,7 @@ root.addEventListener("change", dispatch);
     state.db = await loadDb();
     state.settings = await loadSettings();
     applyTheme(state.settings.theme);
+    applyAccent(state.settings.accent);
     draw();
     checkForChanges();
   } catch (err) {

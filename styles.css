@@ -214,6 +214,33 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .pickrow .detail { display:block; font-size:13px; font-weight:400; color:var(--ink-2); }
 .pickrow:active { background:var(--surface-3); }
 
+/* The ingredient you are editing, ringed in the accent. An open ingredient
+   holds several products, each its own panel, and without this it was not
+   obvious where one ingredient stopped and the next began. The ring is a
+   shadow rather than a border so nothing shifts when it appears. */
+.card.editing { box-shadow:0 0 0 2px var(--accent), var(--shadow-2); }
+
+/* A product header: what it is, where from, and its price, whether or not the
+   editor beneath it is open. With several kinds under one ingredient these
+   are the list you navigate by, so they read the same open or shut. */
+.prodhead { display:flex; align-items:flex-start; gap:8px; }
+.subcard.shut { padding:6px 10px; margin-bottom:6px; }
+/* Top aligned, because the price and stock line wraps on a narrow phone and a
+   chevron floating in the middle of two lines stops reading as a chevron. */
+.prodtitle {
+  display:flex; align-items:flex-start; gap:8px; flex:1; min-width:0;
+  border:0; background:none; color:var(--ink); font:inherit; text-align:left;
+  padding:8px 0; min-height:44px;
+}
+.prodhead .pill { flex:none; margin-top:6px; white-space:nowrap; }
+.prodtitle .chev { margin-top:3px; }
+.prodtitle .ptext { flex:1; min-width:0; }
+.prodtitle .pname {
+  display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.prodtitle .pmeta { display:block; font-size:12px; color:var(--ink-2); margin-top:1px; }
+.subcard:not(.shut) > .prodhead { border-bottom:1px solid var(--outline); margin-bottom:8px; }
+
 /* The actions under a product. Three controls will not fit one line on a
    narrow phone, so they wrap rather than crushing each other, and the picker
    is allowed to shrink because its options are longer than any row. */
@@ -339,6 +366,21 @@ textarea.inp { min-height:160px; font-family:var(--mono); }
   border-radius:var(--r-m); margin-bottom:10px; box-shadow:var(--shadow-2);
 }
 .banner .btn { background:var(--on-accent); color:var(--accent); border-color:transparent; }
+
+/* accent picker. Big enough to hit with a thumb, and square so the colour is
+   the whole of what you are choosing rather than a dot beside a word. */
+.swatches { display:flex; gap:8px; margin-bottom:10px; }
+/* They share the row rather than wrapping, so the choice reads as one strip
+   however many colours there are. Height carries the tap target. */
+.swatch {
+  flex:1 1 0; min-width:0; height:44px; border-radius:var(--r-s);
+  border:1px solid var(--outline); font-size:18px; font-weight:700; line-height:1; padding:0;
+}
+.swatch.on { box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
+.pickcol {
+  width:56px; height:40px; padding:2px; border:1px solid var(--outline);
+  border-radius:var(--r-s); background:var(--surface);
+}
 
 /* theme picker */
 .seg { display:flex; background:var(--surface-2); border-radius:var(--r-full); padding:3px; gap:3px; }

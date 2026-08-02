@@ -15,6 +15,20 @@
     var dark = saved === "dark" || (saved === "system" &&
       window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    /* Same again for the accent, or a chosen colour arrives a frame late and
+       the whole app blinks yellow on every load. */
+    var accent = localStorage.getItem("fs-accent") || "";
+    if (/^#[0-9a-f]{6}$/i.test(accent)) {
+      var lum = [1, 3, 5].map(function (at) {
+        var v = parseInt(accent.slice(at, at + 2), 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      document.documentElement.style.setProperty("--accent", accent);
+      document.documentElement.style.setProperty(
+        "--on-accent",
+        0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2] > 0.42 ? "#16181C" : "#FFFFFF"
+      );
+    }
   } catch (e) { document.documentElement.dataset.theme = "light"; }
 })();
 </script>
