@@ -1,8 +1,13 @@
 /* Offline shell. Supermarket signal is unreliable, and scanning must work
-   without it. Bump CACHE when you change any file, or the old copy sticks. */
+   without it, so everything the app needs is kept in a cache.
+
+   The app's own files are fetched fresh when there is signal and fall back to
+   that cache; everything else comes from the cache first. Bump CACHE when
+   anything changes, so a phone with no signal is not left on a half old and
+   half new set of files. */
 
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}21`;
+const CACHE = `${PREFIX}22`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will
@@ -43,6 +48,68 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+/* Which requests are the app itself. These change every time anything is
+   deployed, so they are fetched fresh when there is signal. The vendored
+   barcode decoder is deliberately not one of them: it is a megabyte of wasm
+   that has never changed, and re-fetching it would cost a second of a shop
+   trip for nothing. */
+function isShell(request, url) {
+  if (request.mode === "navigate") return true;
+  if (url.pathname.includes("/lib/vendor/")) return false;
+  return /\.(html|js|css|webmanifest)$/.test(url.pathname) || url.pathname.endsWith("/");
+}
+
+/* Fresh if the network answers quickly, otherwise whatever was cached.
+
+   Cache first was the wrong way round for the app's own files. It served the
+   previous version on every load and refreshed behind your back, so a deploy
+   only appeared on the load after the one you were looking at, and "the
+   update has not come through" was the honest reading of it. The offline
+   copy is still there, and still the whole point in a supermarket, but it is
+   now the fallback rather than the answer. */
+const SLOW = 3000;
+
+async function freshFirst(request) {
+  const cache = await caches.open(CACHE);
+  try {
+    /* reload, not a plain fetch. Without it this asks the browser's own HTTP
+       cache, which is holding the copy we are trying to replace: Pages serves
+       these with ten minutes of freshness, so for ten minutes after a deploy
+       the refetch returned the old file and the app looked like it had not
+       updated. This is the request that has to reach the network. */
+    const res = await Promise.race([
+      fetch(request.url, { cache: "reload", credentials: "same-origin" }),
+      new Promise((_, no) => setTimeout(() => no(new Error("slow")), SLOW)),
+    ]);
+    if (res && res.ok) {
+      cache.put(request, res.clone());
+      return res;
+    }
+    // a 404 or 500 is a real answer; only fall back when there was no answer
+    const stale = await cache.match(request);
+    return stale || res;
+  } catch (err) {
+    const stale = await cache.match(request);
+    if (stale) return stale;
+    if (request.mode === "navigate") {
+      const home = await cache.match("./index.html");
+      if (home) return home;
+    }
+    throw err;
+  }
+}
+
+/* Everything else: cached copy if there is one, otherwise fetch and keep it.
+   This is how the barcode decoder gets stored on browsers that need it. */
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await fetch(request);
+  if (res.ok) cache.put(request, res.clone());
+  return res;
+}
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
@@ -50,26 +117,12 @@ self.addEventListener("fetch", (e) => {
   if (url.hostname !== self.location.hostname) return;
   if (e.request.method !== "GET") return;
 
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) {
-        // refresh in the background so the next load is current
-        fetch(e.request)
-          .then((res) => res.ok && caches.open(CACHE).then((c) => c.put(e.request, res)))
-          .catch(() => {});
-        return hit;
-      }
-      // Not cached yet. Fetch it, keep a copy, and fall back to the shell offline.
-      // This is how the vendored barcode decoder gets stored on browsers that need it.
-      return fetch(e.request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
-  );
+  e.respondWith(isShell(e.request, url) ? freshFirst(e.request) : cacheFirst(e.request));
+});
+
+/* So the app can say which copy it is running, and ask for a new one. Being
+   able to read the version off the screen turns "I think the update has not
+   come through" from a guess into a fact. */
+self.addEventListener("message", (e) => {
+  if (e.data === "version" && e.source) e.source.postMessage({ version: CACHE });
 });

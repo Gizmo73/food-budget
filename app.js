@@ -64,6 +64,27 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
   document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 }
 
+/* Which copy of the app is running, asked of the service worker rather than
+   baked into a constant, so it cannot be out of date by construction. This is
+   what turns "I do not think the update came through" into something you can
+   read off the screen. */
+const build = { version: "", checking: false };
+
+function askVersion() {
+  const sw = navigator.serviceWorker;
+  if (!sw || !sw.controller) return;
+  sw.controller.postMessage("version");
+}
+
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (!e.data || !e.data.version || e.data.version === build.version) return;
+    build.version = e.data.version;
+    if (state.sheet && state.sheet.kind === "settings") draw();
+  });
+  navigator.serviceWorker.ready.then(askVersion).catch(() => {});
+}
+
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (state.settings && state.settings.theme === "system") applyTheme("system");
@@ -1770,6 +1791,19 @@ function sheetSettings(s) {
     <p class="muted">Keys and tokens stay on this device and are never written into the shared database.</p>`
     : "";
 
+  const version = `
+    <h3>This copy of the app</h3>
+    <div class="row" style="gap:8px">
+      <span class="muted grow num">${
+        build.version ? esc(build.version) : "asking the offline copy\u2026"
+      }</span>
+      <button class="btn tonal" data-act="checkUpdate"${s.checking ? " disabled" : ""}>${
+    s.checking ? "Checking\u2026" : "Check for an update"
+  }</button>
+    </div>
+    <p class="muted">The app fetches itself fresh whenever there is signal, so this should look
+    after itself. The button is for when you want to be sure.</p>`;
+
   return shell(
     "Settings",
     configured ? "Restore before you edit, update when you are done." : "Connect a database below to sync and share.",
@@ -1816,7 +1850,8 @@ function sheetSettings(s) {
     <button class="btn ghost wide head" data-act="toggleRepoBox">
       <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
     </button>
-    ${repoBox}`
+    ${repoBox}
+    ${version}`
   );
 }
 
@@ -3468,6 +3503,20 @@ const actions = {
       setSheet({ ...state.sheet, msg: "That is not valid JSON.", err: true });
     }
   },
+  checkUpdate: async () => {
+    setSheet({ ...state.sheet, checking: true });
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) throw new Error("No offline copy is installed yet.");
+      await reg.update();
+      /* update() fetches the worker but the page keeps running the old files
+         until it is reloaded, so do that rather than claiming to be done. */
+      location.reload();
+    } catch (err) {
+      setSheet({ ...state.sheet, checking: false, msg: err.message, err: true });
+    }
+  },
+
   resetAll: async () => {
     if (!confirm("Reset to the starting items and meals? Local changes will be lost.")) return;
     state.db = seed();
