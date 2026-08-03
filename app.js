@@ -21,7 +21,7 @@ import {
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
   labelToPer100, labelSizing,
   portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
-  nutritionUsable,
+  nutritionUsable, neededPortions,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -493,6 +493,16 @@ function viewTabs() {
 function viewList() {
   const c = state.calc;
   const over = c.total > state.db.budget;
+
+  /* How many of the things this fortnight needs nobody has looked at since it
+     started. A figure carried forward from a receipt is arithmetic about a
+     cupboard rather than a look inside one, and this is how many of those are
+     still propping up the total. */
+  const since = state.db.planStart ? `${dayOf(state.db.planStart)}T00:00:00.000Z` : "";
+  const toCount = state.db.ingredients
+    .filter((ing) => neededPortions(c, ing.id) > 0.0001)
+    .flatMap(productsOf)
+    .filter((p) => !(p.stockCheckedAt || "") || (since && p.stockCheckedAt < since)).length;
   const pct = state.db.budget > 0 ? Math.min(1, c.total / state.db.budget) : 0;
 
   const notes = [];
@@ -551,6 +561,9 @@ function viewList() {
       <button class="btn solid grow" data-act="openReceipt">Read a receipt</button>
       <button class="btn tonal grow" data-act="openScan">Scan an item</button>
     </div>
+    <button class="btn tonal wide" style="margin-bottom:10px" data-act="openStocktake"${
+      c.plannedMeals ? "" : " disabled"
+    }>Stock check${toCount ? ` &middot; ${toCount} to count` : ""}</button>
     ${notes.join("")}
     ${body}
     <div class="till">
@@ -1400,12 +1413,7 @@ function viewItems() {
   /* Demand can arrive either way round: "any cheddar" sits under the
      ingredient, "that cheddar" under a product of it. Both are this
      ingredient's business. */
-  const needOf = (ing) =>
-    (c.need[ing.id] || 0) +
-    Object.entries(c.needProduct || {}).reduce(
-      (sum, [key, portions]) => (key.startsWith(`${ing.id}|`) ? sum + portions : sum),
-      0
-    );
+  const needOf = (ing) => neededPortions(c, ing.id);
 
   const card = (ing) => {
     const chosen = chooseProduct(ing);
@@ -1572,7 +1580,111 @@ function viewSheet() {
   if (s.kind === "help") return sheetHelp();
   if (s.kind === "invite") return sheetInvite(s);
   if (s.kind === "join") return sheetJoin(s);
+  if (s.kind === "stock") return sheetStocktake(s);
   return "";
+}
+
+/* A stock check, driven by the plan rather than by the whole list.
+
+   Nothing takes stock out on its own. Meals are not the only thing that eats
+   a cupboard, and nobody is going to record a snack, so the app does not
+   pretend to track what leaves. Instead it asks once, at the moment it is
+   worth asking: you have planned the fortnight, so here are the things that
+   plan needs and nothing else, with what the app currently believes.
+
+   A count is stamped on the product, so a figure somebody has actually looked
+   at outranks one that was only ever added up from receipts, and so the
+   progress here survives the app being closed halfway round the kitchen. */
+function sheetStocktake(s) {
+  const c = state.calc;
+  const wanted = state.db.ingredients
+    .map((ing) => ({ ing, needs: neededPortions(c, ing.id) }))
+    .filter((r) => r.needs > 0.0001)
+    .sort((a, b) => a.ing.name.localeCompare(b.ing.name));
+
+  const counted = (product) => (product.stockCheckedAt || "") >= s.startedAt;
+  const products = wanted.flatMap((r) => productsOf(r.ing));
+  const done = products.filter(counted).length;
+
+  if (!wanted.length) {
+    return shell(
+      "Stock check",
+      "Nothing is planned yet, so there is nothing to count.",
+      `<p class="muted">Plan some meals first. This then lists exactly what those
+       meals need and nothing else, which is the difference between a stock check
+       and reading the whole Items tab.</p>
+       <button class="btn solid wide" data-act="closeSheet">Close</button>`
+    );
+  }
+
+  const row = (ing, product, alone) => {
+    const per = portionsPer(product);
+    const stock = productStock(product);
+    const is = counted(product);
+    const attrs = `data-id="${ing.id}" data-product="${esc(product.id)}"`;
+    return `<div class="countrow${is ? " counted" : ""}">
+      ${
+        alone
+          ? ""
+          : `<span class="eyebrow" style="display:block;margin-bottom:4px">${esc(
+              product.name || "Unnamed"
+            )}${product.store ? ` at ${esc(product.store)}` : ""}</span>`
+      }
+      <div class="row">
+        <input class="inp mono" style="width:78px;text-align:right" type="number" step="0.5" min="0"
+          value="${trim2(stock)}" data-act="setStockCount" ${attrs}
+          aria-label="Portions of ${esc(product.name || ing.name)} in stock">
+        <span class="why grow">${
+          per > 0
+            ? `${trim2(stock / per)} pack${Math.abs(stock / per - 1) < 0.001 ? "" : "s"} of ${trim2(per)}`
+            : "portions per pack not set"
+        }</span>
+        <button class="btn small ghost" data-act="setStockCount" data-value="0" ${attrs}>None</button>
+        <button class="btn small ${is ? "solid" : "tonal"}" data-act="confirmStock" ${attrs}
+          aria-label="${is ? "Counted" : "It is right as it is"}">${is ? "\u2713" : "Right"}</button>
+      </div>
+    </div>`;
+  };
+
+  const cards = wanted
+    .map(({ ing, needs }) => {
+      const all = productsOf(ing);
+      const have = stockPortions(ing);
+      const short = Math.max(0, needs - have);
+      return `<section class="card">
+        <div class="row" style="margin-bottom:6px">
+          <span class="grow" style="font-weight:600">${esc(ing.name)}</span>
+          <span class="muted num">${
+            short > 0.0001 ? `short ${trim2(short)}` : `<span class="ok-note">enough</span>`
+          }</span>
+        </div>
+        <p class="why" style="margin:0 0 8px">The plan needs ${trim2(needs)} portion${
+        Math.abs(needs - 1) < 0.001 ? "" : "s"
+      } &middot; ${
+        (all[0] || {}).stockCheckedAt
+          ? `last counted ${esc(ago(all.map((p) => p.stockCheckedAt || "").sort().pop() || ""))}`
+          : "never counted"
+      }</p>
+        ${all.map((p) => row(ing, p, all.length === 1)).join("")}
+      </section>`;
+    })
+    .join("");
+
+  return shell(
+    "Stock check",
+    `${wanted.length} thing${wanted.length === 1 ? "" : "s"} this fortnight needs. ${done} of ${
+      products.length
+    } counted.`,
+    `<div class="bar" style="margin-bottom:12px"><span style="width:${
+      products.length ? Math.round((done / products.length) * 100) : 0
+    }%"></span></div>
+     ${cards}
+     <button class="btn solid wide" style="margin-top:4px" data-act="finishStocktake">Done</button>
+     <p class="muted">Only what the plan asks for, so this is a walk round the kitchen
+     rather than a read of the whole list. <strong>Right</strong> means the figure is
+     already correct and records that you looked; a count you make here outranks one
+     the other phone worked out from a receipt.</p>`
+  );
 }
 
 /* Sheets do not close when you tap beside them. Every one of these holds
@@ -3016,6 +3128,45 @@ const actions = {
   closeSheet: () => setSheet(null),
   openSettings: () => setSheet({ kind: "settings", msg: "", err: false }),
   openReceipt: () => setSheet({ kind: "receipt", busy: false, err: "", store: "", rows: null }),
+
+  /* The moment worth asking is after the plan is made, so the check is opened
+     from the List tab and remembers what the list came to when it started.
+     Saying what the count did to the total is the whole reason to bother. */
+  openStocktake: () =>
+    setSheet({ kind: "stock", startedAt: new Date().toISOString(), before: state.calc.total }),
+
+  setStockCount: (el) => {
+    const value = el.dataset.value !== undefined ? el.dataset.value : el.value;
+    patchProduct(el.dataset.id, el.dataset.product, {
+      stockPortions: Math.max(0, Number(value) || 0),
+      stockCheckedAt: now(),
+    });
+  },
+  // the figure was already right, and saying so is itself worth recording
+  confirmStock: (el) =>
+    patchProduct(el.dataset.id, el.dataset.product, { stockCheckedAt: now() }),
+
+  finishStocktake: () => {
+    const s = state.sheet;
+    const before = s && typeof s.before === "number" ? s.before : null;
+    const counted = state.db.ingredients
+      .flatMap(productsOf)
+      .filter((p) => (p.stockCheckedAt || "") >= (s ? s.startedAt : "")).length;
+    state.sheet = null;
+    draw();
+    const after = state.calc.total;
+    const moved = before === null ? 0 : after - before;
+    flash(
+      "ok",
+      counted === 0
+        ? "Nothing counted, so the list is unchanged."
+        : `${counted} counted. The list is ${
+            Math.abs(moved) < 0.005
+              ? "unchanged at"
+              : `£${money(Math.abs(moved))} ${moved > 0 ? "more" : "less"}, at`
+          } £${money(after)}.`
+    );
+  },
 
   openScan: () =>
     openCamera("Scan an item", (code) => {

@@ -309,6 +309,31 @@ Everything that hands you packs converts on the way in, because shelves and rece
 
 Old data migrates itself on first open: a stored count of 2 packs at 4 portions each becomes 8 portions. Where portions per pack was never set, a pack counts as one portion, which matches what the shopping list already assumed. Nothing needs re-entering, and the conversion runs once.
 
+### Checking it, once, when it is worth checking
+
+Stock only ever goes up on its own: a receipt, a scan, a **Got it** on the
+list. Nothing takes it out, and nothing sensibly could. Meals are not the only
+thing that empties a cupboard, and nobody is going to open the app to record a
+biscuit. So the app does not pretend to track what leaves. It asks once, at the
+point where asking is worth it.
+
+**Stock check**, at the top of the List tab, lists the things this fortnight's
+plan needs and nothing else, A to Z. Each says what the plan asks for, whether
+that is covered, when it was last counted, and how the figure reads in packs as
+well as portions. Correct the ones that are wrong; tap **Right** on the ones
+that are not, which changes no figure but records that you looked. The button
+on the List tab says how many are still uncounted, and stops saying anything
+once they are done.
+
+A count is stamped on the product, which matters in three places. The progress
+survives closing the app halfway round the kitchen. The Items tab can say when
+something was last counted rather than only what it says. And a merge treats a
+count as beating arithmetic: if one phone added 8 up from receipts and the
+other looked in the freezer and found 2, the 2 wins, even though it is lower
+and the old rule was that the higher figure survived.
+
+Finishing says what it did: *"6 counted. The list is £4.20 more, at £38.15."*
+
 ## Adding things by hand
 
 Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping turns those packs into portions of stock and clears the hand-added count.

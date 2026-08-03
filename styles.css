@@ -367,6 +367,13 @@ textarea.inp { min-height:160px; font-family:var(--mono); }
 }
 .banner .btn { background:var(--on-accent); color:var(--accent); border-color:transparent; }
 
+/* One thing to count during a stock check. It goes quiet once counted, so
+   what is left to do is what stands out rather than what is already done. */
+.countrow { margin-bottom:6px; }
+.countrow:last-child { margin-bottom:0; }
+.countrow.counted { opacity:0.55; }
+.countrow .why { font-size:12px; }
+
 /* accent picker. Big enough to hit with a thumb, and square so the colour is
    the whole of what you are choosing rather than a dot beside a word. */
 .swatches { display:flex; gap:8px; margin-bottom:10px; }
