@@ -367,6 +367,13 @@ textarea.inp { min-height:160px; font-family:var(--mono); }
 }
 .banner .btn { background:var(--on-accent); color:var(--accent); border-color:transparent; }
 
+/* One thing that went wrong. The detail is mono because it is usually a
+   message from somewhere else, and wraps because truncating the one line that
+   explains a failure defeats the point of keeping it. */
+.logrow { padding:8px 0; border-bottom:1px solid var(--outline); }
+.logrow:last-child { border-bottom:0; }
+.logrow .why { font-size:11.5px; color:var(--ink-2); word-break:break-word; margin-top:2px; }
+
 /* One thing to count during a stock check. It goes quiet once counted, so
    what is left to do is what stands out rather than what is already done. */
 .countrow { margin-bottom:6px; }

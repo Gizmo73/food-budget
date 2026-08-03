@@ -44,8 +44,17 @@ const shell = await p.evaluate(async (NOW) => {
   return (await c.keys()).map((r) => new URL(r.url).pathname).sort();
 }, NOW);
 console.log("   shell:", JSON.stringify(shell));
+/* Every module app.js imports has to be in the shell, or the app does not
+   boot with no signal. Read the imports rather than counting to a number,
+   which goes stale the moment a module is added. */
+const needed = (await (await fetch(`${BASE}/app.js`)).text())
+  .split("\n")
+  .map((l) => (l.match(/from "\.(\/lib\/[a-z]+\.js)"/) || [])[1])
+  .filter(Boolean);
+console.log("   app.js imports:", JSON.stringify(needed));
 ok(shell.length >= 11, `the whole shell is cached (${shell.length} files)`);
-ok(shell.includes("/lib/store.js") && shell.includes("/app.js"), "including the modules");
+const missing = needed.filter((f) => !shell.includes(f));
+ok(missing.length === 0, `every module app.js imports is cached${missing.length ? ": missing " + missing : ""}`);
 ok(!shell.some((x) => x.startsWith("/next/")), "and nothing under the old folder");
 
 // still works with no network

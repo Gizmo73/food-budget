@@ -27,6 +27,7 @@ import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "
 import { qrSvg } from "./lib/qr.js";
 import { readReceipt, readNutrition } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
+import { note, entries as logEntries, clearLog, logText } from "./lib/log.js";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const root = document.getElementById("app");
@@ -134,6 +135,15 @@ if (navigator.serviceWorker) {
   navigator.serviceWorker.ready.then(askVersion).catch(() => {});
 }
 
+/* Whatever the app did not catch. These are the ones worth having most,
+   since by definition nothing else knew about them. */
+window.addEventListener("error", (e) => {
+  if (e && e.message) note("Unhandled error", e.message);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  note("Unhandled failure", (e && e.reason && e.reason.message) || String((e && e.reason) || ""));
+});
+
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (state.settings && state.settings.theme === "system") applyTheme("system");
@@ -181,7 +191,16 @@ function commit(mutator) {
      stranger's demo items onto somebody else's shopping. */
   state.db.demo = false;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveDb(state.db).catch(() => {}), 300);
+  /* A failed write used to be swallowed, so you carried on typing into
+     something that was not saving and found out later, or never. */
+  saveTimer = setTimeout(
+    () =>
+      saveDb(state.db).catch((err) => {
+        note("Could not save your changes", err);
+        flash("err", `Not saved: ${err.message}. Take a backup from Settings before closing the app.`);
+      }),
+    300
+  );
   draw();
 }
 
@@ -366,7 +385,25 @@ function fieldKey(el) {
   return [d.act, d.id || "", d.field || "", d.i || "", d.key || "", d.which || ""].join("|");
 }
 
+/* A rebuild that throws leaves the old screen on display and nothing updating,
+   which reads as the app having frozen for no reason. Say what happened
+   instead, and record it, since the reason will be gone by the time anybody
+   thinks to look. */
 function draw() {
+  try {
+    render();
+  } catch (err) {
+    note("The screen could not be drawn", err);
+    root.dataset.booted = "1";
+    root.innerHTML =
+      `<div class="wrap"><div class="err"><strong>Something went wrong drawing this screen.</strong><br>` +
+      `${esc(err && err.message ? err.message : String(err))}</div>` +
+      `<p class="muted">Your data is untouched. Settings holds a record of this, and a backup.</p>` +
+      `<button class="btn tonal wide" data-act="openSettings">Open settings</button></div>`;
+  }
+}
+
+function render() {
   state.calc = computeShopping(state.db);
   const sheetScroll = document.querySelector(".sheet") ? document.querySelector(".sheet").scrollTop : null;
   const pageScroll = window.scrollY;
@@ -749,6 +786,7 @@ function viewPlan() {
       both of you. The arrow beside a day copies ${esc(people[0])}'s choice to ${esc(people[1])}.</p>
     </div>
     <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
+    <button class="btn tonal wide" style="margin-bottom:8px" data-act="openRollover">Start the next fortnight</button>
     <button class="btn ghost wide" data-act="clearPlan">Clear both weeks</button>
     <div class="spacer"></div>`;
 }
@@ -1581,7 +1619,55 @@ function viewSheet() {
   if (s.kind === "invite") return sheetInvite(s);
   if (s.kind === "join") return sheetJoin(s);
   if (s.kind === "stock") return sheetStocktake(s);
+  if (s.kind === "rollover") return sheetRollover(s);
   return "";
+}
+
+/* Ending a fortnight and starting the next one.
+
+   Deliberately not the same as changing the start date. Changing the date
+   slides the plan so meals keep the days they were chosen for; this moves the
+   plan onto a new fortnight, which is the opposite intent, and doing both
+   through one date box would mean guessing which you meant. */
+function sheetRollover(s) {
+  const days = state.db.plan.length;
+  const from = s.start;
+  const last = planDate(from, days - 1);
+  const nice = (d) =>
+    d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "";
+  const planned = state.db.plan.reduce(
+    (n, day) => n + SLOTS.reduce((m, slot) => m + ((day && day[slot.key]) || []).filter(Boolean).length, 0),
+    0
+  );
+
+  return shell(
+    "Start the next fortnight",
+    from ? `${nice(planDate(from, 0))} to ${nice(last)}.` : "Pick the day it begins.",
+    `<label class="field" style="margin-bottom:10px"><span class="eyebrow">It begins</span>
+      <input class="inp mono" type="date" value="${esc(from)}" data-act="setRolloverStart"></label>
+
+    <span class="eyebrow" style="display:block;margin-bottom:6px">The meals already on the plan</span>
+    <div class="seg" style="margin-bottom:8px">
+      <button data-act="setRolloverKeep" data-keep="1" data-on="${s.keep ? 1 : 0}">Keep them</button>
+      <button data-act="setRolloverKeep" data-keep="0" data-on="${s.keep ? 0 : 1}">Start empty</button>
+    </div>
+    <p class="why" style="margin:0 0 12px">${
+      s.keep
+        ? `The ${planned} planned meal${planned === 1 ? "" : "s"} stay where they are and take the new
+           dates, which is usually what you want when breakfast and lunch repeat. Change the ones
+           that should differ.`
+        : `Every day is cleared, and you choose the fortnight from scratch.`
+    }</p>
+
+    <p class="muted" style="margin:0 0 12px">This is not the same as correcting the start date.
+    Correcting it slides the plan so a meal keeps the day you chose it for; this moves the plan
+    onto the new fortnight instead. Stock is left alone, since what is in the cupboard does not
+    change because the calendar did — the List tab will ask you to count it.</p>
+
+    <button class="btn solid wide" data-act="doRollover"${from ? "" : " disabled"}>${
+      s.keep ? `Start it, keeping ${planned} meal${planned === 1 ? "" : "s"}` : "Start it, empty"
+    }</button>`
+  );
 }
 
 /* A stock check, driven by the plan rather than by the whole list.
@@ -2177,6 +2263,40 @@ function sheetSettings(s) {
     <p class="muted">Keys and tokens stay on this device and are never written into the shared database.</p>`
     : "";
 
+  /* What went wrong, kept so that "it stopped syncing at some point" can be
+     answered rather than guessed at. Folded away, because on a good week it is
+     empty and nobody should have to look at an empty box. */
+  const problems = logEntries();
+  const problemBox = fold(
+    "problems",
+    "Problems",
+    problems.length
+      ? `${problems.length} recorded, last ${esc(ago(problems[0].at))}`
+      : "none recorded",
+    problems.length
+      ? `<div class="card" style="margin-bottom:8px">${problems
+          .slice(0, 20)
+          .map(
+            (e) => `<div class="logrow">
+              <div class="row"><span class="grow" style="font-weight:600">${esc(e.what)}</span>
+                <span class="muted num">${esc(ukTime(e.at))}</span></div>
+              ${e.detail ? `<div class="why num">${esc(e.detail)}</div>` : ""}
+            </div>`
+          )
+          .join("")}</div>
+        ${problems.length > 20 ? `<p class="muted">${problems.length - 20} older ones are in the copy.</p>` : ""}
+        <div class="row" style="gap:8px">
+          <button class="btn tonal grow" data-act="copyLog">Copy all of it</button>
+          <button class="btn ghost" data-act="clearLog">Clear</button>
+        </div>
+        <p class="muted">A failed save, a sync that could not reach GitHub, a screen that would
+        not draw. Copy this if something needs explaining: it carries the app version and the
+        browser, and nothing about what you eat.</p>`
+      : `<p class="muted">Nothing has gone wrong since this was last cleared. Failed saves,
+         syncing that cannot reach GitHub and screens that will not draw are all recorded here,
+         so a problem that fixed itself can still be looked at afterwards.</p>`
+  );
+
   const version = `
     <h3>This copy of the app</h3>
     <div class="row" style="gap:8px">
@@ -2252,6 +2372,7 @@ function sheetSettings(s) {
       <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
     </button>
     ${repoBox}
+    ${problemBox}
     ${version}`
   );
 }
@@ -2955,7 +3076,12 @@ async function checkForChanges() {
       draw();
     }
   } catch (err) {
-    // offline or a bad token should never block the app from opening
+    /* Offline should never block the app from opening, and in a supermarket it
+       is the normal case, so this stays quiet on screen. It does not stay
+       quiet in the log: a token that expired three weeks ago looks exactly
+       like no signal from here, and that is how syncing stops without anybody
+       noticing. */
+    note("Could not check the shared list", err);
   } finally {
     checking = false;
   }
@@ -3132,6 +3258,61 @@ const actions = {
   /* The moment worth asking is after the plan is made, so the check is opened
      from the List tab and remembers what the list came to when it started.
      Saying what the count did to the total is the whole reason to bother. */
+  /* The next fortnight starts where this one ended, which is the answer often
+     enough to be the default and easy enough to change when it is not. */
+  openRollover: () => {
+    const days = state.db.plan.length;
+    const start = state.db.planStart || "";
+    const next = start ? planDate(start, days) : new Date();
+    setSheet({
+      kind: "rollover",
+      start: next ? next.toISOString().slice(0, 10) : today(),
+      keep: true,
+    });
+  },
+  setRolloverStart: (el) => setSheet({ ...state.sheet, start: el.value || "" }),
+  setRolloverKeep: (el) => setSheet({ ...state.sheet, keep: el.dataset.keep === "1" }),
+  doRollover: () => {
+    const s = state.sheet;
+    if (!s || !s.start) return;
+    const kept = s.keep;
+    const start = s.start;
+    state.sheet = null;
+    commit((db) => {
+      db.planStart = start;
+      if (!kept) {
+        db.plan = Array.from({ length: db.plan.length }, () => ({
+          breakfast: [null, null], lunch: [null, null], dinner: [null, null],
+        }));
+      }
+      touchPlan(db);
+    });
+    const last = planDate(start, state.db.plan.length - 1);
+    const nice = (d) => (d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "");
+    flash(
+      "ok",
+      `The fortnight now runs ${nice(planDate(start, 0))} to ${nice(last)}${
+        kept ? ", with the same meals on it" : ", with nothing on it yet"
+      }. Nothing has been counted for it, so the List tab will ask.`
+    );
+  },
+
+  copyLog: async () => {
+    const text = logText(build.version || "");
+    try {
+      await navigator.clipboard.writeText(text);
+      flash("ok", "Copied. Paste it wherever it needs reading.");
+    } catch (err) {
+      /* Clipboard access is refused often enough on phones that failing here
+         must not lose the thing you were trying to copy. */
+      setSheet({ ...state.sheet, msg: text, err: false });
+    }
+  },
+  clearLog: () => {
+    clearLog();
+    draw();
+  },
+
   openStocktake: () =>
     setSheet({ kind: "stock", startedAt: new Date().toISOString(), before: state.calc.total }),
 
@@ -4134,6 +4315,7 @@ document.addEventListener("visibilitychange", async () => {
     await saveSettings(state.settings);
   } catch (err) {
     // no signal in the aisle is normal; the next manual save will catch up
+    note("Could not update the shared list on leaving", err);
   } finally {
     leaving = false;
   }
@@ -4184,6 +4366,7 @@ root.addEventListener("change", dispatch);
   } catch (err) {
     // Storage can fail outright in private windows with strict settings.
     // Say so plainly rather than leaving the page on "Loading."
+    note("Could not open local storage", err);
     root.dataset.booted = "1";
     root.innerHTML =
       `<div class="wrap"><div class="err"><strong>Could not open local storage.</strong><br>` +

@@ -334,6 +334,22 @@ and the old rule was that the higher figure survived.
 
 Finishing says what it did: *"6 counted. The list is £4.20 more, at £38.15."*
 
+### Starting the next one
+
+**Start the next fortnight**, at the foot of the Plan tab, moves the dates on.
+It offers the day after the current fortnight ended, says what the new one will
+run, and asks one question: keep the meals already planned, or start empty.
+Keeping them is the default, since breakfast and lunch usually repeat.
+
+This is not the same as correcting the start date, and the app treats them
+differently on purpose. Correcting the date slides the plan so a meal keeps the
+day you chose it for. Rolling over moves the plan onto the new fortnight
+instead. Doing both through one date box would mean guessing which you meant.
+
+Stock is left alone: what is in the cupboard did not change because the
+calendar did. But nothing has been *counted* for the new fortnight, so the
+stock check on the List tab starts asking again by itself.
+
 ## Adding things by hand
 
 Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping turns those packs into portions of stock and clears the hand-added count.
@@ -362,6 +378,28 @@ Everything on a Pages site is public, whether through the repo itself or through
 - The token is fine-grained and scoped to one repo with one permission. Revoke it from GitHub if a device is lost.
 - Keys in device storage are readable by anything that achieves script execution on the page. For a personal tool on your own phone that is a reasonable trade, and it is the only option without a server.
 
+## When something goes wrong
+
+Failures used to be silent. A save that could not be written was swallowed, so
+you carried on typing into something that was not saving. A view that threw
+left the last screen on display with nothing updating, which reads as the app
+having frozen for no reason. Syncing that could not reach GitHub said nothing
+at all, which is right in a supermarket and wrong when the token expired three
+weeks ago.
+
+Now: a failed save says so on screen and tells you to take a backup. A screen
+that will not draw says what went wrong instead of freezing. And all of it,
+plus anything the browser catches on its own, goes into **Settings →
+Problems**, which says how many are recorded without being opened.
+
+That log lives in `localStorage`, deliberately not in IndexedDB with
+everything else. The failures most worth recording are the ones where storage
+itself is the problem, and a log kept inside the thing that just broke is
+empty exactly when it is needed.
+
+**Copy all of it** puts the log on the clipboard with the app version and the
+browser, which is most of any bug report, and nothing about what you eat.
+
 ## Files
 
 ```
@@ -375,6 +413,7 @@ lib/qr.js               QR encoder for invite codes
 lib/vendor/             wasm barcode decoder, only loaded by Firefox and Safari
 lib/vision.js           receipt reading, Gemini or Claude
 lib/sync.js             GitHub contents API
+lib/log.js              what went wrong, kept outside IndexedDB on purpose
 sw.js                   offline cache
 manifest.webmanifest    home screen install
 tests/                  the test suite, see below
