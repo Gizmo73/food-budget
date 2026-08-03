@@ -28,6 +28,17 @@ const TYPES = {
    browser held yesterday's app.js is worse than no test. */
 const server = createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(req.url.split("?")[0]));
+
+  /* One deliberately slow file, so the service worker's "give up on a slow
+     network" rule can be tested against a real slow network rather than a
+     mock. Four seconds, comfortably past the worker's three. */
+  if (path.includes("__slow")) {
+    await new Promise((r) => setTimeout(r, 4000));
+    res.writeHead(200, { "Content-Type": "text/javascript", "Cache-Control": "no-store" });
+    res.end("export const slow = true;\n");
+    return;
+  }
+
   if (path.includes("..")) {
     res.writeHead(403).end();
     return;
@@ -87,11 +98,14 @@ for (const file of tests) {
   const secs = `${(r.ms / 1000).toFixed(1)}s`;
   console.log(`${r.code === 0 ? "ok  " : "FAIL"}  ${name.padEnd(22)} ${secs.padStart(7)}`);
   if (r.code !== 0) {
-    // only the failing lines, so a red run is readable without scrolling
-    const lines = r.out.split("\n").filter((l) => /^FAIL|Error|error:/.test(l));
-    for (const l of (lines.length ? lines : r.out.split("\n")).slice(0, 15)) {
-      console.log(`        ${l}`);
-    }
+    /* The named failures first, then the tail of everything. A filter alone
+       hid the actual stack once already: a CI log saying only "name: 'Error'"
+       cost a round trip to find out what had gone wrong. */
+    const lines = r.out.split("\n");
+    const named = lines.filter((l) => /^FAIL/.test(l));
+    for (const l of named) console.log(`        ${l}`);
+    if (named.length) console.log("        --- last of the output ---");
+    for (const l of lines.slice(-25)) if (l.trim()) console.log(`        ${l}`);
   }
 }
 

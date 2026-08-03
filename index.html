@@ -60,15 +60,17 @@
     if (!app || app.dataset.booted === "1") return;
     app.innerHTML =
       '<div class="wrap"><div class="err"><strong>The app did not start.</strong><br>' +
-      'One of its files is missing or out of date on the server. That usually means an ' +
-      'upload did not finish, so re-upload the whole folder and reload.</div>' +
+      'It could not fetch one of its own files. Nearly always this is a poor connection ' +
+      'while the app was updating itself, and <strong>reloading fixes it</strong>. ' +
+      'If it keeps happening, one of the files below is missing on the server.</div>' +
       (problems.length
         ? '<p class="eyebrow">What went wrong</p><pre class="inp mono" style="white-space:pre-wrap;min-height:0">' +
           problems.join("\n").replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }) +
           "</pre>"
         : "") +
       '<p class="eyebrow">Files it needs</p><p class="muted num">app.js &middot; styles.css &middot; sw.js &middot; ' +
-      'lib/calc.js &middot; lib/store.js &middot; lib/scan.js &middot; lib/vision.js &middot; lib/sync.js &middot; ' +
+      'lib/calc.js &middot; lib/store.js &middot; lib/scan.js &middot; lib/qr.js &middot; lib/vision.js &middot; ' +
+      'lib/sync.js &middot; lib/log.js &middot; ' +
       'lib/vendor/barcode-polyfill.js &middot; lib/vendor/zxing_reader.wasm</p>' +
       '<p class="muted">Your saved data is untouched by this. It lives in the browser, not in those files.</p></div>';
   }, 5000);

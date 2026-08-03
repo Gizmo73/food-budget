@@ -7,7 +7,7 @@
    half new set of files. */
 
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}31`;
+const CACHE = `${PREFIX}32`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will
@@ -72,31 +72,38 @@ const SLOW = 3000;
 
 async function freshFirst(request) {
   const cache = await caches.open(CACHE);
+  const cached = await cache.match(request);
+
+  /* reload, not a plain fetch. Without it this asks the browser's own HTTP
+     cache, which is holding the copy we are trying to replace: Pages serves
+     these with ten minutes of freshness, so for ten minutes after a deploy
+     the refetch returned the old file and the app looked like it had not
+     updated. This is the request that has to reach the network. */
+  const fresh = fetch(request.url, { cache: "reload", credentials: "same-origin" }).then((res) => {
+    // keep it even if the race below has already answered from the cache
+    if (res && res.ok) cache.put(request, res.clone());
+    return res;
+  });
+
+  /* Nothing cached means this is the only copy of this file there is, so
+     waiting for it is the only thing that can work. Giving up after three
+     seconds here is what turned "the app added a new module" plus "the phone
+     is on a slow connection" into "the app did not start": the worker in
+     charge during that first load is the previous one, which has never heard
+     of the new file and so has nothing to fall back to. */
+  if (!cached) return fresh;
+
+  // and with a copy in hand, a slow network is not worth waiting out
+  fresh.catch(() => {});
   try {
-    /* reload, not a plain fetch. Without it this asks the browser's own HTTP
-       cache, which is holding the copy we are trying to replace: Pages serves
-       these with ten minutes of freshness, so for ten minutes after a deploy
-       the refetch returned the old file and the app looked like it had not
-       updated. This is the request that has to reach the network. */
     const res = await Promise.race([
-      fetch(request.url, { cache: "reload", credentials: "same-origin" }),
+      fresh,
       new Promise((_, no) => setTimeout(() => no(new Error("slow")), SLOW)),
     ]);
-    if (res && res.ok) {
-      cache.put(request, res.clone());
-      return res;
-    }
-    // a 404 or 500 is a real answer; only fall back when there was no answer
-    const stale = await cache.match(request);
-    return stale || res;
+    // a 404 or 500 is a real answer, but not a better one than a working copy
+    return res && res.ok ? res : cached;
   } catch (err) {
-    const stale = await cache.match(request);
-    if (stale) return stale;
-    if (request.mode === "navigate") {
-      const home = await cache.match("./index.html");
-      if (home) return home;
-    }
-    throw err;
+    return cached;
   }
 }
 
