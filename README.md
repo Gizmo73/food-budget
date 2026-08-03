@@ -231,6 +231,14 @@ Because the app stores per 100, a normal label needs **no conversion at all** â€
 
 The photograph usually shows enough to size a portion as well, so the sheet offers that, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
 
+What it read is shown in four boxes, not as a verdict: correct anything it got
+wrong before saving. A photograph of a curved foil packet under supermarket
+lighting is a good guess rather than a fact, and a smudged decimal point turns
+123 into 1230. The portion figure underneath follows the correction as you
+type, so a wrong number is obvious here rather than a week later on the Food
+tab, and the app says plainly when the figures are no longer purely what it
+read.
+
 ### Raw and cooked weights
 
 Frozen and raw food is the case that quietly goes wrong. A pack of sausage patties is **342g in the freezer and 248g once grilled**, and its nutrition table is headed *"when grilled according to instructions"*, so the per-100g figures describe the cooked food. Pair those figures with the 342g on the front and every portion reads about **forty per cent too heavy**: 162 kcal a patty against the 117 the label prints.

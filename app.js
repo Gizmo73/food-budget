@@ -2864,17 +2864,28 @@ function sheetLabel(s) {
   if (s.values) {
     const out = s.out || {};
     const unit = out.packUnit === "ml" || product.packUnit === "ml" ? "ml" : "g";
-    const row = (label, value, suffix) =>
-      `<div class="row" style="margin-bottom:4px"><span class="grow">${label}</span>
-        <span class="num" style="font-weight:600">${trim2(value)}${suffix}</span></div>`;
+    /* Editable, because a photograph of a curved foil packet under supermarket
+       lighting is a good guess and not a fact. Correcting a misread digit here
+       costs one tap; noticing it a week later on the Food tab means finding
+       the item, opening it, and unfolding nutrition to fix a number whose
+       origin you have long forgotten. */
+    const box = (key, label, suffix) =>
+      `<label class="field"><span class="eyebrow">${label}</span>
+        <input class="inp mono" type="number" step="0.1" min="0" inputmode="decimal"
+          value="${trim2(s.values[key])}" data-act="setLabelValue" data-field="${key}"
+          aria-label="${label} per 100${unit}${suffix}"></label>`;
 
     inner.push(`<div class="subcard">
-      <span class="eyebrow" style="display:block;margin-bottom:6px">Per 100${unit}</span>
-      ${row("Calories", s.values.kcal, " kcal")}
-      ${row("Protein", s.values.protein, " g")}
-      ${row("Carbs", s.values.carbs, " g")}
-      ${row("Fat", s.values.fat, " g")}
-      <p class="why" style="margin:6px 0 0">From ${esc(s.why)}.</p>
+      <span class="eyebrow" style="display:block;margin-bottom:6px">Per 100${unit}, correct anything it misread</span>
+      <div class="grid2" style="margin-bottom:8px">${box("kcal", "Calories", " in kcal")}${box(
+      "protein",
+      "Protein g",
+      ""
+    )}</div>
+      <div class="grid2">${box("carbs", "Carbs g", "")}${box("fat", "Fat g", "")}</div>
+      <p class="why" style="margin:8px 0 0">From ${esc(s.why)}.${
+        s.edited ? " Changed by hand since." : ""
+      }</p>
     </div>`);
 
     if (s.warn) {
@@ -3733,6 +3744,20 @@ const actions = {
 
   toggleLabelSize: (el) => setSheet({ ...state.sheet, useSize: el.checked }),
 
+  /* Correcting what the photograph read, before any of it is saved. The
+     redraw is the point: the portion figure underneath is worked out from
+     these, so a corrected calorie count moves it immediately and a wrong one
+     is obvious here rather than on the Food tab a week later. */
+  setLabelValue: (el) => {
+    const s = state.sheet;
+    if (!s || !s.values) return;
+    setSheet({
+      ...s,
+      values: { ...s.values, [el.dataset.field]: Math.max(0, Number(el.value) || 0) },
+      edited: true,
+    });
+  },
+
   applyLabel: () => {
     const s = state.sheet;
     if (!s || !s.values) return;
@@ -3742,7 +3767,12 @@ const actions = {
     const size = s.sizing && s.useSize !== false ? sizingChanges(s.sizing) : {};
     patchProduct(s.id, s.productId, { ...per100, ...size, nutritionUpdated: now() });
     setSheet(null);
-    flash("ok", `Nutrition saved to ${(product && product.name) || "the product"}.`);
+    flash(
+      "ok",
+      `Nutrition saved to ${(product && product.name) || "the product"}${
+        s.edited ? ", with your corrections" : ""
+      }.`
+    );
   },
 
   setPackUnit: (el) =>
