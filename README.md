@@ -473,6 +473,9 @@ artifact.
 
 ## Known limits
 
+- Moving the start of the fortnight slides the plan the other way, so a meal
+  planned for Wednesday stays on Wednesday. Days pushed outside the fortnight
+  are gone, and the app says how many rather than dropping them quietly.
 - Each day has breakfast, lunch and dinner. Breakfast and lunch usually repeat, so the Plan tab has a **Repeat** button per slot that copies day one into every empty day of that slot.
 - The app does not suggest buying more to reach a multibuy threshold. It shows the offer terms on the line and leaves the decision to you.
 - Pack sizes are assumed stable. If a product shrinks, update Portions per pack by hand.

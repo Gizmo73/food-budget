@@ -10,7 +10,7 @@ import {
   resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
   findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop, moveProduct,
-  tidyProductName, markDeleted, SLOTS,
+  tidyProductName, markDeleted, shiftPlan, daysBetween, SLOTS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, itemPortionCost, packCost, activeOffer,
@@ -3550,7 +3550,37 @@ const actions = {
       touchPlan(db);
     });
   },
-  setPlanStart: (el) => commit((db) => { db.planStart = el.value || ""; touchPlan(db); }),
+  /* Moving the start of the fortnight moves what date every day of it falls
+     on, so the plan slides the other way to keep each meal on the day it was
+     chosen for. Without this, nudging the start by one day served Wednesday's
+     dinner on Thursday and nobody was told. */
+  setPlanStart: (el) => {
+    const was = state.db.planStart || "";
+    const now = el.value || "";
+    const moved = was && now ? daysBetween(was, now) : 0;
+    let lost = 0;
+    commit((db) => {
+      if (moved) {
+        const shifted = shiftPlan(db.plan, moved);
+        db.plan = shifted.plan;
+        lost = shifted.lost;
+      }
+      db.planStart = now;
+      touchPlan(db);
+    });
+    if (!moved) return;
+    const by = `${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${
+      moved > 0 ? "later" : "earlier"
+    }`;
+    flash(
+      lost ? "err" : "ok",
+      lost
+        ? `Started ${by}. Meals kept their dates, so ${lost} planned meal${
+            lost === 1 ? " that now falls" : "s that now fall"
+          } outside the fortnight ${lost === 1 ? "has" : "have"} gone.`
+        : `Started ${by}. Every meal kept the date you planned it for.`
+    );
+  },
   copySlot: (el) =>
     commit((db) => {
       const day = db.plan[Number(el.dataset.idx)];
