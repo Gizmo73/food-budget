@@ -47,6 +47,8 @@ The offer editor spells out which you have, in words: *"One pack still costs £3
 
 **Barcodes** are the in-store update. Scan an item, type the shelf price, done. The app tells you what changed since last time.
 
+Saving a scan then offers to photograph the label, but only when that product has no calories or macros on it yet. Scanning is the one moment the pack is in your hand: later means finding the thing again, or reading the figures off a website and hoping. **Not now** is one tap, and nothing else waits on it. It never asks about something already filled in, since a prompt you always dismiss is a prompt you stop reading.
+
 Anything older than 14 days gets a red dot and a banner, so a stale price never quietly costs a shop.
 
 ## Sharing with someone else

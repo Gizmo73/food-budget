@@ -214,6 +214,15 @@ function flash(kind, text) {
   draw();
 }
 
+/* Offer to photograph the label, but only where there is something to gain:
+   nutrition that is not filled in, on a product that has just been scanned.
+   Asking about something already recorded would train you to dismiss it. */
+function askForLabel(id, productId) {
+  const product = productOf(id, productId);
+  if (!product || hasNutrition(product)) return;
+  setSheet({ kind: "labelAsk", id, productId });
+}
+
 /* Which of an ingredient's products is unfolded. It lives on the open sheet so
    it forgets itself when you close the ingredient, and these two are set just
    before a commit, whose redraw shows the result. Adding or copying something
@@ -1620,7 +1629,38 @@ function viewSheet() {
   if (s.kind === "join") return sheetJoin(s);
   if (s.kind === "stock") return sheetStocktake(s);
   if (s.kind === "rollover") return sheetRollover(s);
+  if (s.kind === "labelAsk") return sheetLabelAsk(s);
   return "";
+}
+
+/* Asked straight after a scan, and only then, because that is the one moment
+   the pack is in your hand. Nutrition typed later means finding the thing
+   again, or reading it off a website and hoping; a photograph now costs one
+   tap while you are already standing there. */
+function sheetLabelAsk(s) {
+  const ing = ingredient(s.id);
+  const product = productOf(s.id, s.productId);
+  if (!ing || !product) return "";
+  const sized = Number(product.packAmount) > 0 && product.packUnit;
+
+  return shell(
+    "Photograph the label?",
+    `${esc(product.name || ing.name)} has no calories or macros recorded.`,
+    `<p class="muted" style="margin-top:0">You have it in your hand now. Later means finding it
+     again or reading the figures off a website, so this is the cheap moment.</p>
+     ${
+       sized
+         ? `<p class="why" style="margin:0 0 12px">Its pack size is already set at ${trim2(
+             product.packAmount
+           )}${esc(product.packUnit)}, so the label converts straight to a figure per portion.</p>`
+         : `<p class="why" style="margin:0 0 12px">Its pack size is not set either, and the label
+            usually says that too, so this can fill in both.</p>`
+     }
+     <button class="btn solid wide" style="margin-bottom:8px" data-act="shootLabel"
+       data-id="${esc(s.id)}" data-product="${esc(s.productId)}">Photograph the label</button>
+     <button class="btn ghost wide" data-act="closeSheet">Not now</button>`,
+    true
+  );
 }
 
 /* Ending a fortnight and starting the next one.
@@ -3508,6 +3548,7 @@ const actions = {
             }, ${trim2(added)} portions, added to stock.`
           : `${product.name} now £${money(price)}${moved}.`
       );
+      askForLabel(ing.id, product.id);
       return;
     }
 
@@ -3537,6 +3578,7 @@ const actions = {
         ? `${made.name} added at £${money(price)}, ${trim2(made.products[0].stockPortions)} portions in stock.`
         : `${made.name} added at £${money(price)}.`
     );
+    askForLabel(made.id, made.products[0].id);
   },
 
   bought: (el) => {
