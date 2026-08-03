@@ -1,0 +1,1797 @@
+{
+  "schema": 6,
+  "budget": 60,
+  "updatedAt": "2026-07-28T09:00:00.000Z",
+  "plan": [
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "pie-and-mash",
+        "pie-and-mash"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "bolognese",
+        "bolognese"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        "beans-on-toast",
+        null
+      ],
+      "dinner": [
+        "stir-fry",
+        "stir-fry"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "fish-and-chips",
+        "fish-and-chips"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "curry",
+        "curry"
+      ]
+    },
+    {
+      "breakfast": [
+        "fry-up",
+        "fry-up"
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "pizza-night",
+        "pizza-night"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "tuna-pasta",
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        "cottage-pie",
+        "cottage-pie"
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    },
+    {
+      "breakfast": [
+        null,
+        null
+      ],
+      "lunch": [
+        null,
+        null
+      ],
+      "dinner": [
+        null,
+        null
+      ]
+    }
+  ],
+  "people": [
+    "Person 1",
+    "Person 2"
+  ],
+  "planStart": "",
+  "meals": [
+    {
+      "id": "pie-and-mash",
+      "name": "Pie and Mash",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "steak-pies",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "potatoes",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "gravy-granules",
+          "productId": "",
+          "portions": 0.25,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "garden-peas",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "fish-and-chips",
+      "name": "Fish and Chips",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "fish-fingers",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "potatoes",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "garden-peas",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "bolognese",
+      "name": "Spaghetti Bolognese",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "beef-mince",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "spaghetti",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "passata",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "garlic",
+          "productId": "",
+          "portions": 0.25,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "stir-fry",
+      "name": "Chicken Stir Fry",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "chicken-breasts",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "stir-fry-veg",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "noodles",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "soy-sauce",
+          "productId": "",
+          "portions": 0.25,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "curry",
+      "name": "Chicken Curry",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "chicken-breasts",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "curry-sauce",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "rice",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "tuna-pasta",
+      "name": "Tuna Pasta",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "tuna-spring-water",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "spaghetti",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "cheese",
+          "productId": "",
+          "portions": 0.5,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "fry-up",
+      "name": "Fry Up",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "bacon",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "sausages",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "eggs",
+          "productId": "",
+          "portions": 2,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "baked-beans",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "beans-on-toast",
+      "name": "Beans on Toast",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "baked-beans",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "sliced-bread",
+          "productId": "",
+          "portions": 2,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "butter",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "pizza-night",
+      "name": "Pizza Night",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "stone-baked-pizza",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "toast-and-yoghurt",
+      "name": "Toast and Yoghurt",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": [
+        {
+          "ingredientId": "sliced-bread",
+          "productId": "",
+          "portions": 2,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "butter",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        },
+        {
+          "ingredientId": "yoghurt",
+          "productId": "",
+          "portions": 1,
+          "by": "portions",
+          "grams": 0
+        }
+      ]
+    },
+    {
+      "id": "cottage-pie",
+      "name": "Cottage Pie",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": []
+    },
+    {
+      "id": "new-meal",
+      "name": "New meal",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "items": []
+    }
+  ],
+  "ingredients": [
+    {
+      "id": "steak-pies",
+      "name": "Steak Pies",
+      "extraPacks": 0,
+      "aliases": [
+        "steak pies"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "steak-pies-tesco",
+          "name": "Steak Pies",
+          "store": "Tesco",
+          "pricePerPack": 2.5,
+          "portionsPerPack": 2,
+          "stockPortions": 4,
+          "packLabel": "2 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000019"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "potatoes",
+      "name": "Potatoes",
+      "extraPacks": 0,
+      "aliases": [
+        "potatoes"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "potatoes-tesco",
+          "name": "Potatoes",
+          "store": "Tesco",
+          "pricePerPack": 1.15,
+          "portionsPerPack": 10,
+          "stockPortions": 0,
+          "packLabel": "2.5kg",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000026"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "garden-peas",
+      "name": "Garden Peas",
+      "extraPacks": 0,
+      "aliases": [
+        "garden peas"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "garden-peas-tesco",
+          "name": "Garden Peas",
+          "store": "Tesco",
+          "pricePerPack": 1,
+          "portionsPerPack": 9,
+          "stockPortions": 3,
+          "packLabel": "900g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "fish-fingers",
+      "name": "Fish Fingers",
+      "extraPacks": 0,
+      "aliases": [
+        "fish fingers"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "fish-fingers-iceland",
+          "name": "Fish Fingers",
+          "store": "Iceland",
+          "pricePerPack": 2.75,
+          "portionsPerPack": 5,
+          "stockPortions": 2,
+          "packLabel": "10 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000033"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "chunky-cod-fillets",
+      "name": "Chunky Cod Fillets",
+      "extraPacks": 0,
+      "aliases": [
+        "chunky cod fillets"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "chunky-cod-fillets-tesco",
+          "name": "Chunky Cod Fillets",
+          "store": "Tesco",
+          "pricePerPack": 4.5,
+          "portionsPerPack": 2,
+          "stockPortions": 0,
+          "packLabel": "300g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "bread-rolls",
+      "name": "Bread Rolls",
+      "extraPacks": 0,
+      "aliases": [
+        "bread rolls"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "bread-rolls-tesco",
+          "name": "Bread Rolls",
+          "store": "Tesco",
+          "pricePerPack": 0.95,
+          "portionsPerPack": 6,
+          "stockPortions": 4,
+          "packLabel": "6 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000040"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "cheese",
+      "name": "Cheese",
+      "extraPacks": 0,
+      "aliases": [
+        "cheese"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "cheese-asda",
+          "name": "Cheese",
+          "store": "Asda",
+          "pricePerPack": 2.65,
+          "portionsPerPack": 8,
+          "stockPortions": 5,
+          "packLabel": "400g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000057"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "tuna-spring-water",
+      "name": "Tuna Spring Water",
+      "extraPacks": 0,
+      "aliases": [
+        "tuna spring water"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "tuna-spring-water-tesco",
+          "name": "Tuna Spring Water",
+          "store": "Tesco",
+          "pricePerPack": 1.4,
+          "portionsPerPack": 1,
+          "stockPortions": 2,
+          "packLabel": "145g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000064"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "tuna-sunflower-oil",
+      "name": "Tuna Sunflower Oil",
+      "extraPacks": 0,
+      "aliases": [
+        "tuna sunflower oil"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "tuna-sunflower-oil-tesco",
+          "name": "Tuna Sunflower Oil",
+          "store": "Tesco",
+          "pricePerPack": 1.4,
+          "portionsPerPack": 1,
+          "stockPortions": 1,
+          "packLabel": "145g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000071"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "chicken-skewers",
+      "name": "Chicken Skewers",
+      "extraPacks": 0,
+      "aliases": [
+        "chicken skewers"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "chicken-skewers-asda",
+          "name": "Chicken Skewers",
+          "store": "Asda",
+          "pricePerPack": 3.5,
+          "portionsPerPack": 4,
+          "stockPortions": 0,
+          "packLabel": "4 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "breadsticks",
+      "name": "Breadsticks",
+      "extraPacks": 0,
+      "aliases": [
+        "breadsticks"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "breadsticks-tesco",
+          "name": "Breadsticks",
+          "store": "Tesco",
+          "pricePerPack": 0.8,
+          "portionsPerPack": 5,
+          "stockPortions": 0,
+          "packLabel": "125g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "stone-baked-pizza",
+      "name": "Stone Baked Pizza",
+      "extraPacks": 0,
+      "aliases": [
+        "stone baked pizza"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "stone-baked-pizza-tesco",
+          "name": "Stone Baked Pizza",
+          "store": "Tesco",
+          "pricePerPack": 3,
+          "portionsPerPack": 2,
+          "stockPortions": 1,
+          "packLabel": "440g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000088"
+          ],
+          "offer": {
+            "kind": "loyalty",
+            "price": 2.25,
+            "ends": ""
+          },
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "beef-mince",
+      "name": "Beef Mince",
+      "extraPacks": 0,
+      "aliases": [
+        "beef mince"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "beef-mince-tesco",
+          "name": "Beef Mince",
+          "store": "Tesco",
+          "pricePerPack": 4.25,
+          "portionsPerPack": 4,
+          "stockPortions": 0,
+          "packLabel": "500g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000095"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "spaghetti",
+      "name": "Spaghetti",
+      "extraPacks": 0,
+      "aliases": [
+        "spaghetti"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "spaghetti-tesco",
+          "name": "Spaghetti",
+          "store": "Tesco",
+          "pricePerPack": 0.75,
+          "portionsPerPack": 5,
+          "stockPortions": 2,
+          "packLabel": "500g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "passata",
+      "name": "Passata",
+      "extraPacks": 0,
+      "aliases": [
+        "passata"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "passata-tesco",
+          "name": "Passata",
+          "store": "Tesco",
+          "pricePerPack": 0.55,
+          "portionsPerPack": 4,
+          "stockPortions": 3,
+          "packLabel": "500g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000101"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "garlic",
+      "name": "Garlic",
+      "extraPacks": 0,
+      "aliases": [
+        "garlic"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "garlic-tesco",
+          "name": "Garlic",
+          "store": "Tesco",
+          "pricePerPack": 0.4,
+          "portionsPerPack": 6,
+          "stockPortions": 4,
+          "packLabel": "",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "onions",
+      "name": "Onions",
+      "extraPacks": 0,
+      "aliases": [
+        "onions"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "onions-tesco",
+          "name": "Onions",
+          "store": "Tesco",
+          "pricePerPack": 0.95,
+          "portionsPerPack": 8,
+          "stockPortions": 5,
+          "packLabel": "1kg",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "carrots",
+      "name": "Carrots",
+      "extraPacks": 0,
+      "aliases": [
+        "carrots"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "carrots-aldi",
+          "name": "Carrots",
+          "store": "Aldi",
+          "pricePerPack": 0.55,
+          "portionsPerPack": 10,
+          "stockPortions": 0,
+          "packLabel": "1kg",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "gravy-granules",
+      "name": "Gravy Granules",
+      "extraPacks": 0,
+      "aliases": [
+        "gravy granules"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "gravy-granules-tesco",
+          "name": "Gravy Granules",
+          "store": "Tesco",
+          "pricePerPack": 1.5,
+          "portionsPerPack": 12,
+          "stockPortions": 8,
+          "packLabel": "300g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000118"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "semi-skimmed-milk",
+      "name": "Semi Skimmed Milk",
+      "extraPacks": 0,
+      "aliases": [
+        "semi skimmed milk"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "semi-skimmed-milk-tesco",
+          "name": "Semi Skimmed Milk",
+          "store": "Tesco",
+          "pricePerPack": 1.45,
+          "portionsPerPack": 8,
+          "stockPortions": 4,
+          "packLabel": "2 litre",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000125"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "butter",
+      "name": "Butter",
+      "extraPacks": 0,
+      "aliases": [
+        "butter"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "butter-tesco",
+          "name": "Butter",
+          "store": "Tesco",
+          "pricePerPack": 2.1,
+          "portionsPerPack": 25,
+          "stockPortions": 12,
+          "packLabel": "250g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000132"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "eggs",
+      "name": "Eggs",
+      "extraPacks": 0,
+      "aliases": [
+        "eggs"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "eggs-morrisons",
+          "name": "Eggs",
+          "store": "Morrisons",
+          "pricePerPack": 2.2,
+          "portionsPerPack": 12,
+          "stockPortions": 6,
+          "packLabel": "12 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "bacon",
+      "name": "Bacon",
+      "extraPacks": 0,
+      "aliases": [
+        "bacon"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "bacon-tesco",
+          "name": "Bacon",
+          "store": "Tesco",
+          "pricePerPack": 2.9,
+          "portionsPerPack": 6,
+          "stockPortions": 0,
+          "packLabel": "300g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000149"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "sausages",
+      "name": "Sausages",
+      "extraPacks": 0,
+      "aliases": [
+        "sausages"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "sausages-tesco",
+          "name": "Sausages",
+          "store": "Tesco",
+          "pricePerPack": 2.4,
+          "portionsPerPack": 8,
+          "stockPortions": 0,
+          "packLabel": "8 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000156"
+          ],
+          "offer": {
+            "kind": "multibuy",
+            "qty": 2,
+            "price": 4,
+            "ends": ""
+          },
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "baked-beans",
+      "name": "Baked Beans",
+      "extraPacks": 0,
+      "aliases": [
+        "baked beans"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "baked-beans-tesco",
+          "name": "Baked Beans",
+          "store": "Tesco",
+          "pricePerPack": 0.6,
+          "portionsPerPack": 2,
+          "stockPortions": 6,
+          "packLabel": "415g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000163"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "sliced-bread",
+      "name": "Sliced Bread",
+      "extraPacks": 0,
+      "aliases": [
+        "sliced bread"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "sliced-bread-tesco",
+          "name": "Sliced Bread",
+          "store": "Tesco",
+          "pricePerPack": 1.25,
+          "portionsPerPack": 16,
+          "stockPortions": 8,
+          "packLabel": "800g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000170"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "chicken-breasts",
+      "name": "Chicken Breasts",
+      "extraPacks": 0,
+      "aliases": [
+        "chicken breasts"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "chicken-breasts-asda",
+          "name": "Chicken Breasts",
+          "store": "Asda",
+          "pricePerPack": 5.5,
+          "portionsPerPack": 5,
+          "stockPortions": 0,
+          "packLabel": "650g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "stir-fry-veg",
+      "name": "Stir Fry Veg",
+      "extraPacks": 0,
+      "aliases": [
+        "stir fry veg"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "stir-fry-veg-tesco",
+          "name": "Stir Fry Veg",
+          "store": "Tesco",
+          "pricePerPack": 1.2,
+          "portionsPerPack": 2,
+          "stockPortions": 0,
+          "packLabel": "320g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "noodles",
+      "name": "Noodles",
+      "extraPacks": 0,
+      "aliases": [
+        "noodles"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "noodles-tesco",
+          "name": "Noodles",
+          "store": "Tesco",
+          "pricePerPack": 0.7,
+          "portionsPerPack": 3,
+          "stockPortions": 2,
+          "packLabel": "250g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "soy-sauce",
+      "name": "Soy Sauce",
+      "extraPacks": 0,
+      "aliases": [
+        "soy sauce"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "soy-sauce-tesco",
+          "name": "Soy Sauce",
+          "store": "Tesco",
+          "pricePerPack": 1.35,
+          "portionsPerPack": 15,
+          "stockPortions": 12,
+          "packLabel": "150ml",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "rice",
+      "name": "Rice",
+      "extraPacks": 0,
+      "aliases": [
+        "rice"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "rice-tesco",
+          "name": "Rice",
+          "store": "Tesco",
+          "pricePerPack": 1.9,
+          "portionsPerPack": 10,
+          "stockPortions": 7,
+          "packLabel": "1kg",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000187"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "curry-sauce",
+      "name": "Curry Sauce",
+      "extraPacks": 0,
+      "aliases": [
+        "curry sauce"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "curry-sauce-asda",
+          "name": "Curry Sauce",
+          "store": "Asda",
+          "pricePerPack": 1.7,
+          "portionsPerPack": 4,
+          "stockPortions": 0,
+          "packLabel": "500g",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000194"
+          ],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "yoghurt",
+      "name": "Yoghurt",
+      "extraPacks": 0,
+      "aliases": [
+        "yoghurt"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "yoghurt-tesco",
+          "name": "Yoghurt",
+          "store": "Tesco",
+          "pricePerPack": 1.8,
+          "portionsPerPack": 4,
+          "stockPortions": 2,
+          "packLabel": "4 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": {
+            "kind": "loyalty",
+            "price": 1.4,
+            "ends": ""
+          },
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "apples",
+      "name": "Apples",
+      "extraPacks": 0,
+      "aliases": [
+        "apples"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "apples-lidl",
+          "name": "Apples",
+          "store": "Lidl",
+          "pricePerPack": 1.45,
+          "portionsPerPack": 6,
+          "stockPortions": 3,
+          "packLabel": "6 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "bananas",
+      "name": "Bananas",
+      "extraPacks": 0,
+      "aliases": [
+        "bananas"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "bananas-asda",
+          "name": "Bananas",
+          "store": "Asda",
+          "pricePerPack": 0.85,
+          "portionsPerPack": 5,
+          "stockPortions": 0,
+          "packLabel": "5 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "cat-food-pouches",
+      "name": "Cat Food Pouches",
+      "extraPacks": 0,
+      "aliases": [
+        "cat food pouches"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "cat-food-pouches-asda",
+          "name": "Cat Food Pouches",
+          "store": "Asda",
+          "pricePerPack": 4,
+          "portionsPerPack": 12,
+          "stockPortions": 9,
+          "packLabel": "12 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [
+            "5012345000200"
+          ],
+          "offer": {
+            "kind": "multibuy",
+            "qty": 2,
+            "price": 7,
+            "ends": ""
+          },
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    },
+    {
+      "id": "kitchen-towel",
+      "name": "Kitchen Towel",
+      "extraPacks": 0,
+      "aliases": [
+        "kitchen towel"
+      ],
+      "preferredProductId": "",
+      "updatedAt": "2026-07-28T09:00:00.000Z",
+      "products": [
+        {
+          "id": "kitchen-towel-tesco",
+          "name": "Kitchen Towel",
+          "store": "Tesco",
+          "pricePerPack": 2.5,
+          "portionsPerPack": 2,
+          "stockPortions": 1,
+          "packLabel": "2 pack",
+          "packAmount": 0,
+          "packUnit": "",
+          "portionBy": "count",
+          "portionGrams": 0,
+          "barcodes": [],
+          "offer": null,
+          "priceUpdated": "2026-07-28",
+          "kcal100": 0,
+          "protein100": 0,
+          "carbs100": 0,
+          "fat100": 0,
+          "nutritionUpdated": ""
+        }
+      ]
+    }
+  ]
+}

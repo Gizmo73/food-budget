@@ -1,0 +1,14 @@
+{
+  "name": "fortnight-shop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tests only. The app itself is static files with no build step; nothing here is needed to run or deploy it.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "validate": "node tests/validate-backup.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

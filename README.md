@@ -352,7 +352,12 @@ lib/vision.js           receipt reading, Gemini or Claude
 lib/sync.js             GitHub contents API
 sw.js                   offline cache
 manifest.webmanifest    home screen install
+tests/                  the test suite, see below
+package.json            devDependency on Playwright, for the tests only
 ```
+
+`package.json` is not part of the app. The site is static files served as they
+are, and nothing here is built, bundled or installed to deploy it.
 
 No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing. The camera overlay lives outside the render tree because a rebuild would kill the video stream.
 
@@ -408,6 +413,54 @@ The Items tab has a search box that matches loosely: `chkkrm` finds Chicken Korm
 That means a module failed to load, and it is nearly always a file that did not upload or a stale copy on the server. After five seconds the app now replaces the blank page with the actual error and the list of files it expects, so read that rather than guessing.
 
 Two things worth knowing when it happens. A private window bypasses the service worker, so if the app works there and not normally, the cache is stale and bumping `CACHE` in `sw.js` fixes it. And your saved data is never involved: it lives in IndexedDB, not in the files being served.
+
+## Tests
+
+```
+npm install                     once, to get Playwright
+npx playwright install chromium
+npm test                        the lot, about 80 seconds
+npm test -- sync meal           only tests whose name contains one of these
+```
+
+`tests/run.mjs` serves the repo on a port of its own and runs each test as its
+own process, so there is nothing to start first, nothing left running
+afterwards, and one wedged browser cannot take the rest down with it. It also
+serves everything `no-store`: a test that passes because the browser kept
+yesterday's `app.js` is worse than no test at all.
+
+Two kinds of test, and the difference matters:
+
+- **Rules**, run in Node against `lib/` directly, with no browser. `sync-test`
+  is the important one: every way a change can fail to reach the other person,
+  each case having failed before the code that fixed it.
+- **The app**, driven in a real Chromium through its own buttons.
+  `two-phones-test` is the important one there. It runs two browser profiles
+  against one fake shared file and checks that a rename, a new ingredient, a
+  planned day and a deletion all survive the round trip, with the second phone
+  only backgrounded and brought back rather than reloaded.
+
+`tests/fixtures/sample-list.json` is a manufactured list the size and shape of
+a real one: 37 items, a dozen meals, offers, barcodes, part-filled stock, and
+two meals with no ingredients, because a real list collects those and the app
+has to cope. Tests that need a long list use it, and derive their expected
+numbers from it rather than hard-coding counts that go stale.
+
+`tests/validate-backup.mjs` is a tool as well as a test. Point it at a real
+export before restoring one:
+
+```
+node tests/validate-backup.mjs ~/Downloads/fortnight-shop-backup.json
+```
+
+It checks the file loads, migrates to the current schema without losing
+anything, produces the same shopping total afterwards, and reports what it
+noticed: empty meals on the plan, products with no portion weight, aliases
+shared by two ingredients.
+
+Every push runs the suite on GitHub Actions
+(`.github/workflows/test.yml`). Screenshots from a failing run are kept as an
+artifact.
 
 ## Notes
 
