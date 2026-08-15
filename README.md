@@ -15,7 +15,7 @@ Ported from the Meal_Planner spreadsheet. The maths is identical: portions neede
 
 ## How pricing works
 
-**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices and quantities, and each line is matched to one of your items. You confirm before anything changes.
+**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices and quantities, and each line is matched to one of your items. You confirm before anything changes. A receipt updates **prices**; it does not add stock by default, since it is read after shopping and **Got it** on the List tab is what turns a trolley into stock. Bump a line's *Into stock* up if the receipt is the moment you would rather stock it.
 
 **A receipt is dated evidence, not the current truth.** The date is read off the photo, shown beside the store and editable if the model misread it, and it is the date recorded against every price on that receipt. So entering a shop a week late no longer outranks corrections you made in between. Any line whose item has been updated since that date is switched off automatically and labelled **old price**, naming what changed and when; tick it back on if you disagree. Correcting the date brings those lines back.
 
@@ -333,7 +333,7 @@ Everything that hands you packs converts on the way in, because shelves and rece
 | Items tab, ± pack | one pack | portions per pack |
 | Got it, on the list | the packs bought | packs × portions per pack |
 | Scan an item | packs in the trolley | packs × portions per pack |
-| Receipt review, Into stock | portions, pre-filled from the receipt | portions |
+| Receipt review, Into stock | portions, none by default | portions |
 
 Old data migrates itself on first open: a stored count of 2 packs at 4 portions each becomes 8 portions. Where portions per pack was never set, a pack counts as one portion, which matches what the shopping list already assumed. Nothing needs re-entering, and the conversion runs once.
 
@@ -380,7 +380,7 @@ stock check on the List tab starts asking again by itself.
 
 ## Adding things by hand
 
-Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned, and the line shows as *by hand* so you can tell it apart from what the plan demands. Tapping **Got it** after shopping turns those packs into portions of stock and clears the hand-added count.
+Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned. The line carries a small **×** to take those hand-added packs back off, and tapping **Got it** after shopping turns the packs into portions of stock and clears the hand-added count.
 
 That top-level **+** adds *any* of the item, so it rides on whichever source is cheapest, the same rule the rest of the list follows. Sometimes that is not what you mean: under Bread you might want a white loaf **and** a seeded one on the same trip, two different kinds rather than two of the cheapest. So each product has its own **+** too, on its card inside the item. Adding one there puts that exact thing on the list, and it gets its own line — *this one only, added by hand* — so a single ingredient can carry as many different kinds as you like at once. The loose "any of it" packs and each product's own are counted together in the *N on the list* the item shows, and **Got it** on a line settles only the packs on that line.
 

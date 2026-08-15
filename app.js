@@ -636,13 +636,11 @@ function viewList() {
 }
 
 function ticket(l) {
-  const bits = [`${l.packs} pack${l.packs === 1 ? "" : "s"} @ £${money(l.product && l.product.pricePerPack)}`];
-  if (l.offer) bits.push(l.offer);
-  if (l.product && l.product.packLabel) bits.push(esc(l.product.packLabel));
-  if (l.extra) bits.push(`${l.extra} by hand`);
-  // needs 4, has 2, so a whole pack is still required: say so on the line
-  if (l.stock > 0.001) bits.push(`${trim2(l.stock)} in stock`);
-  if (l.leftover > 0.001) bits.push(`${trim2(l.leftover)} left over`);
+  // the shelf price of one pack, then the offer if there is one. Stock, packs
+  // left over and hand-added counts are deliberately not here: the line is
+  // what to pick up and what it costs, nothing to reconcile in your head.
+  const detail = [`£${money(l.product && l.product.pricePerPack)} each`];
+  if (l.offer) detail.push(l.offer);
 
   /* The heading is the ingredient, because that is what the meal asked for.
      The product goes underneath, because that is what you pick off the shelf,
@@ -652,9 +650,9 @@ function ticket(l) {
 
   return `<div class="ticket">
     <div class="grow">
-      <div class="name trunc">${l.stale ? '<span class="dot"></span>' : ""}${esc(l.ing.name)}</div>
+      <div class="name trunc">${l.stale ? '<span class="dot"></span>' : ""}${esc(l.ing.name)} <span class="qty">&times; ${l.packs}</span></div>
       ${named ? `<div class="meta">${esc(product)}</div>` : ""}
-      <div class="meta">${bits.join(" &middot; ")}</div>
+      <div class="meta">${detail.join(" &middot; ")}</div>
       ${l.saving > 0.004 ? `<div class="meta save">saves £${money(l.saving)}</div>` : ""}
       ${
         l.only && l.needed > 0
@@ -1332,12 +1330,12 @@ function viewMeals() {
         })
         .join("");
 
-      return `<section class="card">
+      return `<section class="card" data-scroll="${meal.id}">
         <div class="row"><span class="eyebrow grow">Editing</span>
           <button class="btn small ghost" data-act="closeSheet">Close</button></div>
         <label class="field" style="margin:8px 0">
           <span class="eyebrow">Meal name</span>
-          <input class="inp" value="${esc(meal.name)}" data-act="setMealName" data-id="${meal.id}">
+          <input class="inp" value="${esc(meal.name)}" data-act="setMealName" data-field="name" data-id="${meal.id}">
         </label>
         ${rows || '<p class="muted">No ingredients yet.</p>'}
         <div class="row" style="margin-top:8px;gap:8px">
@@ -2154,7 +2152,7 @@ function receiptStockRow(r, i, store) {
     <p class="why" style="margin:3px 0 0">${trim2(add)} portion${plural(add)} &middot; ${trim2(
     packs
   )} pack${plural(packs)} of ${trim2(perPack)} &middot; ${
-    r.stockTouched ? "your figure" : "read off the receipt"
+    r.stockTouched ? "your figure" : `none by default${r.qty > 1 ? `, ${r.qty} on the receipt` : ""}`
   } &middot; stock ${trim2(now)} &rarr; ${trim2(now + add)}</p>`;
 }
 
@@ -2326,7 +2324,7 @@ function sheetReceipt(s) {
     <p class="muted">Confirming a line teaches the app that receipt wording, so it matches itself next time.
     Scanning binds the barcode too, which is what makes in-store scanning work later.
     A <strong>card price</strong> applies to every pack, a <strong>multibuy</strong> only once you buy enough. Both leave the base price alone.
-    <strong>Into stock</strong> starts from the quantity on the receipt; correct it when one receipt line covers two flavours you keep as separate items.</p>`);
+    <strong>Into stock</strong> starts at nothing, since a receipt is for prices and <strong>Got it</strong> on the List tab is what turns a trolley into stock. Bump a line up if this is the moment you would rather stock it here.</p>`);
   }
 
   return shell(
@@ -3081,12 +3079,13 @@ function rowPackPortions(r, store) {
   return packPortions(productById(ing, r.productId) || chooseProduct(ing));
 }
 
-/* Portions this line puts into stock. The receipt's quantity times the pack
-   size is right most of the time, but a receipt cannot tell two flavours of
-   the same thing apart, so an edit always wins. */
+/* Portions this line puts into stock. A receipt is read after shopping to
+   update prices, and "Got it" on the List tab is where a trolley becomes
+   stock, so a receipt adds nothing by default and each line starts at zero.
+   Bump it up on a line where the receipt is the moment you want to stock it. */
 function rowStock(r, store) {
   if (r.stockTouched) return Math.max(0, Number(r.stockAdd) || 0);
-  return Math.max(0, (Number(r.qty) || 1) * rowPackPortions(r, store));
+  return 0;
 }
 
 /* Step a line's stock by one pack, since a receipt counts in packs even
@@ -4378,7 +4377,7 @@ const actions = {
       if (!db.ingredients.length) return;
       const items = dayItemsMutable(db, Number(el.dataset.id), el.dataset.key, Number(el.dataset.which) || 0);
       if (!items) return;
-      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5, by: "portions", grams: 0 });
+      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
       touchPlan(db);
     }),
   addExtra: (el) =>
@@ -4386,7 +4385,7 @@ const actions = {
       if (!db.ingredients.length) return;
       const items = dayItemsMutable(db, Number(el.dataset.id), "extra", Number(el.dataset.which) || 0);
       if (!items) return;
-      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5, by: "portions", grams: 0 });
+      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
       touchPlan(db);
     }),
   delDayIng: (el) =>
@@ -4563,6 +4562,9 @@ const actions = {
   addMeal: () => {
     const meal = { id: uid(), name: "New meal", items: [], updatedAt: new Date().toISOString() };
     commit((db) => db.meals.push(meal));
+    // jump to it: the list is in name order, so a new meal lands wherever "New"
+    // falls and would otherwise need hunting for
+    state.reveal = meal.id;
     setSheet({ kind: "meal", id: meal.id });
   },
   delMeal: (el) => {
@@ -4588,7 +4590,7 @@ const actions = {
     commit((db) =>
       // blank product: any of that ingredient will do, which is the usual case
       editMeal(db, el.dataset.id, (m) =>
-        m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5 })
+        m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1 })
       )
     ),
   delMealIng: (el) =>
