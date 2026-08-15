@@ -99,8 +99,14 @@ console.log("\n--- the plan's dropdowns are sorted too ---");
 await p.evaluate(() => document.querySelector('[data-act="closeSheet"]')?.click());
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(400);
-const opts = await p.$$eval('[data-act="setSlot"]', (e) =>
+// the meal pickers live inside a day's popout now
+await p.click('[data-act="openDay"][data-idx="0"]');
+await p.waitForTimeout(300);
+const opts = await p.$$eval('[data-act="setDaySlot"]', (e) =>
   [...e[0].options].slice(1).map((o) => o.textContent.trim()));
+// close the day popout so it does not sit over the tab bar
+await p.evaluate(() => document.querySelector('[data-act="closeSheet"]')?.click());
+await p.waitForTimeout(200);
 console.log("  ", JSON.stringify(opts.slice(0, 4)));
 const optSorted = [...opts].sort((a, b) => a.localeCompare(b));
 ok(JSON.stringify(opts) === JSON.stringify(optSorted), "the meal picker is in name order");

@@ -21,7 +21,7 @@ import {
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
   labelToPer100, labelSizing,
   portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
-  nutritionUsable, neededPortions,
+  nutritionUsable, neededPortions, dayOverride, planItems, dayExtras,
 } from "./lib/calc.js";
 import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -703,21 +703,312 @@ function planDate(start, index) {
   return new Date(t + index * 86400000);
 }
 
+const mealsById = () => Object.fromEntries(state.db.meals.map((m) => [m.id, m]));
+
+/* What to show for one cell on the plan grid: the name of the meal (or the
+   loose edit standing in for it), and whether it was edited just for this day.
+   A loose edit with a base meal shows the base name so the grid reads the same
+   whether or not you have tweaked it; the ✎ is what tells them apart. */
+function cellSummary(day, slot, who, byMeal) {
+  const ov = dayOverride(day, slot, who);
+  if (ov) {
+    const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
+    const base = forSlot[who] ? byMeal[forSlot[who]] : null;
+    return { label: (base && base.name) || ov.name || "Loose meal", edited: true };
+  }
+  const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
+  const meal = forSlot[who] ? byMeal[forSlot[who]] : null;
+  return { label: (meal && meal.name) || "", edited: false };
+}
+
+/* A fresh copy of a planned line, so a loose edit never shares an object with
+   the meal it was forked from. */
+function cloneItem(it) {
+  return {
+    ingredientId: it.ingredientId,
+    productId: it.productId || "",
+    portions: Number(it.portions) || 0,
+    by: it.by === "grams" ? "grams" : "portions",
+    grams: Number(it.grams) || 0,
+  };
+}
+
+/* The item list an edit should write to, created on demand. For a slot this
+   forks the base meal into a loose override the first time it is touched, so
+   the shared meal is never changed by accident. For extras it is just that
+   person's list. Called inside commit(), so it mutates the draft db. */
+function dayItemsMutable(db, idx, slot, who) {
+  const day = db.plan[idx];
+  if (!day) return null;
+  if (slot === "extra") {
+    if (!Array.isArray(day.extras)) day.extras = [[], []];
+    if (!Array.isArray(day.extras[who])) day.extras[who] = [];
+    return day.extras[who];
+  }
+  if (!day.edits) day.edits = {};
+  if (!Array.isArray(day.edits[slot])) day.edits[slot] = [null, null];
+  if (!day.edits[slot][who]) {
+    const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
+    const base = forSlot[who] ? db.meals.find((m) => m.id === forSlot[who]) : null;
+    day.edits[slot][who] = {
+      name: base ? base.name : "",
+      items: base ? base.items.map(cloneItem) : [],
+    };
+  }
+  return day.edits[slot][who].items;
+}
+
+/* Drop a loose override, leaving the cell pointing at its base meal again (or
+   empty if it never had one). Tidies the day so an untouched plan stays plain. */
+function clearOverride(day, slot, who) {
+  if (!day.edits || !Array.isArray(day.edits[slot])) return;
+  day.edits[slot][who] = null;
+  if (!day.edits[slot][0] && !day.edits[slot][1]) delete day.edits[slot];
+  if (!Object.keys(day.edits).length) delete day.edits;
+}
+
+/* Forget an emptied extras list, so a day nobody logged extras on stays plain
+   in the data and in a backup. */
+function tidyExtras(day) {
+  if (!day || !Array.isArray(day.extras)) return;
+  if (!(day.extras[0] || []).length && !(day.extras[1] || []).length) delete day.extras;
+}
+
+/* Change one item in a day cell (meal edit or extra), forking the base meal
+   into a loose override first if it has not been touched yet. Mirrors how a
+   meal's own items are patched, so a swap on the day behaves the same. */
+function editDayItem(el, mutate) {
+  const idx = Number(el.dataset.id);
+  const slot = el.dataset.key;
+  const who = Number(el.dataset.which) || 0;
+  const i = Number(el.dataset.i);
+  commit((db) => {
+    const items = dayItemsMutable(db, idx, slot, who);
+    if (!items || !items[i]) return;
+    const ing = db.ingredients.find((x) => x.id === items[i].ingredientId) || null;
+    items[i] = { ...items[i], ...(mutate(items[i], ing) || {}) };
+    touchPlan(db);
+  });
+}
+
+/* Locator attributes shared by every control inside the day sheet. They double
+   as the fields fieldKey() reads (id/key/which/i), so a portions box keeps
+   focus and caret across the rebuild each keystroke triggers. */
+const dloc = (idx, slot, who, i) =>
+  `data-id="${idx}" data-key="${slot}" data-which="${who}"${i === undefined ? "" : ` data-i="${i}"`}`;
+
+const mealPickerOptions = (selected) =>
+  [`<option value="">— none —</option>`]
+    .concat(
+      state.db.meals
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(
+          (m) => `<option value="${m.id}"${m.id === selected ? " selected" : ""}>${esc(m.name)}</option>`
+        )
+    )
+    .join("");
+
+const ingPickerOptions = (selected) =>
+  ingredientsAZ()
+    .map((i) => `<option value="${i.id}"${i.id === selected ? " selected" : ""}>${esc(i.name)}</option>`)
+    .join("");
+
+const productPickerOptions = (ing, selected) => {
+  const cheapest = chooseProduct(ing);
+  return [
+    `<option value=""${selected ? "" : " selected"}>Any${
+      cheapest ? ` (now ${esc(cheapest.name || cheapest.store || "cheapest")})` : ""
+    }</option>`,
+  ]
+    .concat(
+      productsOf(ing).map(
+        (p) =>
+          `<option value="${esc(p.id)}"${p.id === selected ? " selected" : ""}>${esc(
+            p.name || "Unnamed"
+          )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
+      )
+    )
+    .join("");
+};
+
+/* One editable line, used for both a meal's items and the extras. slot is the
+   real slot key, or "extra" for the loose day list. Editing any of these forks
+   the base meal into a loose override first (see dayItemsMutable). */
+function dayItemRow(idx, slot, who, it, i, byId) {
+  const ing = byId[it.ingredientId];
+  const grams = itemIsGrams(it);
+  const product = ing ? itemProduct(ing, it) : null;
+  const per = gramsPerPortion(product);
+  const unit = (product && product.packUnit) === "ml" ? "ml" : "g";
+  const named = it.productId && ing ? productById(ing, it.productId) : null;
+  const at = dloc(idx, slot, who, i);
+  const sum = grams
+    ? per > 0
+      ? `${trim2(Number(it.grams) || 0)}${unit} is ${trim2(itemPortions(ing, it))} portions of ${trim2(per)}${unit}`
+      : `Set a pack size and portion so the list can turn ${unit} into packs`
+    : `${trim2(Number(it.portions) || 0)} portion${
+        Math.abs((Number(it.portions) || 0) - 1) < 0.001 ? "" : "s"
+      }${per > 0 ? ` of ${trim2(per)}${unit}` : ""}`;
+
+  return `<div class="subcard" style="margin-bottom:6px">
+    <div class="row" style="margin-bottom:6px">
+      <select class="inp grow" data-act="setDayIng" ${at}>${ingPickerOptions(it.ingredientId)}</select>
+      <button class="btn small danger" data-act="delDayIng" ${at} aria-label="Remove">×</button>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <div class="seg" style="flex:0 0 auto">
+        <button data-act="setDayBy" ${at} data-by="portions" data-on="${grams ? 0 : 1}">Portions</button>
+        <button data-act="setDayBy" ${at} data-by="grams" data-on="${grams ? 1 : 0}">${unit}</button>
+      </div>
+      ${
+        grams
+          ? `<input class="inp mono grow" style="text-align:right" type="number" step="1" min="0"
+              value="${trim2(Number(it.grams) || 0)}" data-act="setDayGrams" ${at} aria-label="${unit}">`
+          : `<input class="inp mono grow" style="text-align:right" type="number" step="0.05" min="0"
+              value="${it.portions}" data-act="setDayPortions" ${at} aria-label="Portions each">`
+      }
+    </div>
+    <select class="inp" data-act="setDayProduct" ${at}>${ing ? productPickerOptions(ing, it.productId) : ""}</select>
+    <p class="why" style="margin:4px 0 0">${sum}. ${
+    named
+      ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
+          ing.name
+        )} in.`
+      : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
+  }</p>
+  </div>`;
+}
+
+/* One slot of one person's day: the meal dropdown, the items underneath it, and
+   the choices for what a loose edit becomes. */
+function cellEditor(idx, slot, who, byId, byMeal) {
+  const day = state.db.plan[idx];
+  const forSlot = Array.isArray(day[slot.key]) ? day[slot.key] : [null, null];
+  const mealId = forSlot[who];
+  const base = mealId ? byMeal[mealId] : null;
+  const ov = dayOverride(day, slot.key, who);
+  const items = planItems(day, slot.key, who, byMeal);
+  const hasContent = !!ov || !!base;
+
+  const rows = hasContent
+    ? items.map((it, i) => dayItemRow(idx, slot.key, who, it, i, byId)).join("") ||
+      '<p class="muted" style="margin:0 0 6px">No items — this meal is empty for today.</p>'
+    : "";
+
+  let actions = "";
+  if (ov) {
+    actions =
+      `<div class="row" style="gap:6px;margin-top:2px;flex-wrap:wrap">` +
+      (base
+        ? `<button class="btn small tonal grow" data-act="overwriteMeal" ${dloc(idx, slot.key, who)}
+             title="Change ${esc(base.name)} everywhere it is used">Save into ${esc(base.name)}</button>`
+        : "") +
+      `<button class="btn small tonal grow" data-act="saveDayMeal" ${dloc(idx, slot.key, who)}>Save as a new meal</button>
+       <button class="btn small ghost" data-act="revertCell" ${dloc(idx, slot.key, who)}>${
+        base ? "Undo edits" : "Clear"
+      }</button></div>
+      <p class="why" style="margin:4px 0 0">${
+        base
+          ? `Edited just for today. Nothing else using ${esc(base.name)} has changed.`
+          : "A loose meal on this day only. Save it if you want to plan it again."
+      }</p>`;
+  } else if (base) {
+    actions = `<p class="why" style="margin:2px 0 0">Change an item and it becomes a one-day tweak; ${esc(
+      base.name
+    )} itself stays as it is until you save it back.</p>`;
+  }
+
+  return `<div class="slotedit" style="margin-bottom:12px">
+    <div class="row" style="margin-bottom:6px">
+      <span class="slabel" style="flex:0 0 74px">${slot.label}</span>
+      <select class="inp grow" data-act="setDaySlot" ${dloc(idx, slot.key, who)}>${mealPickerOptions(
+    mealId
+  )}</select>
+      ${
+        who === 1
+          ? `<button class="btn small ghost copy" data-act="copyDayCell" ${dloc(idx, slot.key, 0)}
+              title="Give them the same ${slot.label.toLowerCase()}"
+              aria-label="Give this person the same ${slot.label.toLowerCase()} as the other">=</button>`
+          : ""
+      }
+    </div>
+    ${
+      hasContent
+        ? `${rows}
+           <button class="btn small tonal wide" style="margin-bottom:6px" data-act="addDayIng" ${dloc(
+             idx,
+             slot.key,
+             who
+           )}${state.db.ingredients.length ? "" : " disabled"}>Add an item</button>
+           ${actions}`
+        : actions
+    }
+  </div>`;
+}
+
+/* The day popout: both people's breakfast, lunch and dinner, each editable on
+   the fly, plus a loose "extras" list each. Everything here writes to the day,
+   not to the shared meals, until you explicitly save an edit back. */
+function sheetDay(s) {
+  const idx = s.idx;
+  const day = state.db.plan[idx];
+  if (!day) return "";
+  const people = state.db.people || ["Person 1", "Person 2"];
+  const start = state.db.planStart || "";
+  const when = planDate(start, idx);
+  const name = when ? WEEKDAYS[when.getDay()] : DAYS[idx % 7];
+  const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "";
+  const byId = Object.fromEntries(state.db.ingredients.map((i) => [i.id, i]));
+  const byMeal = mealsById();
+  const cost = state.calc.dayCost[idx] || 0;
+
+  const person = (who) => {
+    const slots = SLOTS.map((slot) => cellEditor(idx, slot, who, byId, byMeal)).join("");
+    const extras = dayExtras(day, who);
+    const extraRows = extras.map((it, i) => dayItemRow(idx, "extra", who, it, i, byId)).join("");
+    return `<section class="card" style="margin-bottom:10px">
+      <div class="eyebrow" style="margin-bottom:10px">${esc(people[who])}</div>
+      ${slots}
+      <div class="eyebrow" style="margin:14px 0 4px">Extras</div>
+      <p class="why" style="margin:0 0 8px">Single things ${esc(
+        people[who]
+      )} is having that day outside a set meal. They count against stock and the shopping list.</p>
+      ${extraRows}
+      <button class="btn small tonal wide" data-act="addExtra" data-id="${idx}" data-which="${who}"${
+      state.db.ingredients.length ? "" : " disabled"
+    }>Add an extra</button>
+    </section>`;
+  };
+
+  return shell(
+    `${name}${dated ? ` &middot; ${esc(dated)}` : ""}`,
+    `Set a meal for each part of the day, then tweak its items just for today.${
+      cost > 0 ? ` This day costs £${money(cost)}.` : ""
+    }`,
+    `${person(0)}${person(1)}`
+  );
+}
+
 function viewPlan() {
   const c = state.calc;
   const people = state.db.people || ["Person 1", "Person 2"];
   const start = state.db.planStart || "";
+  const byMeal = mealsById();
 
-  // the same order as the Meals tab, since this is the other place you pick one
-  const inOrder = state.db.meals.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const options = (selected) =>
-    [`<option value="">\u2014</option>`]
-      .concat(
-        inOrder.map(
-          (m) => `<option value="${m.id}"${m.id === selected ? " selected" : ""}>${esc(m.name)}</option>`
-        )
-      )
-      .join("");
+  // one person's line under a day: the three meals they are having, with a mark
+  // where a meal was edited just for that day, and a count of any extras
+  const personLine = (day, who) => {
+    const cells = SLOTS.map((slot) => cellSummary(day, slot.key, who, byMeal));
+    const ex = dayExtras(day, who).length;
+    const anything = cells.some((c) => c.label) || ex;
+    const body = anything
+      ? cells
+          .map((c) => (c.label ? `${esc(c.label)}${c.edited ? " ✎" : ""}` : "—"))
+          .join(" &middot; ") + (ex ? ` &middot; <span class="edited">+${ex} extra</span>` : "")
+      : "nothing planned";
+    return `<div class="daysummary"><b>${esc(people[who])}</b> ${body}</div>`;
+  };
 
   const week = (w) => {
     const subtotal = c.dayCost.slice(w * 7, w * 7 + 7).reduce((a, b) => a + b, 0);
@@ -731,33 +1022,17 @@ function viewPlan() {
         ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
         : "";
 
-      const slots = SLOTS.map((slot) => {
-        const pair = Array.isArray(day[slot.key]) ? day[slot.key] : [day[slot.key] || null, null];
-        const pick = (person) => `<select data-act="setSlot" data-idx="${idx}" data-slot="${slot.key}"
-            data-person="${person}" aria-label="${slot.label} for ${esc(people[person])}, ${name}">${options(
-          pair[person]
-        )}</select>`;
-        return `<div class="slot">
-          <span class="slabel">${slot.short}</span>
-          <div class="grow" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            ${pick(0)}${pick(1)}
-          </div>
-          <button class="btn small ghost copy" data-act="copySlot" data-idx="${idx}" data-slot="${slot.key}"
-            title="Give ${esc(people[1])} the same" aria-label="${slot.label} on ${name}: give ${esc(
-          people[1]
-        )} the same as ${esc(people[0])}">=</button>
-        </div>`;
-      }).join("");
-
-      return `<div class="dayblock">
+      return `<button class="dayblock tap" data-act="openDay" data-idx="${idx}"
+        aria-label="Edit ${name}${dated ? ", " + esc(dated) : ""}">
         <div class="row">
           <span class="dname grow">${name}${
         dated ? ` <span class="muted num" style="font-weight:400">${esc(dated)}</span>` : ""
       }</span>
           <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
+          <span class="chev" style="margin-left:6px">›</span>
         </div>
-        ${slots}
-      </div>`;
+        ${personLine(day, 0)}${personLine(day, 1)}
+      </button>`;
     }).join("");
 
     return `<section class="card">
@@ -795,7 +1070,7 @@ function viewPlan() {
       <span class="eyebrow" style="display:block;margin-bottom:6px">Fill the fortnight</span>
       <div class="row" style="gap:6px">${fillers}</div>
       <p class="muted" style="margin:7px 0 0">Copies day one into every empty day of that slot, for
-      both of you. The arrow beside a day copies ${esc(people[0])}'s choice to ${esc(people[1])}.</p>
+      both of you. Tap any day to change its meals, tweak one just for that day, or add an extra.</p>
     </div>
     <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
     <button class="btn tonal wide" style="margin-bottom:8px" data-act="openRollover">Start the next fortnight</button>
@@ -1651,6 +1926,7 @@ function viewSheet() {
   if (s.kind === "stock") return sheetStocktake(s);
   if (s.kind === "rollover") return sheetRollover(s);
   if (s.kind === "labelAsk") return sheetLabelAsk(s);
+  if (s.kind === "day") return sheetDay(s);
   return "";
 }
 
@@ -4035,25 +4311,7 @@ const actions = {
         : `Started ${by}. Every meal kept the date you planned it for.`
     );
   },
-  copySlot: (el) =>
-    commit((db) => {
-      const day = db.plan[Number(el.dataset.idx)];
-      if (!day) return;
-      const pair = day[el.dataset.slot] || [null, null];
-      day[el.dataset.slot] = [pair[0], pair[0]];
-      touchPlan(db);
-    }),
-
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
-  setSlot: (el) =>
-    commit((db) => {
-      const day = db.plan[Number(el.dataset.idx)];
-      if (!day) return;
-      const pair = Array.isArray(day[el.dataset.slot]) ? [...day[el.dataset.slot]] : [null, null];
-      pair[Number(el.dataset.person) || 0] = el.value || null;
-      day[el.dataset.slot] = pair;
-      touchPlan(db);
-    }),
   fillSlot: (el) => {
     const slot = el.dataset.slot;
     const first = (state.db.plan[0] && state.db.plan[0][slot]) || [null, null];
@@ -4071,6 +4329,152 @@ const actions = {
       touchPlan(db);
     });
   },
+
+  /* ---- one day, edited on the fly ---- */
+
+  openDay: (el) => setSheet({ kind: "day", idx: Number(el.dataset.idx) }),
+
+  // the meal dropdown for one person's slot. Choosing one replaces any loose
+  // edit that was standing in for it.
+  setDaySlot: (el) =>
+    commit((db) => {
+      const idx = Number(el.dataset.id);
+      const day = db.plan[idx];
+      if (!day) return;
+      const slot = el.dataset.key;
+      const who = Number(el.dataset.which) || 0;
+      const forSlot = Array.isArray(day[slot]) ? [...day[slot]] : [null, null];
+      forSlot[who] = el.value || null;
+      day[slot] = forSlot;
+      clearOverride(day, slot, who);
+      touchPlan(db);
+    }),
+
+  // give the other person the same slot, loose edit and all
+  copyDayCell: (el) =>
+    commit((db) => {
+      const idx = Number(el.dataset.id);
+      const day = db.plan[idx];
+      if (!day) return;
+      const slot = el.dataset.key;
+      const from = Number(el.dataset.which) || 0;
+      const to = 1 - from;
+      const forSlot = Array.isArray(day[slot]) ? [...day[slot]] : [null, null];
+      forSlot[to] = forSlot[from];
+      day[slot] = forSlot;
+      const src = dayOverride(day, slot, from);
+      if (src) {
+        if (!day.edits) day.edits = {};
+        if (!Array.isArray(day.edits[slot])) day.edits[slot] = [null, null];
+        day.edits[slot][to] = { name: src.name, items: src.items.map(cloneItem) };
+      } else {
+        clearOverride(day, slot, to);
+      }
+      touchPlan(db);
+    }),
+
+  addDayIng: (el) =>
+    commit((db) => {
+      if (!db.ingredients.length) return;
+      const items = dayItemsMutable(db, Number(el.dataset.id), el.dataset.key, Number(el.dataset.which) || 0);
+      if (!items) return;
+      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5, by: "portions", grams: 0 });
+      touchPlan(db);
+    }),
+  addExtra: (el) =>
+    commit((db) => {
+      if (!db.ingredients.length) return;
+      const items = dayItemsMutable(db, Number(el.dataset.id), "extra", Number(el.dataset.which) || 0);
+      if (!items) return;
+      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 0.5, by: "portions", grams: 0 });
+      touchPlan(db);
+    }),
+  delDayIng: (el) =>
+    commit((db) => {
+      const idx = Number(el.dataset.id);
+      const slot = el.dataset.key;
+      const items = dayItemsMutable(db, idx, slot, Number(el.dataset.which) || 0);
+      if (!items) return;
+      items.splice(Number(el.dataset.i), 1);
+      if (slot === "extra") tidyExtras(db.plan[idx]);
+      touchPlan(db);
+    }),
+  setDayIng: (el) => editDayItem(el, () => ({ ingredientId: el.value, productId: "" })),
+  setDayProduct: (el) => editDayItem(el, () => ({ productId: el.value || "" })),
+  setDayPortions: (el) => editDayItem(el, () => ({ portions: Number(el.value) || 0 })),
+  setDayGrams: (el) => editDayItem(el, () => ({ grams: Math.max(0, Number(el.value) || 0) })),
+  setDayBy: (el) => {
+    const by = el.dataset.by === "grams" ? "grams" : "portions";
+    editDayItem(el, (it, ing) => {
+      const changes = { by };
+      // seed the empty side from the other, so the amount does not vanish
+      const per = gramsPerPortion(itemProduct(ing, it));
+      if (by === "grams" && !(Number(it.grams) > 0) && per > 0)
+        changes.grams = Math.round((Number(it.portions) || 0) * per);
+      if (by === "portions" && !(Number(it.portions) > 0) && per > 0)
+        changes.portions = Math.round(((Number(it.grams) || 0) / per) * 100) / 100;
+      return changes;
+    });
+  },
+
+  // drop the loose edit: back to the base meal, or empty if it never had one
+  revertCell: (el) =>
+    commit((db) => {
+      const day = db.plan[Number(el.dataset.id)];
+      if (!day) return;
+      clearOverride(day, el.dataset.key, Number(el.dataset.which) || 0);
+      touchPlan(db);
+    }),
+
+  // write the loose edit back into the shared meal, changing it everywhere
+  overwriteMeal: (el) => {
+    const idx = Number(el.dataset.id);
+    const slot = el.dataset.key;
+    const who = Number(el.dataset.which) || 0;
+    const day = state.db.plan[idx];
+    if (!day) return;
+    const ov = dayOverride(day, slot, who);
+    const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
+    const base = forSlot[who] ? state.db.meals.find((m) => m.id === forSlot[who]) : null;
+    if (!ov || !base) return;
+    if (!confirm(`Save these items into ${base.name}? Every day using ${base.name} changes to match.`)) return;
+    commit((db) => {
+      editMeal(db, base.id, (m) => {
+        m.items = ov.items.map(cloneItem);
+      });
+      clearOverride(db.plan[idx], slot, who);
+      touchPlan(db);
+    });
+    flash("ok", `${base.name} updated everywhere it is used.`);
+  },
+
+  // keep the loose edit as its own meal, and point this day at it
+  saveDayMeal: (el) => {
+    const idx = Number(el.dataset.id);
+    const slot = el.dataset.key;
+    const who = Number(el.dataset.which) || 0;
+    const day = state.db.plan[idx];
+    if (!day) return;
+    const ov = dayOverride(day, slot, who);
+    if (!ov) return;
+    const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
+    const base = forSlot[who] ? state.db.meals.find((m) => m.id === forSlot[who]) : null;
+    const suggested = ov.name || (base ? `${base.name} (new)` : "New meal");
+    const name = (prompt("Name for the new meal", suggested) || "").trim();
+    if (!name) return;
+    const id = uid();
+    commit((db) => {
+      db.meals.push({ id, name, items: ov.items.map(cloneItem), updatedAt: new Date().toISOString() });
+      const d = db.plan[idx];
+      const fs = Array.isArray(d[slot]) ? [...d[slot]] : [null, null];
+      fs[who] = id;
+      d[slot] = fs;
+      clearOverride(d, slot, who);
+      touchPlan(db);
+    });
+    flash("ok", `Saved "${name}" as a meal and put it on this day.`);
+  },
+
   clearPlan: () => {
     if (confirm("Clear both weeks?"))
       commit((db) => {

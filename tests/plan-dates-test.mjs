@@ -144,9 +144,15 @@ console.log("\n--- and through the app's own date box ---");
     p.$$eval(".dayblock", (els) =>
       els.map((e) => ({
         day: e.querySelector(".dname").textContent.replace(/\s+/g, " ").trim(),
-        meals: [...e.querySelectorAll("select")]
-          .map((s) => s.options[s.selectedIndex].textContent.trim())
-          .filter((t) => t && t !== "\u2014"),
+        // the chosen meals are shown as text now, one line per person
+        meals: [...e.querySelectorAll(".daysummary")]
+          .flatMap((d) => {
+            const clone = d.cloneNode(true);
+            const b = clone.querySelector("b");
+            if (b) b.remove();
+            return clone.textContent.split("\u00b7").map((t) => t.replace(/\u270e/g, "").trim());
+          })
+          .filter((t) => t && t !== "\u2014" && !/extra/.test(t) && !/nothing planned/.test(t)),
       })).filter((d) => d.meals.length));
 
   const before = await onScreen();

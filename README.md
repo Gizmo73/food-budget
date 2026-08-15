@@ -142,13 +142,31 @@ The meal you are editing is never filtered away, since having it vanish because 
 
 ## The plan, and who is eating
 
-Breakfast, lunch and dinner are **six choices a day**, one per person. Their names sit in the data rather than device settings, since they are the same on both phones, and the **`=`** beside a slot gives the second person the first one's choice, which is most dinners.
+Breakfast, lunch and dinner are **six choices a day**, one per person. **Tap a day** to open it: a card with those six dropdowns, and under each the meal's own items laid out to change. The **`=`** beside a slot gives the second person the first one's choice, which is most dinners.
 
 **Portions on a meal are for one person.** Plan it for both and it counts twice.
 
 Set a **start date** at the top and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so a fortnight starting on a Thursday says Thursday.
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
+
+### Editing a meal for one day only
+
+Pie and Mash is planned, but tonight you want new potatoes instead of the mash. Rather than build a whole new meal, open the day and change the item right there. The moment you do, that meal becomes a **loose edit** kept on the day alone — the shared Pie and Mash, and every other day using it, is untouched. The grid marks an edited day with a small **✎**, and the shopping list is worked out from what the day actually says: new potatoes on, mash off.
+
+A loose edit gives you three ways out, none of them forced:
+
+- **leave it** — it stays a one-day tweak and nothing else changes;
+- **Save into Pie and Mash** — write the new items back into the shared meal, changing it everywhere it is used; or
+- **Save as a new meal** — keep the edit as its own meal and point today at it, leaving the original alone.
+
+Choosing a different meal from the dropdown drops the loose edit, since you have said outright what you want instead.
+
+### Extras: single things outside a meal
+
+Each person's day also has an **extras** list, for the odd thing eaten that is not part of a set meal — a couple of apples, a bag of crisps. Extras are logged per person, so they count toward that person's calories on the Food tab as well as the shopping list and stock, exactly as a meal's items do. They are not a meal, so they do not add to the "meals planned" count, but a day with only extras on it still counts as one that person ate on.
+
+A day's loose edits and extras are part of the plan, so they travel with it: they survive a save and reload, ride along when you roll the fortnight over keeping its meals, and come across on a merge with whichever device's plan is the more recent.
 
 ## Filing something under the right ingredient
 

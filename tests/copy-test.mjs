@@ -10,7 +10,12 @@ await p.waitForFunction(() => document.getElementById("app").dataset.booted === 
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(400);
 
-const btn = await p.$$eval('[data-act="copySlot"]', (els) => ({
+/* The "give the other person the same" copy lives in a day's popout now, one
+   per slot on the second person's row. Open a day and check it copies. */
+await p.click('[data-act="openDay"][data-idx="0"]');
+await p.waitForTimeout(300);
+
+const btn = await p.$$eval('[data-act="copyDayCell"]', (els) => ({
   count: els.length, text: els[0].textContent.trim(), title: els[0].title,
   aria: els[0].getAttribute("aria-label"),
   box: (({ width, height }) => ({ w: Math.round(width), h: Math.round(height) }))(els[0].getBoundingClientRect()),
@@ -18,19 +23,19 @@ const btn = await p.$$eval('[data-act="copySlot"]', (els) => ({
 console.log("  ", JSON.stringify(btn));
 ok(btn.text === "=", "the glyph is an equals sign");
 ok(!/[→←]/.test(btn.text), "no arrow left anywhere on the button");
-ok(btn.count === 42, `still one per slot (${btn.count})`);
+ok(btn.count === 3, `one per slot on the second person's row (${btn.count})`);
 ok(btn.box.h >= 28 && btn.box.w >= 24, `still a tappable size (${btn.box.w}x${btn.box.h})`);
 ok(/give/i.test(btn.aria || ""), "it announces what it does to a screen reader");
 
-// and it still actually copies
-await p.selectOption('[data-act="setSlot"][data-idx="0"][data-slot="dinner"][data-person="0"]', { index: 1 });
+// give person 1 a dinner, then copy it across to person 2
+await p.selectOption('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]', { index: 1 });
 await p.waitForTimeout(300);
-const before = await p.$eval('[data-act="setSlot"][data-idx="0"][data-slot="dinner"][data-person="1"]', (e) => e.value);
-await p.click('[data-act="copySlot"][data-idx="0"][data-slot="dinner"]');
+const before = await p.$eval('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="1"]', (e) => e.value);
+await p.click('[data-act="copyDayCell"][data-id="0"][data-key="dinner"]');
 await p.waitForTimeout(400);
 const after = await p.evaluate(() => [
-  document.querySelector('[data-act="setSlot"][data-idx="0"][data-slot="dinner"][data-person="0"]').value,
-  document.querySelector('[data-act="setSlot"][data-idx="0"][data-slot="dinner"][data-person="1"]').value,
+  document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]').value,
+  document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="1"]').value,
 ]);
 console.log("   person 2 before:", JSON.stringify(before), "after:", JSON.stringify(after));
 ok(after[1] === after[0] && after[0] !== "", "pressing it still copies person 1's meal to person 2");

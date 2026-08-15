@@ -137,15 +137,19 @@ await lee.p.waitForTimeout(400);
 // add an ingredient to it
 await lee.p.click('[data-act="addMealIng"]');
 await lee.p.waitForTimeout(400);
-// plan a day
+// plan a day: tap the day open, then pick a dinner in the popout
 await lee.p.click('[data-act="tab"][data-tab="plan"]');
 await lee.p.waitForTimeout(300);
+await lee.p.click('[data-act="openDay"][data-idx="0"]');
+await lee.p.waitForTimeout(300);
 await lee.p.evaluate(() => {
-  const sel = document.querySelector('[data-act="setSlot"][data-idx="0"][data-slot="dinner"]');
+  const sel = document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]');
   sel.value = "bol";
   sel.dispatchEvent(new Event("change", { bubbles: true }));
 });
 await lee.p.waitForTimeout(400);
+await lee.p.click('[data-act="closeSheet"]');
+await lee.p.waitForTimeout(200);
 // throw an item out
 await lee.p.click('[data-act="tab"][data-tab="items"]');
 await lee.p.waitForTimeout(300);

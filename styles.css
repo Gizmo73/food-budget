@@ -189,6 +189,21 @@ input, select, textarea { font-family:inherit; font-size:16px; color:var(--ink);
 .dayblock:last-child { border-bottom:0; }
 .dayblock .dname { font-size:12px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-2); }
 .dayblock .cost { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; }
+/* A whole day is one tap into its editor, so the block itself is the button:
+   full width, no chrome, and the row inside still lays out as it always did. */
+.dayblock.tap { display:block; width:100%; text-align:left; background:none; border:0;
+  border-bottom:1px solid var(--outline); border-radius:0; cursor:pointer;
+  color:inherit; font:inherit; -webkit-tap-highlight-color:transparent; }
+.dayblock.tap:last-child { border-bottom:0; }
+.dayblock.tap:active { background:var(--surface-2, rgba(127,127,127,0.08)); }
+.dayblock .chev { color:var(--ink-2); font-size:18px; line-height:1; }
+.daysummary { font-size:12.5px; color:var(--ink-2); margin-top:3px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.daysummary b { color:var(--ink); font-weight:600; margin-right:5px; }
+.edited { color:var(--accent); font-weight:600; }
+/* The slot rows inside the day sheet: a label, the meal dropdown and its
+   items, stacked so the editor has room to breathe. */
+.slotedit .slabel { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--ink-2); }
 /* -------------------------------- food --------------------------------- */
 /* One line per person per day. The calorie figure is the number you scan for,
    so it leads; the macros trail it in a quieter size. */
