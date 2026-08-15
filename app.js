@@ -657,8 +657,10 @@ function ticket(l) {
       <div class="meta">${bits.join(" &middot; ")}</div>
       ${l.saving > 0.004 ? `<div class="meta save">saves £${money(l.saving)}</div>` : ""}
       ${
-        l.only
+        l.only && l.needed > 0
           ? `<div class="meta">this one only, asked for by name</div>`
+          : l.only
+          ? `<div class="meta">this one only, added by hand</div>`
           : l.cheaper && l.cheaper.perPortion > 0.001
           ? `<div class="meta save">cheapest of ${l.cheaper.count}${
               isPinned(l.ing, l.product) ? ", pinned" : ""
@@ -676,7 +678,8 @@ function ticket(l) {
       <div class="row" style="gap:4px;margin-top:3px;justify-content:flex-end">
         ${
           l.extra
-            ? `<button class="btn small ghost" data-act="clearExtra" data-id="${l.ing.id}" title="Remove the hand-added packs">&times;</button>`
+            ? `<button class="btn small ghost" data-act="clearExtra" data-id="${l.ing.id}"
+                data-product="${esc((l.product && l.product.id) || "")}" title="Remove the hand-added packs">&times;</button>`
             : ""
         }
         <button class="btn small ghost" data-act="bought" data-id="${l.ing.id}"
@@ -1335,6 +1338,7 @@ function productCard(ing, product, chosen, stores, expanded) {
   const pp = portionsPer(product);
   const only = productsOf(ing).length === 1;
   const stock = productStock(product);
+  const own = Math.max(0, Number(product.extraPacks) || 0);
 
   const codes = (product.barcodes || []).length
     ? (product.barcodes || [])
@@ -1360,7 +1364,7 @@ function productCard(ing, product, chosen, stores, expanded) {
   }</span>
         <span class="pmeta num${stale ? " stale" : ""}">£${money(product.pricePerPack)} a pack${
     pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : ""
-  } &middot; ${trim2(stock)} in stock</span>
+  } &middot; ${trim2(stock)} in stock${own ? ` &middot; ${own} on the list` : ""}</span>
       </span>
       ${chosen ? `<span class="pill on">${pinned ? "pinned" : "cheapest"}</span>` : ""}
     </button>
@@ -1401,6 +1405,14 @@ function productCard(ing, product, chosen, stores, expanded) {
         data-product="${esc(product.id)}" title="Take a pack out of stock">&minus; pack</button>
       <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
         data-product="${esc(product.id)}" title="Put a pack into stock">+ pack</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <span class="eyebrow grow">This one on the list by hand</span>
+      <button class="btn small tonal" data-act="lessProductExtra" data-id="${ing.id}"
+        data-product="${esc(product.id)}" title="One fewer of this one">&minus;</button>
+      <span class="num" style="min-width:24px;text-align:center;font-weight:700">${own}</span>
+      <button class="btn small tonal" data-act="addProductToList" data-id="${ing.id}"
+        data-product="${esc(product.id)}" title="Put this exact one on the list">+</button>
     </div>
     ${fold(
       "offer",
@@ -1468,6 +1480,10 @@ function viewItems() {
     const age = daysSince(chosen && chosen.priceUpdated);
     const stale = age > STALE_DAYS;
     const extra = Number(ing.extraPacks) || 0;
+    // what is on the list by hand in total: the loose "any of it" packs plus
+    // every specific product's own
+    const handTotal =
+      extra + all.reduce((s, p) => s + Math.max(0, Number(p.extraPacks) || 0), 0);
     const live = activeOffer(chosen);
     const stock = stockPortions(ing);
     const pp = portionsPer(chosen);
@@ -1483,7 +1499,7 @@ function viewItems() {
         } &middot; £${money(portionCost(ing))} a portion &middot; ${trim2(stock)} in stock${
       all.length > 1 ? ` &middot; ${all.length} to choose from` : ""
     }${live ? ` &middot; ${esc(offerLabel(chosen))}` : ""}${
-      extra ? ` &middot; ${extra} on the list` : ""
+      handTotal ? ` &middot; ${handTotal} on the list` : ""
     }</div>
       </div>
       <div style="text-align:right">
@@ -1512,12 +1528,15 @@ function viewItems() {
         <p class="muted" style="margin:0 0 10px">What a meal asks for. The things below are what
         you can actually buy to satisfy it.</p>
 
-        <div class="row" style="margin-bottom:10px">
-          <span class="eyebrow grow">On the list by hand</span>
+        <div class="row" style="margin-bottom:4px">
+          <span class="eyebrow grow">Any of it, by hand</span>
           <button class="btn small tonal" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
           <span class="num" style="min-width:24px;text-align:center;font-weight:700">${extra}</span>
           <button class="btn small tonal" data-act="addToList" data-id="${ing.id}">+</button>
         </div>
+        <p class="muted" style="margin:0 0 10px">Rides on whichever is cheapest${
+          chosen && chosen.name ? ` &mdash; ${esc(chosen.name)} right now` : ""
+        }. To put a particular one on the list, or two different kinds at once, use its own + below.</p>
 
         <div class="row" style="margin-bottom:6px">
           <span class="eyebrow grow">What to buy</span>
@@ -1554,7 +1573,9 @@ function viewItems() {
       if (q && !shown.length) return "";
       // a search opens every group that has a hit, otherwise results hide
       const shut = q ? false : isShut("collapsedItems", g.name);
-      const holding = shown.filter((i) => Number(i.extraPacks) > 0).length;
+      const holding = shown.filter(
+        (i) => Number(i.extraPacks) > 0 || productsOf(i).some((p) => Number(p.extraPacks) > 0)
+      ).length;
       const meta = [
         `${shown.length} item${shown.length === 1 ? "" : "s"}`,
         holding ? `${holding} on the list` : "",
@@ -3519,6 +3540,8 @@ const actions = {
       };
       const added = bought * packPortions(product);
       product.stockPortions = (Number(product.stockPortions) || 0) + added;
+      // buying it settles this product's own hand-added packs too
+      if (bought > 0) product.extraPacks = 0;
 
       const before = existing ? Number(existing.pricePerPack) || 0 : 0;
       commit((db) => {
@@ -3601,8 +3624,11 @@ const actions = {
     if (!product) return;
     patchProduct(ing.id, product.id, {
       stockPortions: productStock(product) + packs * packPortions(product),
+      // buying settles this product's own hand-added packs
+      extraPacks: 0,
     });
-    patchIngredient(ing.id, { extraPacks: 0 });
+    // and the loose "any of it" ones, if this is the shelf they rode to
+    if (product.id === (chooseProduct(ing) || {}).id) patchIngredient(ing.id, { extraPacks: 0 });
   },
 
   moreStockPack: (el) => {
@@ -3703,7 +3729,31 @@ const actions = {
     const ing = ingredient(el.dataset.id);
     if (ing) patchIngredient(ing.id, { extraPacks: Math.max(0, (Number(ing.extraPacks) || 0) - 1) });
   },
-  clearExtra: (el) => patchIngredient(el.dataset.id, { extraPacks: 0 }),
+  clearExtra: (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (!ing) return;
+    const product = el.dataset.product ? productOf(ing.id, el.dataset.product) : null;
+    // clear this exact product's own hand-added packs
+    if (product && Number(product.extraPacks)) patchProduct(ing.id, product.id, { extraPacks: 0 });
+    // and the loose "any of it" ones, but only from the shelf they rode to, so
+    // clearing one specific line does not wipe the cheapest's hand-add too
+    if ((!product || product.id === (chooseProduct(ing) || {}).id) && Number(ing.extraPacks))
+      patchIngredient(ing.id, { extraPacks: 0 });
+  },
+  addProductToList: (el) => {
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (product)
+      patchProduct(el.dataset.id, el.dataset.product, {
+        extraPacks: (Number(product.extraPacks) || 0) + 1,
+      });
+  },
+  lessProductExtra: (el) => {
+    const product = productOf(el.dataset.id, el.dataset.product);
+    if (product)
+      patchProduct(el.dataset.id, el.dataset.product, {
+        extraPacks: Math.max(0, (Number(product.extraPacks) || 0) - 1),
+      });
+  },
 
   /* ---- one product of an ingredient ---- */
 
