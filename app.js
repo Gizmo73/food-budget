@@ -135,6 +135,33 @@ if (navigator.serviceWorker) {
   navigator.serviceWorker.ready.then(askVersion).catch(() => {});
 }
 
+/* Installing to the home screen. The browser only fires beforeinstallprompt
+   when it decides the app is installable, and the event is the only handle on
+   its own prompt, so it is caught and kept for a button the user can press at a
+   moment of their choosing rather than the browser's. Redraw the settings
+   sheet if it is open, so the row appears or vanishes as the state changes. */
+const install = { prompt: null };
+
+const standalone = () =>
+  window.matchMedia && window.matchMedia("(display-mode: standalone)").matches ||
+  window.navigator.standalone === true;
+
+/* Safari on iOS has no beforeinstallprompt and no programmatic install, so the
+   only honest thing to offer there is the manual route. */
+const iOS = /iP(hone|ad|od)/.test(navigator.platform || "") ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  install.prompt = e;
+  if (state.sheet && state.sheet.kind === "settings") draw();
+});
+
+window.addEventListener("appinstalled", () => {
+  install.prompt = null;
+  if (state.sheet && state.sheet.kind === "settings") draw();
+});
+
 /* Whatever the app did not catch. These are the ones worth having most,
    since by definition nothing else knew about them. */
 window.addEventListener("error", (e) => {
@@ -2632,6 +2659,31 @@ function sheetSettings(s) {
          so a problem that fixed itself can still be looked at afterwards.</p>`
   );
 
+  /* Install to the home screen. What can be offered depends on the browser:
+     Chromium hands over a real prompt, iOS Safari has none so the manual route
+     is all there is, and once installed there is nothing left to offer. */
+  const installBox = standalone()
+    ? `
+    <h3>Install this app</h3>
+    <p class="muted" style="margin:0 0 14px">Installed. You are running it as its own app,
+    not a browser tab.</p>`
+    : install.prompt
+    ? `
+    <h3>Install this app</h3>
+    <button class="btn solid wide" data-act="installApp">Install to home screen</button>
+    <p class="muted" style="margin:8px 0 14px">Adds it to your home screen and app list, and
+    runs it in its own window with no browser bar. Your data stays on this device either way.</p>`
+    : iOS
+    ? `
+    <h3>Install this app</h3>
+    <p class="muted" style="margin:0 0 14px">In Safari, tap the <strong>Share</strong> button, then
+    <strong>Add to Home Screen</strong>. It then opens as its own app, with no browser bar.</p>`
+    : `
+    <h3>Install this app</h3>
+    <p class="muted" style="margin:0 0 14px">From the browser menu, choose <strong>Install app</strong>
+    or <strong>Add to Home screen</strong> to run it in its own window with no browser bar. If that is
+    not offered, the app is either already installed or open over an insecure connection.</p>`;
+
   const version = `
     <h3>This copy of the app</h3>
     <div class="row" style="gap:8px">
@@ -2707,6 +2759,7 @@ function sheetSettings(s) {
       <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
     </button>
     ${repoBox}
+    ${installBox}
     ${problemBox}
     ${version}`
   );
@@ -4792,6 +4845,26 @@ const actions = {
     } catch (err) {
       setSheet({ ...state.sheet, checking: false, msg: err.message, err: true });
     }
+  },
+
+  installApp: async () => {
+    const e = install.prompt;
+    if (!e) {
+      setSheet({ ...state.sheet, msg: "The browser is not offering to install just now. Use its menu instead.", err: true });
+      return;
+    }
+    /* The prompt can only be used once, so let go of it whatever the answer.
+       If the user declines, the browser may offer it again later and fire a
+       fresh beforeinstallprompt, which the listener above will pick up. */
+    install.prompt = null;
+    try {
+      e.prompt();
+      await e.userChoice;
+    } catch (err) {
+      /* Some browsers throw if it is called twice or too late; the button just
+         goes away, which is the honest outcome. */
+    }
+    if (state.sheet && state.sheet.kind === "settings") draw();
   },
 
   resetAll: async () => {
