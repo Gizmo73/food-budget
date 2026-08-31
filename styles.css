@@ -376,6 +376,21 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
    iOS focus zoom; the box is scrollable rather than small-print. */
 textarea.inp { min-height:160px; font-family:var(--mono); }
 
+/* A hand-written line on the shopping list. The full textarea is sized for a
+   backup blob, which is the wrong shape entirely for one item written in a
+   shop, so this one starts a single line high and grows only if the name
+   really is that long. */
+textarea.inp.jot {
+  min-height:0; padding:8px 10px; font-family:var(--sans); font-size:15px;
+  font-weight:600; line-height:1.35; resize:none; overflow:hidden; display:block;
+}
+
+/* A written line has no price and no pack count, so the whole width goes to
+   the words. It keeps the ticket's shape — what you are buying on the left,
+   the way to strike it off on the right — but hangs from the top, since the
+   box grows downwards as you type. */
+.ticket.jotline { align-items:flex-start; }
+
 /* banner offering a merge when the shared file has moved on */
 .banner {
   background:var(--accent); color:var(--on-accent); padding:12px 14px;
