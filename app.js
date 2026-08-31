@@ -479,6 +479,11 @@ function render() {
     viewSheet(),
   ].join("");
 
+  /* Textareas do not grow themselves, and a rebuild throws away any height
+     set last time, so every written line is re-sized to its own text before
+     the scroll below is measured against it. */
+  for (const t of root.querySelectorAll("textarea.jot")) fitJot(t);
+
   root.dataset.booted = "1";
   window.scrollTo(0, pageScroll);
 
@@ -596,25 +601,65 @@ function viewList() {
       c.problems.length === 1 ? "it is" : "they are"
     } missing from this list. Set it to 1 on the Items tab if the pack is not divided into servings.</div>`);
 
-  const body = c.lines.length
-    ? c.stores
-        .map((store) => {
-          const shut = isShut("collapsedList", store.name);
-          return `<div class="group">
+  /* Shops to show: the ones this fortnight needs something from, then any
+     that carry nothing but hand-written lines. A shop that needs nothing and
+     has nothing written on it has no reason to take up room. */
+  const jottings = state.db.jottings || [];
+  const jotsFor = (name) => jottings.filter((j) => shopKey(j.store) === shopKey(name));
+  const jotShops = [...new Set(jottings.map((j) => j.store))].filter(
+    (name) => !c.stores.some((st) => shopKey(st.name) === shopKey(name))
+  );
+  const groups = [...c.stores, ...jotShops.map((name) => ({ name, lines: [], total: 0 }))];
+
+  const group = (store) => {
+    const shut = isShut("collapsedList", store.name);
+    const jots = jotsFor(store.name);
+    const count = store.lines.length + jots.length;
+    return `<div class="group">
         <button class="grouphead" data-act="toggleStore" data-which="collapsedList" data-store="${esc(store.name)}">
           <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
           <span class="grow">
             <span class="gname">${esc(store.name)}</span>
-            <span class="gmeta" style="display:block">${store.lines.length} item${
-            store.lines.length === 1 ? "" : "s"
-          } &middot; £${money(store.total)}</span>
+            <span class="gmeta" style="display:block">${count} item${
+      count === 1 ? "" : "s"
+    } &middot; £${money(store.total)}</span>
           </span>
         </button>
-        ${shut ? "" : `<section class="card">${store.lines.map(ticket).join("")}</section>`}
+        ${
+          shut
+            ? ""
+            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map(jotting).join("")}
+                 <button class="btn small tonal wide" style="margin-top:10px" data-act="addJotting"
+                   data-store="${esc(store.name)}">Add item</button></section>`
+        }
       </div>`;
-        })
-        .join("")
-    : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or add something by hand from Items.</div>`;
+  };
+
+  /* Nothing planned and nothing written means there are no shops to hang an
+     "Add item" button under, so offer the ones the app already knows rather
+     than leaving the list a dead end you cannot write on. */
+  const knownShops = groups.length
+    ? []
+    : [
+        ...new Set(
+          state.db.ingredients.flatMap((i) => (i.products || []).map((p) => p.store)).filter(Boolean)
+        ),
+      ].sort();
+
+  const body = groups.length
+    ? groups.map(group).join("")
+    : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or add something by hand from Items.</div>
+       ${
+         knownShops.length
+           ? `<p class="eyebrow" style="margin:12px 0 6px">Or write something on a shop</p>
+              <div class="row" style="gap:6px;flex-wrap:wrap">${knownShops
+                .map(
+                  (n) => `<button class="btn small tonal" data-act="addJotting"
+                    data-store="${esc(n)}">${esc(n)}</button>`
+                )
+                .join("")}</div>`
+           : ""
+       }`;
 
   const incoming = state.incoming
     ? `<div class="banner">
@@ -658,8 +703,35 @@ function viewList() {
       </div>
     </div>
     <p class="muted">Whole packs only, less the portions you already have.
-    Tap "Got it" after shopping and those packs become portions in stock.</p>
+    Tap "Got it" after shopping and those packs become portions in stock.${
+      jottings.length
+        ? ' Hand-written lines have no pack behind them, so "Got it" only strikes those off.'
+        : ""
+    }</p>
     <div class="spacer"></div>`;
+}
+
+/* One written line, grown to fit what is in it. */
+function fitJot(t) {
+  t.style.height = "auto";
+  t.style.height = `${t.scrollHeight}px`;
+}
+
+/* Shops are compared by name, and a name typed by hand will not always match
+   the capitals a receipt shouted. */
+const shopKey = (s) => String(s || "").trim().toLowerCase();
+
+/* A hand-written line: something with no item behind it, typed onto a shop as
+   you think of it. There is no product, no pack count and no price, which is
+   exactly why "Got it" only strikes it off instead of putting anything into
+   stock the way a real ticket does. */
+function jotting(j) {
+  return `<div class="ticket jotline" data-scroll="${esc(j.id)}">
+    <textarea class="inp jot grow" rows="1" data-act="setJotting" data-id="${esc(j.id)}"
+      data-field="name" spellcheck="false"
+      placeholder="Something not on the list">${esc(j.text)}</textarea>
+    <button class="btn small ghost" data-act="gotJotting" data-id="${esc(j.id)}">Got it</button>
+  </div>`;
 }
 
 function ticket(l) {
@@ -4057,6 +4129,51 @@ const actions = {
     const ing = ingredient(el.dataset.id);
     if (ing) patchIngredient(ing.id, { extraPacks: Math.max(0, (Number(ing.extraPacks) || 0) - 1) });
   },
+  /* ---- hand-written lines ---- */
+
+  addJotting: async (el) => {
+    const id = uid();
+    const store = el.dataset.store || "";
+    /* A box you cannot see is no use, and the buttons offered on an empty list
+       can point at a shop that was collapsed earlier, so open it first. */
+    const shut = state.settings.collapsedList || [];
+    if (shut.some((n) => shopKey(n) === shopKey(store))) {
+      state.settings = {
+        ...state.settings,
+        collapsedList: shut.filter((n) => shopKey(n) !== shopKey(store)),
+      };
+      await saveSettings(state.settings);
+    }
+    /* Set before the commit, so the draw it triggers is the one that puts the
+       cursor in the new box. The button was pressed in order to type. */
+    state.reveal = id;
+    commit((db) => {
+      db.jottings = [...(db.jottings || []), { id, store, text: "", at: now() }];
+    });
+  },
+
+  setJotting: (el) => {
+    const id = el.dataset.id;
+    const text = el.value.trim();
+    commit((db) => {
+      const j = (db.jottings || []).find((x) => x.id === id);
+      if (!j) return;
+      j.text = text;
+      j.at = now();
+    });
+  },
+
+  /* Striking one off removes it and nothing else. There is no pack behind it
+     and no stock to credit, so the headstone is the whole job: without it the
+     other phone writes it back on the next merge. */
+  gotJotting: (el) => {
+    const id = el.dataset.id;
+    commit((db) => {
+      db.jottings = (db.jottings || []).filter((j) => j.id !== id);
+      markDeleted(db, "jot", id);
+    });
+  },
+
   clearExtra: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
@@ -4953,6 +5070,12 @@ root.addEventListener("click", (e) => {
   dispatch(e);
 });
 root.addEventListener("change", dispatch);
+
+/* Typing does not redraw — the app commits on blur — so the box has to keep
+   up with the keyboard on its own. */
+root.addEventListener("input", (e) => {
+  if (e.target.classList && e.target.classList.contains("jot")) fitJot(e.target);
+});
 
 /* --------------------------------- boot -------------------------------- */
 
