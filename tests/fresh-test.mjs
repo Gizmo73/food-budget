@@ -17,14 +17,17 @@ ok(await p.evaluate(() => !!navigator.serviceWorker.controller), "the worker is 
    through page routing, so the worker would keep seeing the original. */
 const appPath = new URL("../app.js", import.meta.url).pathname;
 const original = readFileSync(appPath, "utf8");
-writeFileSync(appPath, original.replace("<h1>Fortnight Shop</h1>", "<h1>Fortnight Shop DEPLOYED</h1>"));
+writeFileSync(appPath, original.replace(
+  '<p class="eyebrow">Fortnight Shop</p>',
+  '<p class="eyebrow">Fortnight Shop DEPLOYED</p>'
+));
 
 let first = "";
 try {
   await p.reload();
   await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
   await p.waitForTimeout(400);
-  first = await p.evaluate(() => document.querySelector(".masthead h1").textContent.trim());
+  first = await p.evaluate(() => document.querySelector(".masthead").textContent.trim());
   console.log("   after one reload:", JSON.stringify(first));
   ok(/DEPLOYED/.test(first), `the new version shows on the FIRST reload (${first})`);
 } finally {

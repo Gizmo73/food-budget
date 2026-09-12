@@ -7,7 +7,7 @@
    half new set of files. */
 
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}37`;
+const CACHE = `${PREFIX}38`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will
@@ -32,6 +32,9 @@ const SHELL = [
   "./lib/vision.js",
   "./lib/sync.js",
   "./lib/log.js",
+  "./lib/vendor/fonts/inter-latin-var.woff2",
+  "./lib/vendor/fonts/phosphor-regular.css",
+  "./lib/vendor/fonts/phosphor-regular.woff2",
 ];
 
 self.addEventListener("install", (e) => {
