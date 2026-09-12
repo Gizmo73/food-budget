@@ -22,6 +22,7 @@ const TYPES = {
   ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".png": "image/png",
   ".wasm": "application/wasm", ".webmanifest": "application/manifest+json",
+  ".woff2": "font/woff2",
 };
 
 /* Deliberately not a cache-friendly server: a test that passes because the

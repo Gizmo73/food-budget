@@ -147,13 +147,11 @@ const check = await p.evaluate(async () => {
   const calc = await import("./lib/calc.js");
   const c = calc.computeShopping(await store.loadDb());
   return { d0: Math.round(c.dayNutrition[0][0].kcal), d1b: Math.round(c.dayNutrition[1][1].kcal),
-           badge: c.dayKcal, complete2: c.dayComplete[2][1] };
+           complete2: c.dayComplete[2][1] };
 });
 console.log("   calc says:", JSON.stringify(check));
 ok(food.rows[2].includes(String(check.d0)), `day 1 row shows ${check.d0} kcal`);
 ok(check.complete2 === false, "day 3 is genuinely partly known");
-const badge = await p.$eval('[data-act="tab"][data-tab="food"] .cnt', (e) => e.textContent.trim());
-ok(badge === String(check.badge), `tab badge matches calc (${badge})`);
 
 console.log("\n--- other tabs still work ---");
 for (const t of ["list", "plan", "meals", "items"]) {

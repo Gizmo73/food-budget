@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#161826" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f5fe" media="(prefers-color-scheme: light)">
 <title>Fortnight Shop</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="stylesheet" href="./styles.css">
@@ -26,13 +27,13 @@
       document.documentElement.style.setProperty("--accent", accent);
       document.documentElement.style.setProperty(
         "--on-accent",
-        0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2] > 0.42 ? "#16181C" : "#FFFFFF"
+        0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2] > 0.42 ? "#161826" : "#f3f5fe"
       );
     }
-  } catch (e) { document.documentElement.dataset.theme = "light"; }
+  } catch (e) { document.documentElement.dataset.theme = "dark"; }
 })();
 </script>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2315171B'/><text x='16' y='23' font-size='20' font-family='monospace' fill='%23F5C400' text-anchor='middle'>£</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23161826'/><text x='16' y='23' font-size='20' fill='%239184d9' text-anchor='middle'>£</text></svg>">
 </head>
 <body>
 <div id="app" class="fb">
@@ -64,11 +65,11 @@
       'while the app was updating itself, and <strong>reloading fixes it</strong>. ' +
       'If it keeps happening, one of the files below is missing on the server.</div>' +
       (problems.length
-        ? '<p class="eyebrow">What went wrong</p><pre class="inp mono" style="white-space:pre-wrap;min-height:0">' +
+        ? '<p class="eyebrow">What went wrong</p><pre class="inp" style="white-space:pre-wrap;min-height:0">' +
           problems.join("\n").replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }) +
           "</pre>"
         : "") +
-      '<p class="eyebrow">Files it needs</p><p class="muted num">app.js &middot; styles.css &middot; sw.js &middot; ' +
+      '<p class="eyebrow">Files it needs</p><p class="muted">app.js &middot; styles.css &middot; sw.js &middot; ' +
       'lib/calc.js &middot; lib/store.js &middot; lib/scan.js &middot; lib/qr.js &middot; lib/vision.js &middot; ' +
       'lib/sync.js &middot; lib/log.js &middot; ' +
       'lib/vendor/barcode-polyfill.js &middot; lib/vendor/zxing_reader.wasm</p>' +

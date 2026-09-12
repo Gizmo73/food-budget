@@ -70,10 +70,9 @@ await p.evaluate(async (json) => {
 await p.reload();
 await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
-const finalCount = await p.evaluate(() => {
-  const t = document.querySelector('[data-act="tab"][data-tab="items"] .cnt');
-  return t ? Number(t.textContent.trim()) : null;
-});
+await p.click('[data-act="tab"][data-tab="items"]');
+await p.waitForTimeout(300);
+const finalCount = await p.evaluate(() => document.querySelectorAll('[data-act="openItem"]').length);
 ok(finalCount === 37, `the Items tab shows 37 (${finalCount})`);
 
 await b.close();

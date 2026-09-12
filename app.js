@@ -35,6 +35,8 @@ const root = document.getElementById("app");
 const state = {
   db: null, settings: null, tab: "list", sheet: null, flash: null,
   calc: null, reveal: null, query: "", incoming: null,
+  /* Which week of the fortnight is on screen, and the day being moved. */
+  planWeek: 0, swapFrom: null,
 };
 
 /* ------------------------------- theming ------------------------------- */
@@ -54,7 +56,7 @@ function applyTheme(choice) {
     /* storage can be blocked; the theme still applies for this session */
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", wanted === "dark" ? "#1E2126" : "#FFFFFF");
+  if (meta) meta.setAttribute("content", wanted === "dark" ? "#161826" : "#f3f5fe");
 }
 
 /* The colours offered. Not a free-for-all: every one of these has been checked
@@ -62,14 +64,13 @@ function applyTheme(choice) {
    as often as it is a stroke. A custom colour is still allowed below, and gets
    the same check rather than being trusted. */
 const ACCENTS = [
-  { hex: "", name: "Shelf yellow" },
-  { hex: "#F08A24", name: "Orange" },
-  { hex: "#E05A47", name: "Tomato" },
-  { hex: "#D9457F", name: "Pink" },
-  { hex: "#9B6BE0", name: "Violet" },
-  { hex: "#4C8DF6", name: "Blue" },
-  { hex: "#28A79B", name: "Teal" },
-  { hex: "#5AA83C", name: "Green" },
+  { hex: "", name: "Nocturne blurple" },
+  { hex: "#6f9bf0", name: "Blue" },
+  { hex: "#2fb3a4", name: "Teal" },
+  { hex: "#4fb246", name: "Green" },
+  { hex: "#dba31d", name: "Amber" },
+  { hex: "#e4653c", name: "Terracotta" },
+  { hex: "#e25a93", name: "Pink" },
 ];
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -86,7 +87,7 @@ function luminance(hex) {
   return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2];
 }
 
-const onAccent = (hex) => (luminance(hex) > 0.42 ? "#16181C" : "#FFFFFF");
+const onAccent = (hex) => (luminance(hex) > 0.42 ? "#161826" : "#f3f5fe");
 
 function applyAccent(hex) {
   const el = document.documentElement.style;
@@ -469,6 +470,7 @@ function render() {
 
   root.innerHTML = [
     viewMasthead(),
+    viewPager(),
     `<div class="wrap">`,
     state.flash ? `<div class="${state.flash.kind === "err" ? "err" : "ok"}">${esc(state.flash.text)}</div>` : "",
     ({ list: viewList, plan: viewPlan, food: viewFood, meals: viewMeals, items: viewItems }[
@@ -536,34 +538,40 @@ function render() {
   }
 }
 
+/* The five pages, in the order a swipe moves through them. */
+const TAB_ORDER = ["list", "plan", "food", "meals", "items"];
+const TABS = {
+  list: { label: "List", icon: "list-bullets", title: "Shopping list" },
+  plan: { label: "Plan", icon: "calendar-blank", title: "The fortnight" },
+  food: { label: "Food", icon: "clock", title: "Food" },
+  meals: { label: "Meals", icon: "bowl-food", title: "Meals" },
+  items: { label: "Items", icon: "cube", title: "Items" },
+};
+
 function viewMasthead() {
-  const c = state.calc;
+  const tab = TABS[state.tab] || TABS.list;
   return `<header class="masthead"><div class="row">
     <div class="grow">
-      <h1>Fortnight Shop</h1>
-      <p>${c.plannedMeals} of ${c.totalSlots} meals planned &middot; ${state.db.ingredients.length} items
-        </p>
+      <p class="eyebrow">Fortnight Shop</p>
+      <h1>${tab.title}</h1>
     </div>
-    <button class="btn small ghost" data-act="openSettings">Settings</button>
+    <button class="btn icon" data-act="openSettings" aria-label="Settings"><i class="ph ph-gear"></i></button>
   </div></header>`;
 }
 
+/* Where you are in the five, and which way a swipe will take you. */
+function viewPager() {
+  return `<div class="pager">${TAB_ORDER.map(
+    (key) => `<span data-on="${state.tab === key ? 1 : 0}"></span>`
+  ).join("")}</div>`;
+}
+
 function viewTabs() {
-  const c = state.calc;
-  const tabs = [
-    ["list", "List", c.lines.length],
-    ["plan", "Plan", c.plannedMeals],
-    ["food", "Food", c.dayKcal],
-    ["meals", "Meals", state.db.meals.length],
-    ["items", "Items", state.db.ingredients.length],
-  ];
-  return `<nav class="tabs">${tabs
-    .map(
-      ([key, label, n]) =>
-        `<button data-act="tab" data-tab="${key}" data-on="${state.tab === key ? 1 : 0}">
-          <span class="cnt">${n}</span>${label}</button>`
-    )
-    .join("")}</nav>`;
+  return `<nav class="tabs">${TAB_ORDER.map(
+    (key) =>
+      `<button data-act="tab" data-tab="${key}" data-on="${state.tab === key ? 1 : 0}">
+        <span class="cnt"><i class="ph ph-${TABS[key].icon}"></i></span>${TABS[key].label}</button>`
+  ).join("")}</nav>`;
 }
 
 /* ---- list ---- */
@@ -606,8 +614,10 @@ function viewList() {
      has nothing written on it has no reason to take up room. */
   const jottings = state.db.jottings || [];
   const jotsFor = (name) => jottings.filter((j) => shopKey(j.store) === shopKey(name));
+  /* Shops that exist only because something was written on them. Lines with
+     no shop yet are not one of these: they have their own group below. */
   const jotShops = [...new Set(jottings.map((j) => j.store))].filter(
-    (name) => !c.stores.some((st) => shopKey(st.name) === shopKey(name))
+    (name) => shopKey(name) && !c.stores.some((st) => shopKey(st.name) === shopKey(name))
   );
   const groups = [...c.stores, ...jotShops.map((name) => ({ name, lines: [], total: 0 }))];
 
@@ -617,7 +627,7 @@ function viewList() {
     const count = store.lines.length + jots.length;
     return `<div class="group">
         <button class="grouphead" data-act="toggleStore" data-which="collapsedList" data-store="${esc(store.name)}">
-          <span class="chev">${shut ? "\u25B8" : "\u25BE"}</span>
+          <span class="chev"><i class="ph ph-caret-${shut ? "right" : "down"}"></i></span>
           <span class="grow">
             <span class="gname">${esc(store.name)}</span>
             <span class="gmeta" style="display:block">${count} item${
@@ -628,9 +638,9 @@ function viewList() {
         ${
           shut
             ? ""
-            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map(jotting).join("")}
-                 <button class="btn small tonal wide" style="margin-top:10px" data-act="addJotting"
-                   data-store="${esc(store.name)}">Add item</button></section>`
+            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map((j) => jotting(j)).join("")}
+                 <button class="btn small ghost" style="margin-top:4px" data-act="addJotting"
+                   data-store="${esc(store.name)}">+ Add something by hand</button></section>`
         }
       </div>`;
   };
@@ -646,20 +656,43 @@ function viewList() {
         ),
       ].sort();
 
-  const body = groups.length
-    ? groups.map(group).join("")
-    : `<div class="empty">Nothing to buy. Plan meals on the Plan tab, or add something by hand from Items.</div>
-       ${
-         knownShops.length
-           ? `<p class="eyebrow" style="margin:12px 0 6px">Or write something on a shop</p>
-              <div class="row" style="gap:6px;flex-wrap:wrap">${knownShops
-                .map(
-                  (n) => `<button class="btn small tonal" data-act="addJotting"
-                    data-store="${esc(n)}">${esc(n)}</button>`
-                )
-                .join("")}</div>`
-           : ""
-       }`;
+  /* Every shop the app knows, for filing an unfiled line against. */
+  const allShops = [
+    ...new Set([
+      ...c.stores.map((st) => st.name),
+      ...state.db.ingredients.flatMap((i) => (i.products || []).map((p) => p.store)),
+    ].filter(Boolean)),
+  ].sort();
+
+  /* Anything written down before you knew where it was coming from. This
+     group is always offered, shops or not, so there is never a state where
+     something cannot be written down. */
+  const loose = jottings.filter((j) => !shopKey(j.store));
+  const looseShut = isShut("collapsedList", "\u0000loose");
+  const looseGroup = `<div class="group">
+      <button class="grouphead" data-act="toggleStore" data-which="collapsedList" data-store="&#0;loose">
+        <span class="chev"><i class="ph ph-caret-${looseShut ? "right" : "down"}"></i></span>
+        <span class="grow">
+          <span class="gname">No shop yet</span>
+          <span class="gmeta" style="display:block">${
+            loose.length ? `${loose.length} item${loose.length === 1 ? "" : "s"}` : "nothing written"
+          }</span>
+        </span>
+      </button>
+      ${
+        looseShut
+          ? ""
+          : `<section class="card">${loose.map((j) => jotting(j, allShops)).join("")}
+               <button class="btn small ghost" style="margin-top:4px" data-act="addJotting"
+                 data-store="">+ Add something by hand</button></section>`
+      }
+    </div>`;
+
+  const body =
+    (groups.length
+      ? groups.map(group).join("")
+      : `<div class="empty">Nothing to buy yet. Plan meals on the Plan tab, or write something below.</div>`) +
+    looseGroup;
 
   const incoming = state.incoming
     ? `<div class="banner">
@@ -685,12 +718,11 @@ function viewList() {
     ${notes.join("")}
     ${body}
     <div class="till">
-      <div class="line"><span class="lbl">Total</span><span class="leader"></span>
-        <span class="big">£${money(c.total)}</span></div>
+      <div class="line"><span class="lbl">Total</span><span class="big">£${money(c.total)}</span></div>
       ${
         c.saving > 0.004
           ? `<div class="line" style="margin-top:2px"><span class="lbl">Offers save</span>
-             <span class="leader"></span><span class="num" style="font-size:13px">£${money(c.saving)}</span></div>`
+             <span class="num" style="font-size:13px">£${money(c.saving)}</span></div>`
           : ""
       }
       <div class="bar${over ? " over" : ""}"><span style="width:${Math.round(pct * 100)}%"></span></div>
@@ -725,12 +757,31 @@ const shopKey = (s) => String(s || "").trim().toLowerCase();
    you think of it. There is no product, no pack count and no price, which is
    exactly why "Got it" only strikes it off instead of putting anything into
    stock the way a real ticket does. */
-function jotting(j) {
-  return `<div class="ticket jotline" data-scroll="${esc(j.id)}">
-    <textarea class="inp jot grow" rows="1" data-act="setJotting" data-id="${esc(j.id)}"
-      data-field="name" spellcheck="false"
-      placeholder="Something not on the list">${esc(j.text)}</textarea>
-    <button class="btn small ghost" data-act="gotJotting" data-id="${esc(j.id)}">Got it</button>
+function jotting(j, shops) {
+  /* Written on a shop, it is just a line. Written with no shop yet, it also
+     carries the shops it could be filed against, because an unfiled line is
+     the one thing on this list that cannot tell you where to go. */
+  const chips = shops
+    ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:7px">
+         <span class="muted" style="margin-right:2px">Put it in</span>
+         ${shops
+           .map(
+             (n) => `<button class="pill" data-act="fileJotting" data-id="${esc(j.id)}"
+               data-store="${esc(n)}">${esc(n)}</button>`
+           )
+           .join("")}
+         <button class="pill" style="border-style:dashed" data-act="fileJottingNew"
+           data-id="${esc(j.id)}">+ New shop</button>
+       </div>`
+    : "";
+  return `<div class="ticket jotline" data-scroll="${esc(j.id)}" style="display:block">
+    <div class="row">
+      <textarea class="inp jot grow" rows="1" data-act="setJotting" data-id="${esc(j.id)}"
+        data-field="name" spellcheck="false"
+        placeholder="Something not on the list">${esc(j.text)}</textarea>
+      <button class="btn small ghost" data-act="gotJotting" data-id="${esc(j.id)}">Got it</button>
+    </div>
+    ${chips}
   </div>`;
 }
 
@@ -769,7 +820,6 @@ function ticket(l) {
           : ""
       }
     </div>
-    <span class="leader"></span>
     <div style="text-align:right">
       <div class="price">£${money(l.cost)}</div>
       <div class="row" style="gap:4px;margin-top:3px;justify-content:flex-end">
@@ -1107,37 +1157,86 @@ function viewPlan() {
     return `<div class="daysummary"><b>${esc(people[who])}</b> ${body}</div>`;
   };
 
-  const week = (w) => {
-    const subtotal = c.dayCost.slice(w * 7, w * 7 + 7).reduce((a, b) => a + b, 0);
+  /* Seven days at a time, Saturday to Friday. A fortnight seen whole is two
+     screens of scrolling and no week you can hold in your head; a week you
+     step through is the shape a shop actually has. */
+  const w = state.planWeek || 0;
+  const swapping = state.swapFrom;
 
-    const rows = Array.from({ length: 7 }, (_, i) => {
-      const idx = w * 7 + i;
-      const day = state.db.plan[idx] || {};
-      const when = planDate(start, idx);
-      const name = when ? WEEKDAYS[when.getDay()] : DAYS[i];
-      const dated = when
-        ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-        : "";
+  const dayRow = (idx, i) => {
+    const day = state.db.plan[idx] || {};
+    const when = planDate(start, idx);
+    const name = when ? WEEKDAYS[when.getDay()] : DAYS[i];
+    const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+    const armed = swapping === idx;
+    const other = swapping !== null && swapping !== undefined && !armed;
+    const written = (day.written || []).length;
 
-      return `<button class="dayblock tap" data-act="openDay" data-idx="${idx}"
+    return `<div class="dayblock"${armed ? ' data-armed="1"' : ""}>
+      <button class="dayrow" data-act="openDay" data-idx="${idx}"
         aria-label="Edit ${name}${dated ? ", " + esc(dated) : ""}">
         <div class="row">
           <span class="dname grow">${name}${
-        dated ? ` <span class="muted num" style="font-weight:400">${esc(dated)}</span>` : ""
-      }</span>
+            dated ? ` <span class="muted" style="font-weight:400">${esc(dated)}</span>` : ""
+          }</span>
           <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
-          <span class="chev" style="margin-left:6px">›</span>
+          <span class="chev" style="margin-left:6px"><i class="ph ph-caret-right"></i></span>
         </div>
         ${personLine(day, 0)}${personLine(day, 1)}
-      </button>`;
-    }).join("");
-
-    return `<section class="card">
-      <div class="row" style="margin-bottom:6px">
-        <span class="eyebrow grow">Week ${w + 1}</span>
-        <span class="num muted">£${money(subtotal)}</span>
-      </div>${rows}</section>`;
+      </button>
+      ${
+        written
+          ? (day.written || [])
+              .map(
+                (t, n) => `<div class="row writtenline">
+                  <span class="grow trunc">${esc(t)}</span>
+                  <button class="btn small ghost" data-act="unwriteDay" data-idx="${idx}"
+                    data-n="${n}" aria-label="Take it off this day">&times;</button>
+                </div>`
+              )
+              .join("")
+          : ""
+      }
+      <div class="row" style="margin-top:6px">
+        <button class="btn small ghost" data-act="writeDay" data-idx="${idx}"
+          style="padding:0;min-height:0;color:var(--accent);white-space:nowrap">+ Write a meal in</button>
+        <span class="grow"></span>
+        <button class="pill${armed || other ? " on" : ""}" data-act="swapDay" data-idx="${idx}"
+          style="white-space:nowrap"><i class="ph ph-arrows-left-right"></i>
+          ${armed ? "Moving" : other ? "Swap here" : "Swap"}</button>
+      </div>
+    </div>`;
   };
+
+  const first = w * 7;
+  const rows = Array.from({ length: 7 }, (_, i) => dayRow(first + i, i)).join("");
+  const subtotal = c.dayCost.slice(first, first + 7).reduce((a, b) => a + b, 0);
+  const edge = (n) => {
+    const d = planDate(start, n);
+    return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+  };
+  const range = start ? `${edge(first)} – ${edge(first + 6)}` : `Week ${w + 1}`;
+
+  const weekNav = `<div class="weeknav">
+      <button class="btn icon" data-act="planWeek" data-w="${w - 1}"${w === 0 ? " disabled" : ""}
+        aria-label="The week before"><i class="ph ph-caret-left"></i></button>
+      <div class="grow" style="text-align:center">
+        <div style="font-size:15px;font-weight:500">${esc(range)}</div>
+        <div class="muted">£${money(subtotal)} this week</div>
+      </div>
+      <button class="btn icon" data-act="planWeek" data-w="${w + 1}"${w === 1 ? " disabled" : ""}
+        aria-label="The week after"><i class="ph ph-caret-right"></i></button>
+    </div>`;
+
+  const swapNote =
+    swapping === null || swapping === undefined
+      ? ""
+      : `<div class="warn row">
+           <span class="grow">Moving that day. Pick the day to swap it with.</span>
+           <button class="btn small ghost" data-act="cancelSwap">Cancel</button>
+         </div>`;
+
+  const weekView = `${weekNav}${swapNote}<section class="card">${rows}</section>`;
 
   // breakfast and lunch are usually the same all fortnight, so offer to fill them
   const fillers = SLOTS.map(
@@ -1154,7 +1253,7 @@ function viewPlan() {
           <input class="inp" value="${esc(people[1])}" placeholder="Person 2"
             data-act="setPerson" data-person="1"></label>
       </div>
-      <label class="field"><span class="eyebrow">The fortnight starts</span>
+      <label class="field"><span class="eyebrow">The fortnight starts (a Saturday)</span>
         <input class="inp mono" type="date" value="${esc(dayOf(start))}" data-act="setPlanStart"></label>
       <p class="muted" style="margin:7px 0 0">${
         start
@@ -1162,7 +1261,7 @@ function viewPlan() {
           : "Set a date and every day shows the date it falls on, which is what tells you whether a use-by will hold."
       }</p>
     </section>
-    ${week(0)}${week(1)}
+    ${weekView}
     <div class="card">
       <span class="eyebrow" style="display:block;margin-bottom:6px">Fill the fortnight</span>
       <div class="row" style="gap:6px">${fillers}</div>
@@ -1458,7 +1557,7 @@ function viewMeals() {
 
   /* Adding sits at the top, as it does on Items. It is the only thing you
      come to this screen to press that is not one of the meals themselves. */
-  return `<button class="btn tonal wide" style="margin-bottom:10px" data-act="addMeal">Add a meal</button>
+  return `<button class="btn wide" style="margin-bottom:10px" data-act="addMeal">Write in a meal</button>
     ${filter}${nothing}${cards}<div class="spacer"></div>`;
 }
 
@@ -1566,7 +1665,7 @@ function fold(kind, title, summary, body) {
   return `<section class="fold${open ? " open" : ""}">
     <button class="foldhead" data-act="toggleSection" data-kind="${kind}"
       aria-expanded="${open ? "true" : "false"}">
-      <span class="chev">${open ? "\u25BE" : "\u25B8"}</span>
+      <span class="chev"><i class="ph ph-caret-${open ? "down" : "right"}"></i></span>
       <span class="foldtext">
         <span class="foldname">${title}</span>
         <span class="foldsum">${summary}</span>
@@ -1729,7 +1828,7 @@ function productCard(ing, product, chosen, stores, expanded) {
   const head = `<div class="prodhead">
     <button class="prodtitle" data-act="openProduct" data-product="${esc(product.id)}"
       data-open="${expanded ? 1 : 0}" aria-expanded="${expanded ? "true" : "false"}">
-      <span class="chev">${expanded ? "▾" : "▸"}</span>
+      <span class="chev"><i class="ph ph-caret-${expanded ? "down" : "right"}"></i></span>
       <span class="ptext">
         <span class="pname">${esc(product.name || "Unnamed")}${
     product.store ? ` <span class="muted">at ${esc(product.store)}</span>` : ""
@@ -1960,7 +2059,7 @@ function viewItems() {
         <button class="grouphead" data-act="toggleStore" data-which="collapsedItems" data-store="${esc(g.name)}"${
         q ? " disabled" : ""
       }>
-          <span class="chev">${q ? "" : shut ? "\u25B8" : "\u25BE"}</span>
+          <span class="chev">${q ? "" : `<i class="ph ph-caret-${shut ? "right" : "down"}"></i>`}</span>
           <span class="grow">
             <span class="gname">${esc(g.name)}</span>
             <span class="gmeta" style="display:block">${esc(meta)}</span>
@@ -2527,7 +2626,7 @@ function sheetScanned(s) {
     `
     ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
-      <input class="inp mono" value="${esc(s.code)}" data-act="setScanCode"></label>
+      <input class="inp code" value="${esc(s.code)}" data-act="setScanCode"></label>
 
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is a kind of</span>
       <select class="inp" data-act="setScanTarget">${kinds}</select></label>
@@ -2633,13 +2732,13 @@ function sheetSettings(s) {
 
   /* The swatch shows the colour itself and a tick in whatever writing that
      colour takes, so the choice previews the contrast it will produce. */
-  const current = HEX.test(set.accent || "") ? set.accent : "#F5C400";
+  const current = HEX.test(set.accent || "") ? set.accent : "#9184d9";
   const swatches = ACCENTS.map((a) => {
     const on = (set.accent || "") === a.hex;
-    const shown = a.hex || "#F5C400";
+    const shown = a.hex || "#9184d9";
     return `<button class="swatch${on ? " on" : ""}" data-act="setAccent" data-accent="${a.hex}"
       style="background:${shown};color:${onAccent(shown)}" title="${a.name}"
-      aria-label="${a.name}"${on ? ' aria-current="true"' : ""}>${on ? "&#10003;" : ""}</button>`;
+      aria-label="${a.name}"${on ? ' aria-current="true"' : ""}>${on ? '<i class="ph ph-check"></i>' : ""}</button>`;
   }).join("");
 
   const flag = (key, label, note) => `<div class="row" style="margin-bottom:10px">
@@ -2665,7 +2764,7 @@ function sheetSettings(s) {
         <input class="inp" value="${esc(set.branch)}" data-act="setSetting" data-key="branch"></label>
     </div>
     <label class="field" style="margin-bottom:12px"><span class="eyebrow">Access token</span>
-      <input class="inp mono" type="password" value="${esc(set.token)}" placeholder="github_pat_…"
+      <input class="inp code" type="password" value="${esc(set.token)}" placeholder="github_pat_…"
         data-act="setSetting" data-key="token"></label>
 
     <h3>Receipt reading</h3>
@@ -2676,19 +2775,19 @@ function sheetSettings(s) {
     ${
       set.provider === "anthropic"
         ? `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Anthropic key</span>
-            <input class="inp mono" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
+            <input class="inp code" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
               data-act="setSetting" data-key="anthropicKey"></label>
            <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.anthropicModel)}" data-act="setSetting" data-key="anthropicModel"></label>`
         : `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Gemini key</span>
-            <input class="inp mono" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
+            <input class="inp code" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
               data-act="setSetting" data-key="geminiKey"></label>
            <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.geminiModel)}" data-act="setSetting" data-key="geminiModel"></label>`
     }
 
     <h3>Manual backup</h3>
-    <textarea class="inp mono" data-act="setBackup" spellcheck="false">${esc(backupJson(state.db))}</textarea>
+    <textarea class="inp code" data-act="setBackup" spellcheck="false">${esc(backupJson(state.db))}</textarea>
     <div class="row" style="gap:8px;margin-top:8px">
       <button class="btn tonal grow" data-act="copyBackup">Copy</button>
       <button class="btn tonal grow" data-act="restoreBackup">Restore</button>
@@ -2794,7 +2893,7 @@ function sheetSettings(s) {
     <div class="seg" style="margin-bottom:12px">
       ${themeBtn("light", "Light")}${themeBtn("dark", "Dark")}${themeBtn("system", "System")}
     </div>
-    <span class="eyebrow" style="display:block;margin-bottom:6px">Accent colour</span>
+    <h3>Accent colour</h3>
     <div class="swatches">${swatches}</div>
     <label class="row" style="margin-bottom:6px">
       <span class="grow muted">Or pick your own</span>
@@ -2804,9 +2903,9 @@ function sheetSettings(s) {
     <p class="muted" style="margin:0 0 14px">${
       set.accent
         ? `Set to ${esc(set.accent)}. Writing on it is ${
-            onAccent(set.accent) === "#16181C" ? "black" : "white"
+            onAccent(set.accent) === "#161826" ? "dark" : "light"
           }, worked out from the colour rather than guessed.`
-        : "The app's own yellow."
+        : "Nocturne's own blurple."
     } This is kept on this device, like the theme, so you and anyone
     sharing the list can each have your own.</p>
 
@@ -2828,7 +2927,7 @@ function sheetSettings(s) {
     <button class="btn ghost wide" style="margin-bottom:10px" data-act="openHelp">The long way, with their own token</button>
 
     <button class="btn ghost wide head" data-act="toggleRepoBox">
-      <span class="chev">${set.showRepo ? "\u25BE" : "\u25B8"}</span> Database, keys and backup
+      <span class="chev"><i class="ph ph-caret-${set.showRepo ? "down" : "right"}"></i></span> Database, keys and backup
     </button>
     ${repoBox}
     ${installBox}
@@ -2871,7 +2970,7 @@ function sheetInvite(s) {
     <strong>Enter an invite</strong>, then <strong>Scan the code</strong>.</p>
 
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or send them this</span>
-      <textarea class="inp mono" style="height:78px" readonly spellcheck="false"
+      <textarea class="inp code" style="height:78px" readonly spellcheck="false"
         data-act="selectInvite">${esc(code)}</textarea></label>
     <button class="btn tonal wide" style="margin-bottom:10px" data-act="copyInvite">Copy the code</button>
 
@@ -2891,7 +2990,7 @@ function sheetJoin(s) {
     ${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}
     <button class="btn solid wide" style="margin-bottom:10px" data-act="scanInvite">Scan the code</button>
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or paste the code</span>
-      <textarea class="inp mono" style="height:78px" placeholder="FS1." spellcheck="false"
+      <textarea class="inp code" style="height:78px" placeholder="FS1." spellcheck="false"
         data-act="setJoinCode">${esc(s.code || "")}</textarea></label>
     <button class="btn tonal wide" data-act="applyJoin">Join this list</button>
     <p class="muted">Joining replaces whichever database this phone was pointed at, and pulls their
@@ -3000,7 +3099,7 @@ async function openCamera(title, onCode, opts = {}) {
       <button class="btn small torch" data-cam="torch">Light</button>
     </div>
     <label class="field"><span class="eyebrow">${qr ? "Or paste the code" : "Or type the number"}</span>
-      <input class="inp mono"${qr ? "" : ' inputmode="numeric"'} placeholder="${
+      <input class="inp code"${qr ? "" : ' inputmode="numeric"'} placeholder="${
       qr ? "FS1." : "5010000000000"
     }" data-cam="manual"></label>
     <button class="btn solid wide" style="margin-top:8px" data-cam="useManual">${
@@ -3034,6 +3133,69 @@ async function openCamera(title, onCode, opts = {}) {
     opts.formats
   );
   if (cam) cam.handle = handle;
+}
+
+/* Swipe between the five pages.
+
+   The page is drawn one tab at a time and the window carries the scroll, so
+   this does not park all five on a track; it reads the gesture, and on a
+   decisive horizontal drag hands over to the next tab and slides the new
+   page in from the side it came from. A drag that is mostly vertical is
+   left alone, so the list still scrolls normally, and a drag starting on a
+   field, a sheet or the tab bar is ignored outright. */
+function installSwipe() {
+  let x0 = null, y0 = null, locked = null, id = null;
+  const THRESH = 60;
+
+  const startable = (t) =>
+    !t.closest(".sheet, .scrim, .tabs, input, textarea, select, .scanner");
+
+  addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (!startable(e.target)) return;
+    x0 = e.clientX; y0 = e.clientY; locked = null; id = e.pointerId;
+  }, { passive: true });
+
+  addEventListener("pointermove", (e) => {
+    if (x0 === null || e.pointerId !== id) return;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (locked === null && Math.abs(dx) + Math.abs(dy) > 12) {
+      locked = Math.abs(dx) > Math.abs(dy) * 1.4 ? "x" : "y";
+    }
+  }, { passive: true });
+
+  const end = (e) => {
+    if (x0 === null || e.pointerId !== id) return;
+    const dx = e.clientX - x0;
+    const wasX = locked === "x";
+    x0 = y0 = id = null; locked = null;
+    if (!wasX || Math.abs(dx) < THRESH) return;
+    const at = TAB_ORDER.indexOf(state.tab);
+    const to = TAB_ORDER[at + (dx < 0 ? 1 : -1)];
+    if (!to) return;
+    goToTab(to, dx < 0 ? 1 : -1);
+  };
+  addEventListener("pointerup", end, { passive: true });
+  addEventListener("pointercancel", () => { x0 = y0 = id = null; locked = null; }, { passive: true });
+}
+
+/* Moving to a tab, optionally from a direction. Each page keeps its own
+   scroll, because coming back to a long list at someone else's position is
+   disorienting. */
+const tabScroll = {};
+function goToTab(to, dir) {
+  tabScroll[state.tab] = window.scrollY;
+  state.tab = to;
+  state.sheet = null;
+  draw();
+  window.scrollTo(0, tabScroll[to] || 0);
+  if (!dir) return;
+  const el = document.querySelector(".wrap");
+  if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.animate(
+    [{ transform: `translateX(${dir * 26}px)`, opacity: 0.4 }, { transform: "none", opacity: 1 }],
+    { duration: 220, easing: "cubic-bezier(.32,.72,0,1)" }
+  );
 }
 
 document.addEventListener("click", (e) => {
@@ -3718,10 +3880,8 @@ async function pushNow() {
 
 const actions = {
   tab: (el) => {
-    state.tab = el.dataset.tab;
-    state.sheet = null;
     state.flash = null;
-    draw();
+    goToTab(el.dataset.tab, 0);
   },
   closeSheet: () => setSheet(null),
   openSettings: () => setSheet({ kind: "settings", msg: "", err: false }),
@@ -4152,6 +4312,31 @@ const actions = {
     });
   },
 
+  /* Filing a written line against a shop. It keeps its text and its place in
+     the order; only where you will pick it up changes. */
+  fileJotting: (el) => {
+    const id = el.dataset.id;
+    const store = el.dataset.store || "";
+    commit((db) => {
+      const j = (db.jottings || []).find((x) => x.id === id);
+      if (!j) return;
+      j.store = store;
+      j.at = now();
+    });
+  },
+
+  fileJottingNew: (el) => {
+    const id = el.dataset.id;
+    const store = (prompt("Which shop?") || "").trim();
+    if (!store) return;
+    commit((db) => {
+      const j = (db.jottings || []).find((x) => x.id === id);
+      if (!j) return;
+      j.store = store;
+      j.at = now();
+    });
+  },
+
   setJotting: (el) => {
     const id = el.dataset.id;
     const text = el.value.trim();
@@ -4550,6 +4735,71 @@ const actions = {
       items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
       touchPlan(db);
     }),
+  /* ---- the week in view, writing a meal in, swapping two days ---- */
+
+  planWeek: (el) => {
+    state.planWeek = Math.max(0, Math.min(1, Number(el.dataset.w)));
+    state.swapFrom = null;
+    draw();
+  },
+
+  /* A meal that was never set up. It goes on the day as plain words: it costs
+     nothing and asks for nothing, which is exactly right for a takeaway, a
+     dinner out, or something you will work out on the night. */
+  writeDay: (el) => {
+    const idx = Number(el.dataset.idx);
+    const text = (prompt("What are you eating?") || "").trim();
+    if (!text) return;
+    commit((db) => {
+      const day = db.plan[idx];
+      if (!day) return;
+      day.written = [...(day.written || []), text];
+      touchPlan(db);
+    });
+  },
+
+  unwriteDay: (el) => {
+    const idx = Number(el.dataset.idx);
+    const n = Number(el.dataset.n);
+    commit((db) => {
+      const day = db.plan[idx];
+      if (!day || !Array.isArray(day.written)) return;
+      day.written.splice(n, 1);
+      if (!day.written.length) delete day.written;
+      touchPlan(db);
+    });
+  },
+
+  /* Swapping moves everything on the day — both people's slots, their edits,
+     extras and anything written in — because a day you are moving is a day,
+     not a list of parts. Tap once to pick it up, once more to put it down. */
+  swapDay: (el) => {
+    const idx = Number(el.dataset.idx);
+    const from = state.swapFrom;
+    if (from === null || from === undefined) {
+      state.swapFrom = idx;
+      return draw();
+    }
+    if (from === idx) {
+      state.swapFrom = null;
+      return draw();
+    }
+    state.swapFrom = null;
+    commit((db) => {
+      const a = db.plan[from];
+      const b = db.plan[idx];
+      if (!a || !b) return;
+      db.plan[from] = b;
+      db.plan[idx] = a;
+      touchPlan(db);
+    });
+  },
+
+  cancelSwap: () => {
+    state.swapFrom = null;
+    draw();
+  },
+
   addExtra: (el) =>
     commit((db) => {
       if (!db.ingredients.length) return;
@@ -4730,6 +4980,8 @@ const actions = {
     setSheet(open ? null : { kind: "meal", id });
   },
   addMeal: () => {
+    /* No ingredients: it costs nothing and asks for nothing until you fill
+       it in, which is the point of writing one in by hand. */
     const meal = { id: uid(), name: "New meal", items: [], updatedAt: new Date().toISOString() };
     commit((db) => db.meals.push(meal));
     // jump to it: the list is in name order, so a new meal lands wherever "New"
@@ -5080,6 +5332,7 @@ root.addEventListener("input", (e) => {
 /* --------------------------------- boot -------------------------------- */
 
 (async function boot() {
+  installSwipe();
   try {
     state.db = await loadDb();
     state.settings = await loadSettings();

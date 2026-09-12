@@ -25,13 +25,13 @@ await p.waitForTimeout(300);
 console.log("\n--- it is not badged as a test any more ---");
 const look = await p.evaluate(() => ({
   title: document.title,
-  h1: document.querySelector(".masthead h1").textContent.trim(),
-  sub: document.querySelector(".masthead p").textContent.replace(/\s+/g, " ").trim(),
+  eyebrow: document.querySelector(".masthead .eyebrow").textContent.trim(),
+  sub: document.querySelector(".masthead").textContent.replace(/\s+/g, " ").trim(),
   tabs: [...document.querySelectorAll('[data-act="tab"]')].map((e) => e.dataset.tab),
 }));
 console.log("  ", JSON.stringify(look));
 ok(look.title === "Fortnight Shop", `title is clean (${look.title})`);
-ok(look.h1 === "Fortnight Shop", `no test badge (${look.h1})`);
+ok(look.eyebrow === "Fortnight Shop", `no test badge (${look.eyebrow})`);
 ok(!/separate data/.test(look.sub), "no warning about separate data");
 ok(look.tabs.join(",") === "list,plan,food,meals,items", `all five tabs present (${look.tabs.join(",")})`);
 
@@ -88,7 +88,6 @@ const migrated = await p.evaluate(async () => {
     barcode: pies.products[0].barcodes[0],
     bothSlots: db.plan[0].dinner[0] === "pm" && db.plan[0].dinner[1] === "pm",
     total: c.computeShopping(db).total,
-    itemsBadge: Number(document.querySelector('[data-act="tab"][data-tab="items"] .cnt').textContent),
   };
 });
 console.log("  ", JSON.stringify(migrated));
@@ -97,7 +96,10 @@ ok(migrated.items === 2, "both items came across");
 ok(migrated.packAmount === 568 && migrated.packUnit === "g", '"568g" parsed into the new pack size');
 ok(migrated.barcode === "5000000000001", "the barcode survived");
 ok(migrated.bothSlots, "the household meal landed in both people's slots");
-ok(migrated.itemsBadge === 2, "and the page renders it");
+await p.click('[data-act="tab"][data-tab="items"]');
+await p.waitForTimeout(300);
+const itemsBadge = await p.evaluate(() => document.querySelectorAll('[data-act="openItem"]').length);
+ok(itemsBadge === 2, `and the page renders it (${itemsBadge})`);
 
 console.log("\n--- restoring the real backup on top ---");
 await p.evaluate(async (json) => {
@@ -107,7 +109,9 @@ await p.evaluate(async (json) => {
 await p.reload();
 await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
-const restored = await p.evaluate(() => Number(document.querySelector('[data-act="tab"][data-tab="items"] .cnt').textContent));
+await p.click('[data-act="tab"][data-tab="items"]');
+await p.waitForTimeout(300);
+const restored = await p.evaluate(() => document.querySelectorAll('[data-act="openItem"]').length);
 ok(restored === 37, `the 37 items load in the promoted app (${restored})`);
 
 console.log("\n--- every tab still works ---");

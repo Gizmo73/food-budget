@@ -77,7 +77,7 @@ ok(swatches.filter((s) => s.on).length === 1, "exactly one is marked as chosen")
 ok(swatches[0].hex === "", "and the first is the app's own");
 
 const before = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
-await p.click('.swatch[data-accent="#9B6BE0"]');
+await p.click('.swatch[data-accent="#e25a93"]');
 await p.waitForTimeout(400);
 const picked = await p.evaluate(() => ({
   accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
@@ -85,36 +85,51 @@ const picked = await p.evaluate(() => ({
   saved: localStorage.getItem("fs-accent"),
 }));
 console.log(`   was ${before}, now ${JSON.stringify(picked)}`);
-ok(picked.accent.toUpperCase() === "#9B6BE0", "picking a colour applies it");
-ok(picked.on.toUpperCase() === "#FFFFFF", `and writing on the violet is white (${picked.on})`);
-ok(picked.saved === "#9B6BE0", "and it is written where the page can read it before it paints");
+ok(picked.accent.toUpperCase() === "#E25A93", "picking a colour applies it");
+ok(picked.on.toUpperCase() === "#F3F5FE", `and writing on the pink is the light ink (${picked.on})`);
+ok(picked.saved === "#E25A93", "and it is written where the page can read it before it paints");
 
 // it has to reach the actual furniture, not just the variable
 const used = await p.evaluate(() => {
-  const solid = document.querySelector(".btn.solid, .seg button[data-on='1']");
+  const solid = document.querySelector('.pager span[data-on="1"]');
   return solid ? getComputedStyle(solid).backgroundColor : "";
 });
-ok(used === "rgb(155, 107, 224)", `a solid control is that colour (${used})`);
+ok(used === "rgb(226, 90, 147)", `a real control is that colour (${used})`);
 
-// survives a reload, with no yellow frame first
+// survives a reload, with the app's own accent back first
 await p.reload();
 await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
 const early = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
-ok(early.toUpperCase() === "#9B6BE0", `it is still set after a reload (${early})`);
+ok(early.toUpperCase() === "#E25A93", `it is still set after a reload (${early})`);
 
-// yellow needs black on it; that is the case the formula exists for
+// choosing the app's own colour clears the override
 await p.click('[data-act="openSettings"]');
 await p.waitForTimeout(300);
 await p.click('.swatch[data-accent=""]');
 await p.waitForTimeout(400);
-const backToYellow = await p.evaluate(() => ({
+const backToBlurple = await p.evaluate(() => ({
   accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
   inline: document.documentElement.style.getPropertyValue("--accent"),
   saved: localStorage.getItem("fs-accent"),
 }));
-console.log("   ", JSON.stringify(backToYellow));
-ok(backToYellow.inline === "", "choosing the app's own colour clears the override");
-ok(backToYellow.accent.toUpperCase() === "#F5C400", "so the stylesheet's yellow is back");
+console.log("   ", JSON.stringify(backToBlurple));
+ok(backToBlurple.inline === "", "choosing the app's own colour clears the override");
+ok(backToBlurple.accent.toUpperCase() === "#9184D9", "so the stylesheet's own blurple is back");
+
+// a bright custom colour needs dark ink on it; that is the case the formula exists for
+await p.evaluate(() => {
+  const input = document.querySelector('.pickcol');
+  input.value = "#f5c400";
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await p.waitForTimeout(400);
+const customYellow = await p.evaluate(() => ({
+  accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
+  on: getComputedStyle(document.documentElement).getPropertyValue("--on-accent").trim(),
+}));
+console.log("   ", JSON.stringify(customYellow));
+ok(customYellow.accent.toUpperCase() === "#F5C400", "a colour of your own applies too");
+ok(customYellow.on.toUpperCase() === "#161826", `and yellow gets dark ink (${customYellow.on})`);
 
 console.log("\n--- the ingredient editor ---");
 await p.click('[data-act="closeSheet"]').catch(() => {});
