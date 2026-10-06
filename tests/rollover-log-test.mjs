@@ -1,12 +1,13 @@
 /* Ending a fortnight and starting the next, and the record of things that
    went wrong while doing it. */
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 
 const fail = [];
 const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, colorScheme: "dark" });
+await pinClock(ctx);
 const p = await ctx.newPage();
 const errs = [];
 p.on("pageerror", (e) => errs.push("pageerror: " + e.message));

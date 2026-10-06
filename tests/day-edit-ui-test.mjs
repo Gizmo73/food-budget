@@ -1,10 +1,11 @@
 /* The day popout: tap a day, swap an ingredient for that day only, log an
    extra, and save a loose edit off as its own meal. Drives the real UI so the
    handlers and the fork-on-edit are exercised end to end. */
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: "dark" });
+await pinClock(ctx);
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };

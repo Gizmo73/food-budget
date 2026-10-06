@@ -26,39 +26,35 @@ await p.evaluate(async (json) => {
 await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
-console.log("--- every shop offers a way to write on it ---");
-const shops = await p.$$eval(".group", (gs) =>
-  gs.map((g) => ({
-    name: g.querySelector(".gname").textContent.trim(),
-    add: !!g.querySelector('[data-act="addJotting"]'),
-  }))
-);
+console.log("--- one way in, from the top of the list ---");
+const shops = await p.$$eval(".group .gname", (n) => n.map((e) => e.textContent.trim()));
 console.log("  ", JSON.stringify(shops));
 ok(shops.length > 1, `the list is grouped into ${shops.length} shops`);
-ok(shops.every((s) => s.add), "and each one has an Add item button");
+ok((await p.$$('[data-act="openAdd"]')).length === 1, "there is one Add button, not one under every shop");
+ok((await p.$$('[data-act="addJotting"]')).length === 0, "and no per-shop buttons left");
+
+/* Writing one in through the add sheet, on the first shop's chip, then closing it. */
+async function writeIn(text, shop) {
+  await p.click('[data-act="openAdd"]');
+  await p.waitForSelector('[data-act="addWritten"]');
+  await p.fill('[data-act="setAddText"]', text);
+  if (shop) await p.click(`[data-act="pickAddShop"][data-store="${shop}"]`);
+  await p.click('[data-act="addWritten"]');
+  await p.waitForTimeout(300);
+  await p.click(".sheet >> text=Done");
+  await p.waitForTimeout(200);
+}
 
 const before = await total();
-console.log("\n--- one press, one box ---");
-await p.click('.group [data-act="addJotting"]');
-await p.waitForTimeout(300);
-ok((await boxes()).length === 1, "the first press opens one box");
-ok(
-  await p.evaluate(() => document.activeElement.dataset.act === "setJotting"),
-  "and the cursor is already in it, so you can just type"
-);
+console.log("\n--- one entry, one box ---");
+await writeIn("Bin bags", shops[0]);
+ok((await boxes()).length === 1, "the first entry gives one box on the list");
 
-await p.fill('textarea[data-act="setJotting"]', "Bin bags");
-/* Blur the box rather than clicking somewhere else to do it: the app commits
-   on change, and a stray click lands on whatever the layout put under it. */
-await p.evaluate(() => document.activeElement && document.activeElement.blur());
-await p.waitForTimeout(300);
-
-console.log("\n--- a second press is a second box, not a longer one ---");
-await p.click('.group [data-act="addJotting"]');
-await p.waitForTimeout(300);
+console.log("\n--- a second entry is a second box, not a longer one ---");
+await writeIn("Light bulbs", shops[0]);
 let now = await boxes();
 console.log("  ", JSON.stringify(now));
-ok(now.length === 2, "two presses give two boxes");
+ok(now.length === 2, "two entries give two boxes");
 ok(now.includes("Bin bags"), "and the first still says what was typed in it");
 
 console.log("\n--- writing on the list costs nothing ---");

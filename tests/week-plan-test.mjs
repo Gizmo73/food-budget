@@ -2,10 +2,11 @@
    them and stop at each end, a meal can be written straight onto a day with
    no ingredients behind it, and two days can be swapped wholesale - slots,
    edits, extras and anything written all moving together. */
-import { browser, BASE } from "./browser.mjs";
+import { browser, BASE, pinClock } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 390, height: 900 }, colorScheme: "dark" });
+await pinClock(ctx, "2026-08-01T12:00:00");
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };

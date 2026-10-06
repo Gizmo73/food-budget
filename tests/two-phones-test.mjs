@@ -1,7 +1,7 @@
 /* The real thing: two browsers, one fake shared file, driven through the app's
    own buttons. The unit test proves the merge rules; this proves the app
    actually stamps what it changes and sends it. */
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 
 const fail = [];
 const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
@@ -16,6 +16,7 @@ const b = await browser();
 
 async function phone(name) {
   const ctx = await b.newContext({ viewport: { width: 412, height: 900 } });
+  await pinClock(ctx);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => { console.log(`  ${name} pageerror: ${e.message}`); fail.push("pageerror"); });
 

@@ -100,9 +100,10 @@ console.log("\n--- the shape survives ---");
 
 console.log("\n--- and through the app's own date box ---");
 {
-  const { browser, BASE } = await import("./browser.mjs");
+  const { browser, BASE, pinClock } = await import("./browser.mjs");
   const b = await browser();
   const ctx = await b.newContext({ viewport: { width: 412, height: 900 } });
+  await pinClock(ctx);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => { console.log("  pageerror: " + e.message); fail.push("pageerror"); });
 

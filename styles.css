@@ -123,7 +123,6 @@ a:hover { color:var(--ink); }
   font-variant-numeric:tabular-nums; font-size:16px; font-weight:500;
   white-space:nowrap; width:74px; text-align:right;
 }
-.leader { display:none; }
 .ticket .meta.save { color:var(--ok); font-weight:500; }
 
 .stale { color:var(--alert); font-weight:500; }
@@ -177,6 +176,15 @@ a:hover { color:var(--ink); }
 .inp.code { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:13px; letter-spacing:0; }
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
 
+/* the way into adding to the shopping list: it looks like the field it opens */
+.addbar {
+  display:flex; align-items:center; gap:10px; width:100%; min-height:44px; margin-bottom:11px;
+  padding:0 13px; border:1px solid var(--outline); border-radius:var(--r-m);
+  background:var(--surface-2); color:var(--ink-2); font-size:16px; text-align:left;
+}
+.addbar i { color:var(--accent); font-size:17px; }
+.addbar:active { background:var(--surface-3); }
+
 /* search */
 .search { position:relative; margin-bottom:11px; }
 .search .inp { border-radius:var(--r-m); padding-left:38px; }
@@ -204,10 +212,6 @@ a:hover { color:var(--ink); }
 .tabs button[data-on="1"] { color:var(--ink); }
 .tabs button[data-on="1"] .cnt { background:color-mix(in srgb, var(--accent) 20%, transparent); }
 
-/* The five pages ride one track, so a swipe moves between them. */
-.track { overflow:hidden; touch-action:pan-y; }
-.track.sliding { transition:transform .32s cubic-bezier(.32,.72,0,1); }
-
 .pager { display:flex; gap:5px; padding:0 17px 11px; }
 .pager span { height:2px; border-radius:2px; flex:1; background:var(--outline); transition:flex .28s ease, background .28s ease; }
 .pager span[data-on="1"] { flex:6; background:var(--accent); }
@@ -221,6 +225,7 @@ a:hover { color:var(--ink); }
   border-radius:0; cursor:pointer; padding:0;
   color:inherit; font:inherit; -webkit-tap-highlight-color:transparent; }
 .dayrow:active { opacity:0.7; }
+.dayblock[data-past="1"] .dayrow, .dayblock[data-past="1"] .writtenline { opacity:0.5; }
 .dayblock[data-armed="1"] { background:color-mix(in srgb, var(--accent) 10%, transparent);
   box-shadow:0 0 0 1px var(--accent); border-radius:var(--r-m); padding-left:8px; padding-right:8px; }
 .writtenline { font-size:13px; color:var(--ink-2); margin-top:4px; }

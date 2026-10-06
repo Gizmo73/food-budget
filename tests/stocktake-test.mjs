@@ -2,7 +2,7 @@
    not the only thing that empties a cupboard and nobody is going to record a
    snack. So the app asks once, at the point it is worth asking, and only about
    what the plan actually needs. */
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 import { migrate, mergeSnapshots, newIngredient, newProduct, SCHEMA_VERSION } from "../lib/store.js";
 import { computeShopping, neededPortions } from "../lib/calc.js";
 
@@ -31,7 +31,7 @@ console.log("--- what the plan asks for ---");
       { ingredientId: "mince", portions: 1 }, { ingredientId: "pasta", portions: 0.5 }] }],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   });
-  const c = computeShopping(db);
+  const c = computeShopping(db, { asOf: "2026-08-03" });
   ok(Math.abs(neededPortions(c, "mince") - 2) < 0.001, `Mince is needed twice over (${neededPortions(c, "mince")})`);
   ok(Math.abs(neededPortions(c, "pasta") - 1) < 0.001, "and Pasta once");
   ok(neededPortions(c, "cake") === 0, "Cake is not on the plan, so a stock check never asks about it");
@@ -72,6 +72,7 @@ console.log("\n--- a count beats arithmetic when two phones disagree ---");
 console.log("\n--- through the app ---");
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, colorScheme: "dark" });
+await pinClock(ctx, "2026-08-03T08:00:00");
 const p = await ctx.newPage();
 p.on("pageerror", (e) => { console.log("  pageerror: " + e.message); fail.push("pageerror"); });
 p.on("console", (m) => m.type() === "error" && fail.push("console: " + m.text()));

@@ -7,23 +7,23 @@
 
 import {
   loadDb, saveDb, loadSettings, saveSettings, seed, migrate, newIngredient,
-  resolveLine, resolveProduct, norm, uid, slug, uniqueId, canonicalStore, storeNames,
+  resolveLine, resolveProduct, norm, uid, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
   findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop, moveProduct,
   tidyProductName, markDeleted, shiftPlan, daysBetween, SLOTS,
 } from "./lib/store.js";
 import {
-  computeShopping, mealCost, portionCost, itemPortionCost, packCost, activeOffer,
-  offerLabel, offerExpired, anyOfferExpired, offerMeaning, groupByStore, searchItems,
+  computeShopping, mealCost, portionCost, packCost, activeOffer,
+  offerLabel, offerExpired, offerMeaning, groupByStore, searchItems,
   ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
-  stockPortions, stockPacks, packPortions, productStock,
-  productsOf, productById, chooseProduct, isPinned, productPortionCost, cheaperThan, mealStock,
+  stockPortions, packPortions, productStock,
+  productsOf, productById, chooseProduct, isPinned, productPortionCost, mealStock,
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
   labelToPer100, labelSizing,
-  portionsPer, productNutrition, itemPortions, itemNutrition, itemProduct, itemIsGrams,
-  nutritionUsable, neededPortions, dayOverride, planItems, dayExtras,
+  portionsPer, productNutrition, itemPortions, itemProduct, itemIsGrams,
+  neededPortions, dayOverride, planItems, dayExtras,
 } from "./lib/calc.js";
-import { scanSupported, decoderKind, startScan, decodeStill, QR_FORMATS } from "./lib/scan.js";
+import { startScan, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
 import { readReceipt, readNutrition } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
@@ -442,6 +442,7 @@ function draw() {
 
 function render() {
   state.calc = computeShopping(state.db);
+  state.drawnDay = today();
   const sheetScroll = document.querySelector(".sheet") ? document.querySelector(".sheet").scrollTop : null;
   const pageScroll = window.scrollY;
 
@@ -609,9 +610,9 @@ function viewList() {
       c.problems.length === 1 ? "it is" : "they are"
     } missing from this list. Set it to 1 on the Items tab if the pack is not divided into servings.</div>`);
 
-  /* Shops to show: the ones this fortnight needs something from, then any
-     that carry nothing but hand-written lines. A shop that needs nothing and
-     has nothing written on it has no reason to take up room. */
+  /* Shops to show: the ones the plan needs something from, then any that carry
+     nothing but hand-written lines. A shop with neither has no reason to take
+     up room. */
   const jottings = state.db.jottings || [];
   const jotsFor = (name) => jottings.filter((j) => shopKey(j.store) === shopKey(name));
   /* Shops that exist only because something was written on them. Lines with
@@ -638,61 +639,45 @@ function viewList() {
         ${
           shut
             ? ""
-            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map((j) => jotting(j)).join("")}
-                 <button class="btn small ghost" style="margin-top:4px" data-act="addJotting"
-                   data-store="${esc(store.name)}">+ Add something by hand</button></section>`
+            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map((j) => jotting(j)).join("")}</section>`
         }
       </div>`;
   };
 
-  /* Nothing planned and nothing written means there are no shops to hang an
-     "Add item" button under, so offer the ones the app already knows rather
-     than leaving the list a dead end you cannot write on. */
-  const knownShops = groups.length
-    ? []
-    : [
-        ...new Set(
-          state.db.ingredients.flatMap((i) => (i.products || []).map((p) => p.store)).filter(Boolean)
-        ),
-      ].sort();
-
-  /* Every shop the app knows, for filing an unfiled line against. */
-  const allShops = [
-    ...new Set([
-      ...c.stores.map((st) => st.name),
-      ...state.db.ingredients.flatMap((i) => (i.products || []).map((p) => p.store)),
-    ].filter(Boolean)),
-  ].sort();
-
-  /* Anything written down before you knew where it was coming from. This
-     group is always offered, shops or not, so there is never a state where
-     something cannot be written down. */
+  /* Lines written before you knew where to get them, offered every shop to be
+     filed under. Only there while there are some. */
   const loose = jottings.filter((j) => !shopKey(j.store));
   const looseShut = isShut("collapsedList", "\u0000loose");
-  const looseGroup = `<div class="group">
+  const looseGroup = loose.length
+    ? `<div class="group">
       <button class="grouphead" data-act="toggleStore" data-which="collapsedList" data-store="&#0;loose">
         <span class="chev"><i class="ph ph-caret-${looseShut ? "right" : "down"}"></i></span>
         <span class="grow">
           <span class="gname">No shop yet</span>
-          <span class="gmeta" style="display:block">${
-            loose.length ? `${loose.length} item${loose.length === 1 ? "" : "s"}` : "nothing written"
-          }</span>
+          <span class="gmeta" style="display:block">${loose.length} item${loose.length === 1 ? "" : "s"}</span>
         </span>
       </button>
-      ${
-        looseShut
-          ? ""
-          : `<section class="card">${loose.map((j) => jotting(j, allShops)).join("")}
-               <button class="btn small ghost" style="margin-top:4px" data-act="addJotting"
-                 data-store="">+ Add something by hand</button></section>`
-      }
-    </div>`;
+      ${looseShut ? "" : `<section class="card">${loose.map((j) => jotting(j, listShops())).join("")}</section>`}
+    </div>`
+    : "";
 
   const body =
-    (groups.length
+    (groups.length || loose.length
       ? groups.map(group).join("")
-      : `<div class="empty">Nothing to buy yet. Plan meals on the Plan tab, or write something below.</div>`) +
+      : `<div class="empty">Nothing to buy yet. Plan meals on the Plan tab, or add something above.</div>`) +
     looseGroup;
+
+  /* The list is for today onward, so say so whenever days have been left out;
+     otherwise a shorter list reads as a mistake. */
+  const planDays = state.db.plan.length;
+  const gone = state.db.planStart ? Math.min(c.firstDay, planDays) : 0;
+  const fromToday = gone
+    ? `<p class="muted" style="margin:0 0 10px">${
+        gone >= planDays
+          ? "Every day of this plan has passed, so nothing is left to buy for it. Move the plan on from the Plan tab."
+          : `Counting from today. The ${gone} earlier day${gone === 1 ? "" : "s"} stay on the Plan but add nothing here.`
+      }</p>`
+    : "";
 
   const incoming = state.incoming
     ? `<div class="banner">
@@ -708,14 +693,16 @@ function viewList() {
 
   return `
     ${incoming}
+    <button class="addbar" data-act="openAdd"><i class="ph ph-plus"></i>Add to the list</button>
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn solid grow" data-act="openReceipt">Read a receipt</button>
       <button class="btn tonal grow" data-act="openScan">Scan an item</button>
     </div>
     <button class="btn tonal wide" style="margin-bottom:10px" data-act="openStocktake"${
-      c.plannedMeals ? "" : " disabled"
+      c.upcomingMeals ? "" : " disabled"
     }>Stock check${toCount ? ` &middot; ${toCount} to count` : ""}</button>
     ${notes.join("")}
+    ${fromToday}
     ${body}
     <div class="till">
       <div class="line"><span class="lbl">Total</span><span class="big">£${money(c.total)}</span></div>
@@ -752,6 +739,15 @@ function fitJot(t) {
 /* Shops are compared by name, and a name typed by hand will not always match
    the capitals a receipt shouted. */
 const shopKey = (s) => String(s || "").trim().toLowerCase();
+
+/* Every shop the app knows by name, whether something is bought there or only
+   written on its list. The first spelling met wins. */
+function listShops() {
+  const seen = new Map();
+  const names = [...storeNames(state.db.ingredients), ...(state.db.jottings || []).map((j) => j.store)];
+  for (const name of names) if (shopKey(name) && !seen.has(shopKey(name))) seen.set(shopKey(name), name);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
 
 /* A hand-written line: something with no item behind it, typed onto a shop as
    you think of it. There is no product, no pack count and no price, which is
@@ -1171,14 +1167,17 @@ function viewPlan() {
     const armed = swapping === idx;
     const other = swapping !== null && swapping !== undefined && !armed;
     const written = (day.written || []).length;
+    // days already gone stay editable but add nothing to the list
+    const past = !!start && idx < c.firstDay;
+    const isToday = !!start && idx === daysBetween(start, today());
 
-    return `<div class="dayblock"${armed ? ' data-armed="1"' : ""}>
+    return `<div class="dayblock"${armed ? ' data-armed="1"' : ""}${past ? ' data-past="1"' : ""}>
       <button class="dayrow" data-act="openDay" data-idx="${idx}"
         aria-label="Edit ${name}${dated ? ", " + esc(dated) : ""}">
         <div class="row">
           <span class="dname grow">${name}${
             dated ? ` <span class="muted" style="font-weight:400">${esc(dated)}</span>` : ""
-          }</span>
+          }${isToday ? ' <span class="pill on">Today</span>' : ""}</span>
           <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
           <span class="chev" style="margin-left:6px"><i class="ph ph-caret-right"></i></span>
         </div>
@@ -2032,7 +2031,7 @@ function viewItems() {
           }</span>
         </div>
         <div class="row">
-          <span class="muted grow">Needs ${trim2(needOf(ing))} portions this fortnight</span>
+          <span class="muted grow">Needs ${trim2(needOf(ing))} portions ${state.db.planStart ? "from today" : "across the plan"}</span>
           <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
         </div>
       </div></section>`;
@@ -2123,7 +2122,110 @@ function viewSheet() {
   if (s.kind === "rollover") return sheetRollover(s);
   if (s.kind === "labelAsk") return sheetLabelAsk(s);
   if (s.kind === "day") return sheetDay(s);
+  if (s.kind === "add") return sheetAdd(s);
   return "";
+}
+
+/* ----------------------------- add to the list ------------------------- */
+
+/* Open the heading something has just gone under, or it lands where nobody
+   can see it. */
+async function openListShop(store) {
+  const key = store || "\u0000loose";
+  const shut = state.settings.collapsedList || [];
+  if (!shut.some((n) => shopKey(n) === shopKey(key))) return;
+  state.settings = { ...state.settings, collapsedList: shut.filter((n) => shopKey(n) !== shopKey(key)) };
+  await saveSettings(state.settings);
+}
+
+// your own items first: a pack, a price and a stock figure all hang off one
+const addMatches = (s) => {
+  const q = (s.query || "").trim();
+  return q ? searchItems(q, state.db.ingredients).slice(0, 8) : [];
+};
+
+/* What a written line will say. Left alone it follows the search when nothing
+   matched, so a miss is one tap from being written down. */
+const writtenText = (s) =>
+  s.text !== undefined ? s.text : addMatches(s).length ? "" : (s.query || "").trim();
+
+/* The part of the sheet that follows the typing, redrawn by itself on every
+   keystroke because a full rebuild would take the keyboard away. */
+function addLive(s) {
+  const q = (s.query || "").trim();
+  const found = addMatches(s);
+
+  const rows = found
+    .map((ing) => {
+      const chosen = chooseProduct(ing);
+      const on = Math.max(0, Number(ing.extraPacks) || 0);
+      return `<div class="row" style="gap:8px;margin-bottom:8px">
+        <button class="pickrow subcard grow" style="margin:0" data-act="addFromSheet" data-id="${esc(ing.id)}">
+          <span class="shop">${esc(ing.name)}${on ? ` <span class="qty">&times; ${on}</span>` : ""}</span>
+          <span class="detail">${
+            chosen
+              ? `${esc(chosen.store || "No shop yet")} &middot; £${money(chosen.pricePerPack)} a pack`
+              : "Nothing to buy yet"
+          }</span>
+        </button>
+        ${
+          // the space is kept when there is nothing to take back, so rows stay one width
+          on
+            ? `<button class="btn small ghost" data-act="lessExtra" data-id="${esc(ing.id)}"
+                aria-label="One fewer ${esc(ing.name)}">&minus;</button>`
+            : `<span class="btn small ghost" style="visibility:hidden" aria-hidden="true">&minus;</span>`
+        }
+      </div>`;
+    })
+    .join("");
+
+  const kept = state.db.ingredients.length;
+  const hint = !kept
+    ? `<p class="muted">You do not keep any items yet, so write it in below.</p>`
+    : !q
+    ? `<p class="muted">Start typing to search the ${kept} items you keep.</p>`
+    : found.length
+    ? ""
+    : `<p class="muted">Nothing you keep matches &ldquo;${esc(q)}&rdquo;. Write it in below.</p>`;
+
+  const chip = (name, label, on, extra = "") =>
+    `<button class="pill${on ? " on" : ""}" data-act="pickAddShop" data-store="${esc(name)}"${extra}>${label}</button>`;
+  const picked = s.shop || "";
+
+  return `${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
+    ${rows}${hint}
+    <h3>Not one of your items?</h3>
+    <label class="field"><span class="eyebrow">Write it in</span>
+      <input class="inp" value="${esc(writtenText(s))}" placeholder="Bin bags" data-act="setAddText"></label>
+    <span class="eyebrow" style="display:block;margin:12px 0 6px">Which shop</span>
+    <div class="row" style="gap:6px;flex-wrap:wrap">
+      ${chip("", "No shop yet", !picked && !s.newShop)}
+      ${listShops()
+        .map((n) => chip(n, esc(n), !s.newShop && shopKey(picked) === shopKey(n)))
+        .join("")}
+      <button class="pill${s.newShop ? " on" : ""}" style="border-style:dashed" data-act="addShopNew">+ New shop</button>
+    </div>
+    ${
+      s.newShop
+        ? `<div data-scroll="add-shop" style="margin-top:8px"><input class="inp" value="${esc(picked)}"
+             placeholder="Shop name" data-act="setAddShop" data-field="name" aria-label="New shop"></div>`
+        : ""
+    }
+    <button class="btn solid wide" style="margin-top:12px" data-act="addWritten">Write it on the list</button>`;
+}
+
+function sheetAdd(s) {
+  return shell(
+    "Add to the list",
+    "Search what you keep, or write something in.",
+    `<div class="search" data-scroll="add-search">
+       <span class="mag">&#9906;</span>
+       <input class="inp" type="search" value="${esc(s.query || "")}" placeholder="Search your items"
+         data-act="setAddQuery" data-field="name" autocomplete="off" aria-label="Search your items">
+     </div>
+     <div id="add-live">${addLive(s)}</div>
+     <button class="btn tonal wide" style="margin-top:14px" data-act="closeSheet">Done</button>`
+  );
 }
 
 /* Asked straight after a scan, and only then, because that is the one moment
@@ -2291,7 +2393,7 @@ function sheetStocktake(s) {
 
   return shell(
     "Stock check",
-    `${wanted.length} thing${wanted.length === 1 ? "" : "s"} this fortnight needs. ${done} of ${
+    `${wanted.length} thing${wanted.length === 1 ? "" : "s"} the plan still needs. ${done} of ${
       products.length
     } counted.`,
     `<div class="bar" style="margin-bottom:12px"><span style="width:${
@@ -3887,11 +3989,7 @@ const actions = {
   openSettings: () => setSheet({ kind: "settings", msg: "", err: false }),
   openReceipt: () => setSheet({ kind: "receipt", busy: false, err: "", store: "", rows: null }),
 
-  /* The moment worth asking is after the plan is made, so the check is opened
-     from the List tab and remembers what the list came to when it started.
-     Saying what the count did to the total is the whole reason to bother. */
-  /* The next fortnight starts where this one ended, which is the answer often
-     enough to be the default and easy enough to change when it is not. */
+  // the next fortnight starts where this one ended: the usual answer, and easy to change
   openRollover: () => {
     const days = state.db.plan.length;
     const start = state.db.planStart || "";
@@ -3945,6 +4043,8 @@ const actions = {
     draw();
   },
 
+  /* Opened from the List tab once the plan is made, remembering what the list
+     came to so that finishing can say what the count did to the total. */
   openStocktake: () =>
     setSheet({ kind: "stock", startedAt: new Date().toISOString(), before: state.calc.total }),
 
@@ -4291,24 +4391,54 @@ const actions = {
   },
   /* ---- hand-written lines ---- */
 
-  addJotting: async (el) => {
-    const id = uid();
-    const store = el.dataset.store || "";
-    /* A box you cannot see is no use, and the buttons offered on an empty list
-       can point at a shop that was collapsed earlier, so open it first. */
-    const shut = state.settings.collapsedList || [];
-    if (shut.some((n) => shopKey(n) === shopKey(store))) {
-      state.settings = {
-        ...state.settings,
-        collapsedList: shut.filter((n) => shopKey(n) !== shopKey(store)),
-      };
-      await saveSettings(state.settings);
+  openAdd: () => {
+    state.reveal = "add-search";
+    setSheet({ kind: "add", query: "", shop: "", newShop: false, msg: "", err: "" });
+  },
+
+  // one more pack of something you keep, riding on whichever shop is cheapest
+  addFromSheet: async (el) => {
+    const ing = ingredient(el.dataset.id);
+    if (!ing) return;
+    const chosen = chooseProduct(ing);
+    const packs = (Number(ing.extraPacks) || 0) + 1;
+    await openListShop((chosen && chosen.store) || "Unassigned");
+    state.sheet = {
+      ...state.sheet,
+      msg: `${ing.name} is on the list${packs > 1 ? `, ${packs} packs` : ""}.`,
+      err: "",
+    };
+    patchIngredient(ing.id, { extraPacks: packs });
+  },
+
+  pickAddShop: (el) =>
+    setSheet({ ...state.sheet, shop: el.dataset.store || "", newShop: false, err: "" }),
+  addShopNew: () => {
+    state.reveal = "add-shop";
+    setSheet({ ...state.sheet, shop: "", newShop: true, err: "" });
+  },
+
+  // something that is not one of your items, written straight onto a shop
+  addWritten: async () => {
+    const s = state.sheet;
+    const text = writtenText(s).trim();
+    if (!text) {
+      setSheet({ ...s, msg: "", err: "Write what you want to add first." });
+      return;
     }
-    /* Set before the commit, so the draw it triggers is the one that puts the
-       cursor in the new box. The button was pressed in order to type. */
-    state.reveal = id;
+    const store = s.shop ? canonicalStore(s.shop, listShops()) : "";
+    await openListShop(store);
+    state.sheet = {
+      ...s,
+      query: "",
+      text: "",
+      shop: store,
+      newShop: false,
+      msg: `\u201c${text}\u201d is on the list${store ? ` under ${store}` : ""}.`,
+      err: "",
+    };
     commit((db) => {
-      db.jottings = [...(db.jottings || []), { id, store, text: "", at: now() }];
+      db.jottings = [...(db.jottings || []), { id: uid(), store, text, at: now() }];
     });
   },
 
@@ -4417,9 +4547,6 @@ const actions = {
       ...(PER100.includes(field) ? { nutritionUpdated: now() } : {}),
     });
   },
-  setProductField: (el) =>
-    patchProduct(el.dataset.id, el.dataset.product, { [el.dataset.field]: el.value }),
-
   shootLabel: (el) => shootLabel(el.dataset.id, el.dataset.product),
 
   toggleLabelSize: (el) => setSheet({ ...state.sheet, useSize: el.checked }),
@@ -4999,7 +5126,7 @@ const actions = {
       db.plan = db.plan.map((day) => {
         const next = { ...day };
         SLOTS.forEach((slot) => {
-          if (next[slot.key] === id) next[slot.key] = null;
+          next[slot.key] = (day[slot.key] || []).map((m) => (m === id ? null : m));
         });
         return next;
       });
@@ -5245,6 +5372,42 @@ const actions = {
   },
 };
 
+/* ------------------------------- back button ---------------------------- */
+
+/* The app is one document with nothing behind it, so in the installed app a
+   back gesture has nowhere to go: it leaves, or lands on a dead page that has
+   to be closed and reopened. A browser gives no way to switch the button off,
+   only to keep an entry in front of the one it would fall to and answer when
+   that is popped. So back closes whatever is on top, then returns to the List,
+   and past that is simply absorbed.
+
+   Only done in the installed app. In a browser tab back is how you leave, and
+   taking it away would trap you on the page. */
+
+// sheets opened from Settings go back to Settings rather than all the way out
+const FROM_SETTINGS = ["invite", "join", "help"];
+
+function goBack() {
+  if (cam) return closeCamera();
+  const s = state.sheet;
+  if (s) return s.kind && FROM_SETTINGS.includes(s.kind) ? actions.openSettings() : setSheet(null);
+  if (state.tab !== "list") goToTab("list", -1);
+}
+
+function installBackGuard() {
+  if (!standalone() || !history.pushState) return;
+  // a reload keeps the entry it was on, so only lay the pair down once
+  if (!history.state || history.state.fs !== "app") {
+    history.replaceState({ fs: "base" }, "");
+    history.pushState({ fs: "app" }, "");
+  }
+  window.addEventListener("popstate", () => {
+    goBack();
+    // put the entry back, so the next back is caught the same way
+    if (!history.state || history.state.fs !== "app") history.pushState({ fs: "app" }, "");
+  });
+}
+
 /* --------------------------- leaving the page --------------------------- */
 
 /* Desktop browsers show their own generic "leave site?" dialog; the wording
@@ -5266,6 +5429,8 @@ window.addEventListener("beforeunload", (e) => {
 let leaving = false;
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "visible") {
+    // the list is for today onward, so a phone left open overnight must redraw
+    if (state.db && state.drawnDay !== today()) draw();
     if (!leaving) checkForChanges();
     return;
   }
@@ -5326,18 +5491,38 @@ root.addEventListener("change", dispatch);
 /* Typing does not redraw — the app commits on blur — so the box has to keep
    up with the keyboard on its own. */
 root.addEventListener("input", (e) => {
-  if (e.target.classList && e.target.classList.contains("jot")) fitJot(e.target);
+  const t = e.target;
+  if (t.classList && t.classList.contains("jot")) fitJot(t);
+
+  /* The add sheet keeps what is typed in its own state as it goes, and only
+     redraws the results, so tapping a button straight after typing is never
+     met by a page that has been rebuilt underneath the finger. */
+  const s = state.sheet;
+  if (!s || s.kind !== "add") return;
+  const act = t.dataset && t.dataset.act;
+  if (act === "setAddText") s.text = t.value;
+  else if (act === "setAddShop") s.shop = t.value;
+  else if (act === "setAddQuery") {
+    s.query = t.value;
+    s.msg = "";
+    s.err = "";
+    const live = root.querySelector("#add-live");
+    if (live) live.innerHTML = addLive(s);
+  }
 });
 
 /* --------------------------------- boot -------------------------------- */
 
 (async function boot() {
   installSwipe();
+  installBackGuard();
   try {
     state.db = await loadDb();
     state.settings = await loadSettings();
     applyTheme(state.settings.theme);
     applyAccent(state.settings.accent);
+    // open the Plan on the week that today falls in
+    state.planWeek = daysBetween(state.db.planStart, today()) >= 7 ? 1 : 0;
     draw();
     checkForChanges();
   } catch (err) {
