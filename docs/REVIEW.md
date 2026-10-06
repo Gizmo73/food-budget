@@ -4,6 +4,8 @@ Reviewed 2026-10-06 against `main` at 5411b95. Everything here was read in the
 code, then checked on screen: the fixture list at 390px, dark theme, every tab
 plus the day sheet and Settings. Suite was 35/35 green before any change.
 
+How the app should end up looking and working is in [VISION.md](VISION.md).
+
 Sections: [Summary](#summary) · [A journey, start to finish](#a-journey-start-to-finish) ·
 [Findings](#findings) · [Other apps](#other-apps) · [Plan](#plan) ·
 [Decisions I want challenged](#decisions-i-want-challenged) · [Status](#status)
@@ -140,6 +142,14 @@ forward: a comment says why the code is shaped this way *now*; the history is in
 Web fetches were blocked in this environment, so this rests on search-result
 summaries rather than hands-on use. Treat it as direction, not a teardown.
 
+Blocked when tried on 2026-10-06 (to be allowed before this is redone):
+`www.mealime.com`, `support.mealime.com`, `www.anylist.com`, `www.plantoeat.com`,
+`learn.plantoeat.com`, `paprikaapp.com`, `www.eatthismuch.com`, `listonic.com`,
+`www.getbring.com`, `www.ourgroceries.com`, `www.trolley.co.uk`, `cronometer.com`,
+`docs.mealie.io`, `www.which.co.uk`; and for the design and PWA questions
+`web.dev`, `developer.mozilla.org`, `m3.material.io`, `www.nngroup.com`.
+Reachable: `apps.apple.com` (store listings) and search-result summaries.
+
 | App | Worth borrowing | Applies here |
 |---|---|---|
 | [Plan to Eat](https://learn.plantoeat.com/help/change-your-shopping-list-date-range) | The shopping list is built from a **date range** with presets: today, next 7 days, current week, custom. Stores are remembered per item. | Direct support for "today or later". A range chip on the List, defaulting to *today onward*, with *whole plan* as the other option. |
@@ -239,20 +249,27 @@ in the add sheet.
    weekly cap, the honest figure is *spent so far + still to buy*, and that needs
    somewhere to record what was spent (receipts have it).
 2. **Stock is never taken out, so the list can under-buy.** Nothing decrements
-   stock as meals pass. Counting every day used to offset that by accident:
-   total need minus total ever bought. Counting only the days left removes the
-   offset, so stock bought on Saturday and eaten by Tuesday still reduces what
-   Wednesday's list buys. This is exactly what already happens when you delete
-   last week's meals by hand, so it is no worse than your current routine, but it
-   is a real limit. The stock check is the existing remedy; the alternative is
-   treating a day's meals as eaten when the day passes, which has merge costs.
+   stock as meals pass, so counting only the days left removes an offset that
+   counting every day gave by accident. *Settled 2026-10-06:* you do the stock
+   check by hand before every shop, which counts what is really in the cupboard,
+   including leftovers from meals you swapped, so stock is re-baselined each time
+   and counting from today is right. It would only bite if the check were skipped.
+   [VISION.md](VISION.md) makes that check the front door to shopping.
 3. **Disabling back is a trade.** Browsers offer no way to disable it, only to
    add history entries and answer when they are popped. In an installed app on
    Android, back is also the exit gesture, so absorbing it at the root removes
    the quickest way out (Home still works). Closing layers first is the part that
-   helps; I have limited the trap to the installed app. I could not reproduce
-   "the page breaks", so please tell me what you see: a blank page, the previous
-   screen, or the app closing.
+   helps; I have limited the trap to the installed app.
+   *Reported 2026-10-06:* back gives a completely blank page in the app's
+   background colour. That is the signature of the browser's empty starting page,
+   not of the app: the installed app has no entry behind it, back falls onto that
+   empty one, and there is no page there to run any code, which is why only closing
+   and reopening helps. The guard keeps an entry in front of it, so it should now
+   be unreachable. I cannot test on a phone, so after updating please check two
+   things. *Settings → Install this app* should say "Installed. You are running it
+   as its own app", because that is the condition the guard runs under. And back
+   from the List should do nothing. If it still goes blank, the app is not
+   reporting as installed on your phone, and I would widen the condition.
 4. **Is the add sheet the right shape?** I have made it a bottom sheet with the
    search focused. The alternative is a search row pinned at the top of the List.
    The sheet is quieter when you are not adding; the pinned row is one tap
@@ -270,4 +287,6 @@ in the add sheet.
 | Back button | Done. `back-button-test`, which fails with the guard removed |
 | B1, B2, B8 | Done. `meal-delete-test` covers B1; the add sheet's shop chips exercise B8 |
 | Dead code | Done, except unused parameters |
-| Phase 1 onwards | Not started, waiting on your steer on the decisions above |
+| Stock under-buying | Settled: the pre-shop stock check covers it |
+| Back button blank page | Guard should prevent it; needs confirming on the phone |
+| Phase 1 onwards | Not started. Waiting for the research domains to be opened, then your steer on [VISION.md](VISION.md) |
