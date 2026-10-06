@@ -4,7 +4,7 @@
    2. a freshly added ingredient defaults to one portion, not half;
    3. a shopping line reads "Name × N · £x each · offer", with no stock to
       reconcile in your head. */
-import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, pick } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: "dark" });
@@ -52,7 +52,7 @@ ok(focused.act === "setMealName" && focused.field === "name", "the new meal's na
 ok(focused.value === "New meal", "with its placeholder name ready to overwrite");
 
 console.log("\n--- a new ingredient defaults to one portion ---");
-await p.click('[data-act="addMealIng"]');
+await pick(p, '[data-act="addMealIng"]', { index: 0 });
 await p.waitForTimeout(400);
 const portions = await p.$eval('[data-act="setMealPortions"]', (e) => e.value);
 console.log("   portions:", portions);

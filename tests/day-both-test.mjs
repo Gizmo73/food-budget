@@ -2,7 +2,7 @@
    changed for both at a time. Changing what is in a meal for just that day does
    the same, and only a day where you really differ shows two. Repeat copies the
    first planned day into the empty days of this week from today. */
-import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer, pick } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, colorScheme: "dark" });
@@ -60,18 +60,18 @@ ok(s4.length === 2 && /^Lee/.test(s4[0]) && /^Sam/.test(s4[1]), `a day where you
 console.log("\n--- changing what is in the meal changes it for both ---");
 await p.click('[data-act="openDay"][data-idx="3"]');
 await p.waitForTimeout(250);
-ok((await p.$$('[data-act="setDaySlot"]')).length === 0, "the day shows one picker for each part, not two");
+ok((await p.$$('[data-act="pickDaySlot"]')).length === 0, "the day shows one picker for each part, not two");
 await p.click('[data-act="toggleDayFold"][data-key="dinner"]');
 await p.waitForTimeout(200);
-ok((await p.$$('[data-act="setDayIng"][data-key="dinner"]')).length === 2, "and one list of items, for both of you");
-await p.selectOption('[data-act="setDayIng"][data-key="dinner"][data-i="1"]', "newpot");
+ok((await p.$$('[data-act="pickDayIng"][data-key="dinner"]')).length === 2, "and one list of items, for both of you");
+await pick(p, '[data-act="pickDayIng"][data-key="dinner"][data-i="1"]', "newpot");
 await settle();
 let db = await readDb();
 const edits = db.plan[3].edits.dinner.map((o) => o && o.items.map((it) => it.ingredientId).join());
 console.log("   ", JSON.stringify(edits));
 ok(edits[0] === "beef,newpot" && edits[1] === "beef,newpot", "the mash is swapped for new potatoes for both");
 ok(db.meals.find((m) => m.id === "pm").items.map((i) => i.ingredientId).join() === "beef,potato", "and the shared meal is untouched");
-ok((await p.$$('[data-act="setDaySlot"]')).length === 0, "the day still shows as one choice, since you were changed together");
+ok((await p.$$('[data-act="pickDaySlot"]')).length === 0, "the day still shows as one choice, since you were changed together");
 await p.click('[data-act="closeSheet"]');
 await settle();
 s3 = await summaries(3);
@@ -88,7 +88,7 @@ ok(!db.plan[3].edits, "Undo edits clears it for both, and tidies the day");
 
 console.log("\n--- saving the edit as a new meal for both ---");
 // the fold stays open across the redraw, so the items are still there to change
-await p.selectOption('[data-act="setDayIng"][data-key="dinner"][data-i="1"]', "newpot");
+await pick(p, '[data-act="pickDayIng"][data-key="dinner"][data-i="1"]', "newpot");
 await settle();
 await p.click('[data-act="saveDayMeal"][data-key="dinner"]');
 await answer(p, { fill: "Pie and New Potatoes" });
@@ -103,11 +103,11 @@ console.log("\n--- splitting a slot, then joining it ---");
 await p.click('[data-act="openDay"][data-idx="3"]');
 await p.click('[data-act="splitSlot"][data-key="breakfast"]');
 await p.waitForTimeout(200);
-ok((await p.$$('[data-act="setDaySlot"][data-key="breakfast"]')).length === 2, "splitting breakfast gives each of you a picker");
-ok((await p.$$('[data-act="setDaySlotBoth"]')).length === 2, "and the other two parts of the day are still one each");
+ok((await p.$$('[data-act="pickDaySlot"][data-key="breakfast"]')).length === 2, "splitting breakfast gives each of you a picker");
+ok((await p.$$('[data-act="pickDaySlotBoth"]')).length === 2, "and the other two parts of the day are still one each");
 await p.click('[data-act="joinSlot"][data-key="breakfast"]');
 await settle();
-ok((await p.$$('[data-act="setDaySlot"]')).length === 0, "Same for both folds it back");
+ok((await p.$$('[data-act="pickDaySlot"]')).length === 0, "Same for both folds it back");
 await p.click('[data-act="closeSheet"]');
 
 console.log("\n--- repeat, from today, into the empty days ---");

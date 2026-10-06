@@ -72,14 +72,14 @@ const asked = await p.evaluate(() => {
     return el ? { value: el.value, eyebrow: el.closest("label").querySelector(".eyebrow").textContent.trim() } : null;
   };
   return {
-    kind: line.querySelector("[data-act='setRowTarget']").value,
+    kind: line.querySelector("[data-act='pickRowTarget']").textContent.trim(),
     ingredient: label("setRowName"),
     product: label("setRowProductName"),
     why: [...line.querySelectorAll(".why")].map((e) => e.textContent.replace(/\s+/g, " ").trim()),
   };
 });
 console.log("   ", JSON.stringify(asked, null, 1));
-ok(asked.kind === "__new__", "an unrecognised line defaults to adding something new");
+ok(asked.kind === "Add as a new item", "an unrecognised line defaults to adding something new");
 ok(!!asked.ingredient, "it asks for the ingredient");
 ok(!!asked.product, "and separately for the product name");
 ok(asked.ingredient && /ingredient/i.test(asked.ingredient.eyebrow), "the ingredient box says what it is for");

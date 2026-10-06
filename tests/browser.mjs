@@ -39,6 +39,29 @@ export async function answer(p, { fill, yes = true } = {}) {
   await p.waitForSelector(".dialog", { state: "detached" });
 }
 
+/* Choose from the app's own picker: open it from the button, then tap a row by
+   the id it carries ("newpot"), by position ({ index }), or after typing a
+   search ({ query, value }). Cancelling is { cancel: true }. */
+export async function pick(p, selector, choice) {
+  await p.click(selector);
+  await p.waitForSelector(".picker");
+  if (choice && choice.query !== undefined) {
+    await p.fill(".picker input", choice.query);
+  }
+  if (choice && choice.cancel) {
+    await p.click('[data-act="pickCancel"]');
+  } else {
+    const row =
+      typeof choice === "string" ? choice : choice.value !== undefined ? choice.value : null;
+    await p.click(
+      row !== null
+        ? `.picker .pickrow[data-value="${row}"]`
+        : `.picker .pickrow >> nth=${choice.index || 0}`
+    );
+  }
+  await p.waitForSelector(".picker", { state: "detached" });
+}
+
 export const BASE = process.env.FS_BASE || "http://localhost:8123";
 
 /* Where a test may leave a screenshot. Handy locally, ignored by git. */

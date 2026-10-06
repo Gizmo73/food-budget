@@ -1,4 +1,4 @@
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pick } from "./browser.mjs";
 const TH = process.env.FS_THEME || "dark";
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 1000 }, deviceScaleFactor: 2, colorScheme: TH });
@@ -58,13 +58,13 @@ await p.evaluate(() => [...document.querySelectorAll('[data-act="openItem"]')].f
 await openFirstProduct(p);
 await p.waitForTimeout(400);
 const control = await p.evaluate(() => {
-  const sel = document.querySelector('[data-act="moveProduct"]');
-  return sel ? {
-    placeholder: sel.options[0].textContent.trim(),
-    options: [...sel.options].slice(1).map((o) => o.textContent.trim()),
-    title: sel.title,
-  } : null;
+  const sel = document.querySelector('[data-act="pickMove"]');
+  return sel ? { placeholder: sel.textContent.trim(), title: sel.title } : null;
 });
+await p.click('[data-act="pickMove"]');
+await p.waitForSelector(".picker");
+control.options = await p.$$eval(".picker .pickrow .shop", (els) => els.map((e) => e.textContent.trim()));
+await p.click('[data-act="pickCancel"]');
 console.log("  ", JSON.stringify(control));
 ok(!!control, "the move control is on the product card");
 ok(control.options.includes("Milk"), "offering Milk as a destination");
@@ -79,7 +79,7 @@ ok(warned.some((w) => /only one here, so moving it takes/.test(w)),
   `and the warning is visible beneath instead: ${JSON.stringify(warned.filter((w) => /only one/.test(w)))}`);
 
 console.log("\n--- do the move ---");
-await p.selectOption('[data-act="moveProduct"]', "milk");
+await pick(p, '[data-act="pickMove"]', "milk");
 await p.waitForTimeout(600);
 const flash = await p.evaluate(() => document.querySelector(".ok")?.textContent.replace(/\s+/g, " ").trim() || "");
 console.log("   flash:", flash);
