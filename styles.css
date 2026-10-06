@@ -415,16 +415,21 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 .fb.has-pin .toast { bottom:calc(var(--tabs) + 100px + env(safe-area-inset-bottom)); }
 
 /* Spacing is set here, in steps, rather than typed afresh into each template. */
-.ta-r { text-align:right; } .noshrink { flex:0 0 auto; }
-.mt-4 { margin-top:4px; } .mt-8 { margin-top:8px; } .mt-12 { margin-top:12px; } .mt-16 { margin-top:16px; }
-.ml-6 { margin-left:6px; } .fw4 { font-weight:400; } .fw5 { font-weight:500; } .fw6 { font-weight:600; } .fw7 { font-weight:700; }
-.m-0 { margin:0; } .mt-0 { margin-top:0; } .mb-0 { margin-bottom:0; } .mt-24 { margin-top:24px; } .mb-24 { margin-bottom:24px; }
-.ta-c { text-align:center; } .d-block { display:block; } .nowrap { white-space:nowrap; } .gap-12 { gap:12px; }
-.ai-end { align-items:flex-end; } .minw-24 { min-width:24px; }
-.divided { border-top:1px solid var(--outline); margin-top:12px; padding-top:12px; }
-.mb-4 { margin-bottom:4px; } .mb-8 { margin-bottom:8px; } .mb-12 { margin-bottom:12px; } .mb-16 { margin-bottom:16px; }
-.gap-4 { gap:4px; } .gap-6 { gap:6px; } .gap-8 { gap:8px; }
-.wrap-row { flex-wrap:wrap; }
+.ta-r { text-align:right !important; } .noshrink { flex:0 0 auto !important; }
+.mt-4 { margin-top:4px !important; } .mt-8 { margin-top:8px !important; } .mt-12 { margin-top:12px !important; } .mt-16 { margin-top:16px !important; }
+.ml-6 { margin-left:6px !important; } .fw4 { font-weight:400 !important; } .fw5 { font-weight:500 !important; } .fw6 { font-weight:600 !important; } .fw7 { font-weight:700 !important; }
+.m-0 { margin:0 !important; } .mt-0 { margin-top:0 !important; } .mb-0 { margin-bottom:0 !important; } .mt-24 { margin-top:24px !important; } .mb-24 { margin-bottom:24px !important; }
+.ta-c { text-align:center !important; } .d-block { display:block !important; } .nowrap { white-space:nowrap !important; } .gap-12 { gap:12px !important; }
+.ai-end { align-items:flex-end !important; } .minw-24 { min-width:24px !important; }
+.divided { border-top:1px solid var(--outline) !important;margin-top:12px !important;padding-top:12px !important; }
+.mb-4 { margin-bottom:4px !important; } .mb-8 { margin-bottom:8px !important; } .mb-12 { margin-bottom:12px !important; } .mb-16 { margin-bottom:16px !important; }
+.gap-4 { gap:4px !important; } .gap-6 { gap:6px !important; } .gap-8 { gap:8px !important; }
+.wrap-row { flex-wrap:wrap !important; }
+.mr-4 { margin-right:4px !important; } .fs13 { font-size:13px !important; } .fs16 { font-size:16px !important; }
+.jc-end { justify-content:flex-end !important; } .dashed { border-style:dashed !important; }
+.invisible { visibility:hidden !important; }
+/* a box for a short amount, and one tall enough for an invite code */
+.qty { width:76px; } .h-invite { height:80px; }
 
 /* --------------------------- scanner and rows --------------------------- */
 .scanner {
@@ -502,4 +507,7 @@ textarea.inp.jot {
   flex:1; border:0; background:none; color:var(--ink-2); padding:0 4px; min-width:44px;
   font-size:14px; font-weight:500; border-radius:var(--r-s); min-height:44px;
 }
+.seg button { white-space:nowrap; }
 .seg button[data-on="1"] { background:var(--surface); color:var(--ink); }
+/* a switch that is only as wide as its words, as beside an amount */
+.seg.noshrink button { flex:0 0 auto; padding:0 12px; }

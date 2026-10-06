@@ -35,7 +35,7 @@ await p.waitForTimeout(400);
 console.log("--- sorted ---");
 await p.click('[data-act="tab"][data-tab="meals"]');
 await p.waitForTimeout(400);
-const names = await p.$$eval('[data-act="openMeal"] div[style*="700"]', (e) => e.map((x) => x.textContent.trim()));
+const names = await p.$$eval('[data-act="openMeal"] .mealname', (e) => e.map((x) => x.textContent.trim()));
 console.log("  ", JSON.stringify(names));
 const sorted = [...names].sort((a, b) => a.localeCompare(b));
 ok(JSON.stringify(names) === JSON.stringify(sorted), "meals are in name order");
@@ -56,7 +56,7 @@ ok(counts[1] === `Can make ${MAKEABLE}`, `and counts what you could cook (${coun
 
 await p.click('[data-act="setMealFilter"][data-filter="stock"]');
 await p.waitForTimeout(500);
-const filtered = await p.$$eval('[data-act="openMeal"] div[style*="700"]', (e) => e.map((x) => x.textContent.trim()));
+const filtered = await p.$$eval('[data-act="openMeal"] .mealname', (e) => e.map((x) => x.textContent.trim()));
 console.log("  ", JSON.stringify(filtered));
 ok(filtered.length === MAKEABLE, `${MAKEABLE} shown (${filtered.length})`);
 ok(!filtered.includes(SHORT), `the one short of an ingredient is hidden (${SHORT})`);
@@ -71,7 +71,7 @@ await p.waitForFunction(() => document.getElementById("app")?.dataset.booted ===
 await p.waitForTimeout(400);
 await p.click('[data-act="tab"][data-tab="meals"]');
 await p.waitForTimeout(400);
-const after = await p.$$eval('[data-act="openMeal"] div[style*="700"]', (e) => e.length);
+const after = await p.$$eval('[data-act="openMeal"] .mealname', (e) => e.length);
 ok(after === MAKEABLE, `still filtered after a reload (${after})`);
 
 console.log("\n--- an open meal is never filtered away ---");
@@ -88,7 +88,7 @@ await p.waitForTimeout(500);
 const openStillThere = await p.evaluate(() => {
   const field = document.querySelector('[data-act="setMealName"]');
   return { open: !!field, name: field ? field.value : null,
-           cards: document.querySelectorAll('[data-act="openMeal"] div[style*="700"]').length };
+           cards: document.querySelectorAll('[data-act="openMeal"] .mealname').length };
 });
 console.log("  ", JSON.stringify(openStillThere));
 ok(openStillThere.open && (openStillThere.name || "").includes(SHORT),

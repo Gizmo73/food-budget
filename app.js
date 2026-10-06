@@ -225,8 +225,7 @@ function commit(mutator) {
      stranger's demo items onto somebody else's shopping. */
   state.db.demo = false;
   clearTimeout(saveTimer);
-  /* A failed write used to be swallowed, so you carried on typing into
-     something that was not saving and found out later, or never. */
+  // a failed write is shown, since typing on into something that is not saving is found out too late
   saveTimer = setTimeout(
     () =>
       saveDb(state.db).catch((err) => {
@@ -380,7 +379,7 @@ function viewPicker() {
   </div></div>`;
 }
 
-// a field that opens the picker, in the place a select used to be
+// a field that opens the picker
 const pickBtn = (text, attrs, label = "") =>
   `<button class="inp pickbtn" ${attrs}${label ? ` aria-label="${esc(label)}"` : ""}><span>${esc(text)}</span><i class="ph ph-caret-down"></i></button>`;
 
@@ -853,7 +852,7 @@ function viewList() {
           <span class="chev"><i class="ph ph-caret-${shut ? "right" : "down"}"></i></span>
           <span class="grow">
             <span class="gname">${esc(store.name)}</span>
-            <span class="gmeta" style="display:block">${count} item${
+            <span class="d-block gmeta">${count} item${
       count === 1 ? "" : "s"
     } &middot; £${money(store.total)}</span>
           </span>
@@ -876,7 +875,7 @@ function viewList() {
         <span class="chev"><i class="ph ph-caret-${looseShut ? "right" : "down"}"></i></span>
         <span class="grow">
           <span class="gname">No shop yet</span>
-          <span class="gmeta" style="display:block">${loose.length} item${loose.length === 1 ? "" : "s"}</span>
+          <span class="d-block gmeta">${loose.length} item${loose.length === 1 ? "" : "s"}</span>
         </span>
       </button>
       ${looseShut ? "" : `<section class="card">${loose.map((j) => jotting(j, listShops())).join("")}</section>`}
@@ -904,7 +903,7 @@ function viewList() {
     ? `<div class="banner">
          <div class="row">
            <span class="grow"><strong>Changes waiting</strong><br>
-             <span style="font-size:13px">${esc(state.incoming.who || "Someone")} saved ${esc(
+             <span class="fs13">${esc(state.incoming.who || "Someone")} saved ${esc(
         ago(state.incoming.at)
       )}.</span></span>
            <button class="btn small" data-act="mergeIncoming">Merge</button>
@@ -1008,19 +1007,19 @@ function jotting(j, shops) {
      carries the shops it could be filed against, because an unfiled line is
      the one thing on this list that cannot tell you where to go. */
   const chips = shops
-    ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:7px">
-         <span class="muted" style="margin-right:2px">Put it in</span>
+    ? `<div class="gap-6 wrap-row mt-8 row">
+         <span class="mr-4 muted">Put it in</span>
          ${shops
            .map(
              (n) => `<button class="pill" data-act="fileJotting" data-id="${esc(j.id)}"
                data-store="${esc(n)}">${esc(n)}</button>`
            )
            .join("")}
-         <button class="pill" style="border-style:dashed" data-act="fileJottingNew"
+         <button class="dashed pill" data-act="fileJottingNew"
            data-id="${esc(j.id)}">+ New shop</button>
        </div>`
     : "";
-  return `<div class="ticket jotline" data-scroll="${esc(j.id)}" style="display:block">
+  return `<div class="d-block ticket jotline" data-scroll="${esc(j.id)}">
     <div class="row">
       <textarea class="inp jot grow" rows="1" data-act="setJotting" data-id="${esc(j.id)}"
         data-field="name" spellcheck="false"
@@ -1067,9 +1066,9 @@ function ticket(l, dots = true) {
           : ""
       }
     </div>
-    <div style="text-align:right">
+    <div class="ta-r">
       <div class="price">£${money(l.cost)}</div>
-      <div class="row" style="gap:4px;margin-top:3px;justify-content:flex-end">
+      <div class="gap-4 mt-4 jc-end row">
         ${
           l.extra
             ? `<button class="btn small ghost" data-act="clearExtra" data-id="${l.ing.id}"
@@ -1678,7 +1677,7 @@ function viewMeals() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .filter((m) => !stockOnly || makeable[m.id].canMake || m.id === open);
 
-  const filter = `<div class="row" style="margin-bottom:10px">
+  const filter = `<div class="mb-12 row">
     <span class="eyebrow grow">Show</span>
     <div class="seg">
       <button data-act="setMealFilter" data-filter="all" data-on="${stockOnly ? 0 : 1}">All ${
@@ -1706,12 +1705,12 @@ function viewMeals() {
 
         return `<section class="card"><div class="row" data-act="openMeal" data-id="${meal.id}">
           <div class="grow">
-            <div style="font-weight:700">${esc(meal.name)}</div>
+            <div class="fw7 mealname">${esc(meal.name)}</div>
             <div class="muted">${meal.items.length} item${
           meal.items.length === 1 ? "" : "s"
         } &middot; ${note}</div>
           </div>
-          <span class="num" style="font-weight:700">£${money(cost)}</span>
+          <span class="fw7 num">£${money(cost)}</span>
           <button class="btn small ghost" data-act="openMeal" data-id="${meal.id}">Edit</button>
         </div></section>`;
       }
@@ -1723,21 +1722,21 @@ function viewMeals() {
       return `<section class="card" data-scroll="${meal.id}">
         <div class="row"><span class="eyebrow grow">Editing</span>
           <button class="btn small ghost" data-act="closeSheet">Close</button></div>
-        <label class="field" style="margin:8px 0">
+        <label class="mt-8 mb-8 field">
           <span class="eyebrow">Meal name</span>
           <input class="inp" value="${esc(meal.name)}" data-act="setMealName" data-field="name" data-id="${meal.id}">
         </label>
         ${rows || '<p class="muted">No items yet.</p>'}
-        <div class="row" style="margin-top:8px;gap:8px">
+        <div class="gap-8 mt-8 row">
           <button class="btn small grow" data-act="addMealIng" data-id="${meal.id}"${
         state.db.ingredients.length ? "" : " disabled"
       }>Add an item</button>
           <button class="btn small danger" data-act="delMeal" data-id="${meal.id}">Delete meal</button>
         </div>
-        <p class="muted" style="margin:0 0 8px">Portions are for one person. Plan it for both of
+        <p class="mt-0 mb-8 muted">Portions are for one person. Plan it for both of
         you and it counts twice.</p>
-        <div class="row" style="margin-top:8px"><span class="eyebrow grow">Cost per serving</span>
-          <span class="num" style="font-weight:700">£${money(cost)}</span></div>
+        <div class="mt-8 row"><span class="eyebrow grow">Cost per serving</span>
+          <span class="fw7 num">£${money(cost)}</span></div>
       </section>`;
     })
     .join("");
@@ -1749,7 +1748,7 @@ function viewMeals() {
 
   /* Adding sits at the top, as it does on Items. It is the only thing you
      come to this screen to press that is not one of the meals themselves. */
-  return `<button class="btn wide" style="margin-bottom:10px" data-act="addMeal">Write in a meal</button>
+  return `<button class="mb-12 btn wide" data-act="addMeal">Write in a meal</button>
     ${filter}${nothing}${cards}<div class="spacer"></div>`;
 }
 
@@ -1800,17 +1799,17 @@ function offerEditor(subject, acts) {
     ${fields}
     ${
       kind
-        ? `<label class="field" style="margin-top:8px"><span class="eyebrow">Offer ends, optional</span>
+        ? `<label class="mt-8 field"><span class="eyebrow">Offer ends, optional</span>
            <input class="inp mono" type="date" value="${o.ends || ""}" ${field("ends")}></label>`
         : ""
     }
     ${
       expired
-        ? `<p class="muted stale" style="margin:6px 0 0">Ended ${esc(o.ends)}, so full price is being used.</p>`
+        ? `<p class="mt-8 mb-0 muted stale">Ended ${esc(o.ends)}, so full price is being used.</p>`
         : live
-        ? `<p class="muted" style="margin:6px 0 0">${esc(offerMeaning(subject))}</p>`
+        ? `<p class="mt-8 mb-0 muted">${esc(offerMeaning(subject))}</p>`
         : kind
-        ? `<p class="muted" style="margin:6px 0 0">Fill the numbers in and the offer starts counting.</p>`
+        ? `<p class="mt-8 mb-0 muted">Fill the numbers in and the offer starts counting.</p>`
         : ""
     }
   </div>`;
@@ -1882,17 +1881,17 @@ function nutritionEditor(ing, product) {
     "nutrition",
     `Nutrition`,
     summary,
-    `<div class="row" style="margin-bottom:6px">
+    `<div class="mb-8 row">
       <span class="eyebrow grow">Per 100${unit}, as the label prints it</span>
       <button class="btn small tonal" data-act="shootLabel" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan the label</button>
     </div>
-    <div class="grid2" style="margin-bottom:6px">${box("kcal", "Calories")}${box(
+    <div class="mb-8 grid2">${box("kcal", "Calories")}${box(
     "protein",
     "Protein g"
   )}</div>
-    <div class="grid2" style="margin-bottom:6px">${box("carbs", "Carbs g")}${box("fat", "Fat g")}</div>
-    <p class="why" style="margin:0">${
+    <div class="mb-8 grid2">${box("carbs", "Carbs g")}${box("fat", "Fat g")}</div>
+    <p class="m-0 why">${
       !known
         ? "Not filled in yet, so meals using this will not count towards the day."
         : per > 0
@@ -1947,7 +1946,7 @@ function portionEditor(ing, product) {
     `<label class="field mb-8"><span class="eyebrow">What it is called</span>
       <input class="inp" value="${esc(product.name || "")}" placeholder="Cathedral City"
         data-act="setProductName" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
-    <div class="grid2" style="margin-bottom:6px">
+    <div class="mb-8 grid2">
       <label class="field"><span class="eyebrow">Pack size</span>
         <input class="inp mono" type="number" step="1" min="0" value="${trim2(pack)}"
           ${attrs("setProductNumber", "packAmount")} aria-label="How much is in a pack"></label>
@@ -1956,7 +1955,7 @@ function portionEditor(ing, product) {
           ${unitOption("g", "grams")}${unitOption("ml", "millilitres")}${unitOption("", "no weight")}
         </select></label>
     </div>
-    <div class="row" style="margin-bottom:6px">
+    <div class="mb-8 row">
       <span class="eyebrow grow">A portion is</span>
       <div class="seg">
         <button ${attrs("setPortionBy")} data-by="count" data-on="${byWeight ? 0 : 1}">Count</button>
@@ -1965,16 +1964,16 @@ function portionEditor(ing, product) {
     </div>
     ${
       byWeight
-        ? `<label class="field" style="margin-bottom:6px"><span class="eyebrow">${unit} per portion</span>
+        ? `<label class="mb-8 field"><span class="eyebrow">${unit} per portion</span>
             <input class="inp mono" type="number" step="1" min="0" value="${trim2(
               Number(product.portionGrams) || 0
             )}" ${attrs("setProductNumber", "portionGrams")} aria-label="How much one portion weighs"></label>`
-        : `<label class="field" style="margin-bottom:6px"><span class="eyebrow">Portions per pack</span>
+        : `<label class="mb-8 field"><span class="eyebrow">Portions per pack</span>
             <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(
               Number(product.portionsPerPack) || 0
             )}" ${attrs("setProductNumber", "portionsPerPack")} aria-label="Portions per pack"></label>`
     }
-    <p class="why" style="margin:0">${
+    <p class="m-0 why">${
       product.packUnit ? derived : "This pack has no weight, so calories cannot be worked out from a label."
     }</p>`
   );
@@ -2301,7 +2300,7 @@ function addLive(s) {
       const chosen = chooseProduct(ing);
       const on = Math.max(0, Number(ing.extraPacks) || 0);
       return `<div class="row gap-8 mb-8">
-        <button class="pickrow subcard grow" style="margin:0" data-act="addFromSheet" data-id="${esc(ing.id)}">
+        <button class="m-0 pickrow subcard grow" data-act="addFromSheet" data-id="${esc(ing.id)}">
           <span class="shop">${esc(ing.name)}${on ? ` <span class="qty">&times; ${on}</span>` : ""}</span>
           <span class="detail">${
             chosen
@@ -2316,7 +2315,7 @@ function addLive(s) {
           on
             ? `<button class="btn small ghost" data-act="lessExtra" data-id="${esc(ing.id)}"
                 aria-label="One fewer ${esc(ing.name)}">&minus;</button>`
-            : `<span class="btn small ghost" style="visibility:hidden" aria-hidden="true">&minus;</span>`
+            : `<span class="invisible btn small ghost" aria-hidden="true">&minus;</span>`
         }
       </div>`;
     })
@@ -2340,21 +2339,21 @@ function addLive(s) {
     <h3>Not one of your items?</h3>
     <label class="field"><span class="eyebrow">Write it in</span>
       <input class="inp" value="${esc(writtenText(s))}" placeholder="Bin bags" data-act="setAddText"></label>
-    <span class="eyebrow" style="display:block;margin:12px 0 6px">Which shop</span>
-    <div class="row" style="gap:6px;flex-wrap:wrap">
+    <span class="d-block mt-12 mb-8 eyebrow">Which shop</span>
+    <div class="gap-6 wrap-row row">
       ${chip("", "No shop yet", !picked && !s.newShop)}
       ${listShops()
         .map((n) => chip(n, esc(n), !s.newShop && shopKey(picked) === shopKey(n)))
         .join("")}
-      <button class="pill${s.newShop ? " on" : ""}" style="border-style:dashed" data-act="addShopNew">+ New shop</button>
+      <button class="dashed pill${s.newShop ? " on" : ""}" data-act="addShopNew">+ New shop</button>
     </div>
     ${
       s.newShop
-        ? `<div data-scroll="add-shop" style="margin-top:8px"><input class="inp" value="${esc(picked)}"
+        ? `<div class="mt-8" data-scroll="add-shop"><input class="inp" value="${esc(picked)}"
              placeholder="Shop name" data-act="setAddShop" data-field="name" aria-label="New shop"></div>`
         : ""
     }
-    <button class="btn solid wide" style="margin-top:12px" data-act="addWritten">Write it on the list</button>`;
+    <button class="mt-12 btn solid wide" data-act="addWritten">Write it on the list</button>`;
 }
 
 function sheetAdd(s) {
@@ -2370,7 +2369,7 @@ function sheetAdd(s) {
        <button class="btn icon" data-act="openScan" aria-label="Scan the barcode on something new"><i class="ph ph-barcode"></i></button>
      </div>
      <div id="add-live">${addLive(s)}</div>
-     <button class="btn tonal wide" style="margin-top:14px" data-act="closeSheet">Done</button>`
+     <button class="mt-16 btn tonal wide" data-act="closeSheet">Done</button>`
   );
 }
 
@@ -2387,17 +2386,17 @@ function sheetLabelAsk(s) {
   return shell(
     "Photograph the label?",
     `${esc(product.name || ing.name)} has no calories or macros recorded.`,
-    `<p class="muted" style="margin-top:0">You have it in your hand now. Later means finding it
+    `<p class="mt-0 muted">You have it in your hand now. Later means finding it
      again or reading the figures off a website, so this is the cheap moment.</p>
      ${
        sized
-         ? `<p class="why" style="margin:0 0 12px">Its pack size is already set at ${trim2(
+         ? `<p class="mt-0 mb-12 why">Its pack size is already set at ${trim2(
              product.packAmount
            )}${esc(product.packUnit)}, so the label converts straight to a figure per portion.</p>`
-         : `<p class="why" style="margin:0 0 12px">Its pack size is not set either, and the label
+         : `<p class="mt-0 mb-12 why">Its pack size is not set either, and the label
             usually says that too, so this can fill in both.</p>`
      }
-     <button class="btn solid wide" style="margin-bottom:8px" data-act="shootLabel"
+     <button class="mb-8 btn solid wide" data-act="shootLabel"
        data-id="${esc(s.id)}" data-product="${esc(s.productId)}">Photograph the label</button>
      <button class="btn ghost wide" data-act="closeSheet">Not now</button>`,
     true
@@ -2447,12 +2446,12 @@ function sheetStocktake(s) {
       ${
         alone
           ? ""
-          : `<span class="eyebrow" style="display:block;margin-bottom:4px">${esc(
+          : `<span class="d-block mb-4 eyebrow">${esc(
               product.name || "Unnamed"
             )}${product.store ? ` at ${esc(product.store)}` : ""}</span>`
       }
       <div class="row">
-        <input class="inp mono" style="width:78px;text-align:right" type="number" step="0.5" min="0"
+        <input class="qty ta-r inp mono" type="number" step="0.5" min="0"
           value="${trim2(stock)}" data-act="setStockCount" ${attrs}
           aria-label="Portions of ${esc(product.name || ing.name)} in stock">
         <span class="why grow">${
@@ -2473,13 +2472,13 @@ function sheetStocktake(s) {
       const have = stockPortions(ing);
       const short = Math.max(0, needs - have);
       return `<section class="card">
-        <div class="row" style="margin-bottom:6px">
-          <span class="grow" style="font-weight:600">${esc(ing.name)}</span>
+        <div class="mb-8 row">
+          <span class="fw6 grow">${esc(ing.name)}</span>
           <span class="muted num">${
             short > 0.0001 ? `short ${trim2(short)}` : `<span class="ok-note">enough</span>`
           }</span>
         </div>
-        <p class="why" style="margin:0 0 8px">The plan needs ${trim2(needs)} portion${
+        <p class="mt-0 mb-8 why">The plan needs ${trim2(needs)} portion${
         Math.abs(needs - 1) < 0.001 ? "" : "s"
       } &middot; ${
         (all[0] || {}).stockCheckedAt
@@ -2496,7 +2495,7 @@ function sheetStocktake(s) {
     `${wanted.length} thing${wanted.length === 1 ? "" : "s"} the plan still needs. ${done} of ${
       products.length
     } counted.`,
-    `<div class="bar" style="margin-bottom:12px"><span style="width:${
+    `<div class="mb-12 bar"><span style="width:${
       products.length ? Math.round((done / products.length) * 100) : 0
     }%"></span></div>
      ${cards}
@@ -2511,18 +2510,16 @@ function sheetStocktake(s) {
   );
 }
 
-/* Sheets do not close when you tap beside them. Every one of these holds
-   something half finished, and a receipt is twenty lines of review that a
-   misjudged tap on the edge used to throw away without asking. Close is
-   always in the corner. Pass dismissable for a sheet that is only reading
-   material, where there is nothing to lose. */
+/* Tapping beside a sheet does not close it, since each holds something half
+   finished. Close is always in the corner. dismissable is for a sheet that is
+   only reading, where there is nothing to lose. */
 function shell(title, blurb, inner, dismissable = false) {
   return `<div class="scrim"${
     dismissable ? ' data-dismiss="1"' : ""
   }><div class="sheet" data-stop="1">
     <button class="btn small ghost close" data-act="closeSheet">Close</button>
     <h2>${title}</h2>
-    <p class="muted" style="margin-top:0">${blurb}</p>
+    <p class="mt-0 muted">${blurb}</p>
     ${inner}</div></div>`;
 }
 
@@ -2545,14 +2542,14 @@ function receiptStockRow(r, i) {
   const packs = perPack > 0 ? add / perPack : 0;
   const plural = (n) => (Math.abs(n - 1) < 0.001 ? "" : "s");
 
-  return `<div class="row" style="margin-top:5px">
+  return `<div class="mt-4 row">
       <span class="eyebrow grow">Into stock</span>
       <button class="btn small ghost" data-act="lessRowStock" data-i="${i}" aria-label="One pack fewer">&minus;</button>
-      <input class="inp mono" style="width:66px;text-align:right;padding:5px 7px" type="number" step="0.5" min="0"
+      <input class="qty ta-r inp mono" type="number" step="0.5" min="0"
         value="${trim2(add)}" data-act="setRowStock" data-i="${i}" aria-label="Portions to put into stock">
       <button class="btn small ghost" data-act="moreRowStock" data-i="${i}" aria-label="One pack more">+</button>
     </div>
-    <p class="why" style="margin:3px 0 0">${trim2(add)} portion${plural(add)} &middot; ${trim2(
+    <p class="mt-4 mb-0 why">${trim2(add)} portion${plural(add)} &middot; ${trim2(
     packs
   )} pack${plural(packs)} of ${trim2(perPack)} &middot; ${
     r.stockTouched ? "your figure" : `none by default${r.qty > 1 ? `, ${r.qty} on the receipt` : ""}`
@@ -2568,13 +2565,13 @@ function sheetReceipt(s) {
 
   if (s.rows && s.rows.length) {
     const old = s.rows.filter((r) => r.outdated).length;
-    inner.push(`<div class="grid2" style="margin:12px 0 8px">
+    inner.push(`<div class="mt-12 mb-8 grid2">
       <label class="field"><span class="eyebrow">Shop on this receipt</span>
         <input class="inp" value="${esc(s.store || "")}" placeholder="Tesco" data-act="setReceiptStore"></label>
       <label class="field"><span class="eyebrow">Date on this receipt</span>
         <input class="inp mono" type="date" value="${esc(dayOf(s.date))}" data-act="setReceiptDate"></label>
     </div>
-    <p class="muted" style="margin:-2px 0 8px">${
+    <p class="mt-0 mb-8 muted">${
       s.dateRead ? "Read off the receipt" : "Not legible on the photo, so today is assumed"
     }. Prices are recorded as of this date, and lines are switched off where the item has been updated since.${
       old ? ` <strong>${old} line${old === 1 ? "" : "s"} older than what you already have.</strong>` : ""
@@ -2610,7 +2607,7 @@ function sheetReceipt(s) {
         <div class="row">
           <input type="checkbox"${r.use ? " checked" : ""} data-act="toggleRow" data-i="${i}" aria-label="Use this line">
           <span class="raw grow trunc">${esc(r.raw)}</span>
-          <input class="inp mono" style="width:76px;text-align:right;padding:5px 7px" type="number" step="0.01"
+          <input class="qty ta-r inp mono" type="number" step="0.01"
             value="${r.price}" data-act="setRowPrice" data-i="${i}" aria-label="Unit price">
         </div>
         <div class="mt-4">${pickBtn(targetText(r), `data-act="pickRowTarget" data-i="${i}"`, "What this line is")}</div>
@@ -2629,13 +2626,13 @@ function sheetReceipt(s) {
                    which is how "Arla Lactofree Semi Skimmed Milk" ended up
                    being a kind of food rather than a kind of milk. */
                 r.targetId === "__new__"
-                  ? `<label class="field" style="margin-top:5px">
+                  ? `<label class="mt-4 field">
                        <span class="eyebrow">Item, the kind of thing this is</span>
                        <input class="inp" list="fb-ingredients" value="${esc(r.newName)}"
                          placeholder="Milk" data-act="setRowName" data-i="${i}"></label>`
                   : ""
               }
-               <div class="grid2" style="margin-top:5px">
+               <div class="mt-4 grid2">
                  <label class="field"><span class="eyebrow">What it is called</span>
                    <input class="inp" value="${esc(r.newProductName)}"
                      placeholder="Arla Lactofree Semi Skimmed"
@@ -2644,7 +2641,7 @@ function sheetReceipt(s) {
                    <input class="inp mono" type="number" step="0.5" min="0.5" value="${r.newPortions}"
                      data-act="setRowPortions" data-i="${i}"></label>
                </div>
-               <p class="why" style="margin:3px 0 0">${
+               <p class="mt-4 mb-0 why">${
                  r.targetId !== "__new__"
                    ? "A new kind of this, alongside the ones you already buy."
                    : sameNamed(r.newName)
@@ -2655,7 +2652,7 @@ function sheetReceipt(s) {
                }</p>`
             : ""
         }
-        <div class="row" style="margin-top:5px">
+        <div class="mt-4 row">
           <span class="why grow">${
               r.outdated
                 ? `<strong class="stale">old price</strong> &middot; ${esc(
@@ -2672,8 +2669,8 @@ function sheetReceipt(s) {
             }</button>
         </div>
         ${r.targetId ? receiptStockRow(r, i) : ""}
-        <div class="row" style="margin-top:5px">
-          <span class="eyebrow" style="white-space:nowrap">Paid</span>
+        <div class="mt-4 row">
+          <span class="nowrap eyebrow">Paid</span>
           <select class="inp grow" data-act="setRowOfferKind" data-i="${i}">
             <option value="none"${r.offerKind === "none" ? " selected" : ""}>Full price</option>
             <option value="loyalty"${r.offerKind === "loyalty" ? " selected" : ""}>Card price, any quantity</option>
@@ -2682,15 +2679,15 @@ function sheetReceipt(s) {
         </div>
         ${
           r.offerKind === "multibuy"
-            ? `<div class="row" style="margin-top:5px">
-                 <span class="eyebrow" style="white-space:nowrap">Deal</span>
-                 <input class="inp mono" style="width:58px;text-align:right" type="number" step="1" min="2"
+            ? `<div class="mt-4 row">
+                 <span class="nowrap eyebrow">Deal</span>
+                 <input class="qty ta-r inp mono" type="number" step="1" min="2"
                    value="${r.offerQty}" data-act="setRowOfferQty" data-i="${i}" aria-label="Packs in the deal">
                  <span class="eyebrow">for £</span>
                  <input class="inp mono grow" type="number" step="0.01" min="0"
                    value="${r.offerTotal || ""}" data-act="setRowOfferTotal" data-i="${i}" aria-label="Total for the deal">
                </div>
-               <p class="why" style="margin:3px 0 0">The base price is left alone, since a multibuy does not tell us what one pack costs.</p>`
+               <p class="mt-4 mb-0 why">The base price is left alone, since a multibuy does not tell us what one pack costs.</p>`
             : ""
         }
       </div>`
@@ -2702,7 +2699,7 @@ function sheetReceipt(s) {
     const live = s.rows.filter((r) => r.use && r.targetId && r.price > 0);
     const ready = live.length;
     const stocking = live.filter((r) => rowStock(r) > 0).length;
-    inner.push(`<button class="btn solid wide" style="margin-top:10px" data-act="applyReceipt"${
+    inner.push(`<button class="mt-12 btn solid wide" data-act="applyReceipt"${
       ready ? "" : " disabled"
     }>Update ${ready} price${ready === 1 ? "" : "s"}${stocking ? " and stock" : ""}</button>
     <p class="muted">Confirming a line teaches the app that receipt wording, so it matches itself next time.
@@ -2774,11 +2771,11 @@ function sheetScanned(s) {
   const was = here ? Number(here.pricePerPack) || 0 : 0;
   const delta =
     here && base > 0 && was > 0 && Math.abs(base - was) > 0.004
-      ? `<p class="muted" style="margin:-2px 0 8px">Was £${money(was)}, so that is ${
+      ? `<p class="mt-0 mb-8 muted">Was £${money(was)}, so that is ${
           base > was ? "up" : "down"
         } £${money(Math.abs(base - was))}.</p>`
       : known && making
-      ? `<p class="muted" style="margin:-2px 0 8px">A new kind of ${esc(
+      ? `<p class="mt-0 mb-8 muted">A new kind of ${esc(
           known.name
         )}. What you already have priced is left alone.</p>`
       : "";
@@ -2798,23 +2795,23 @@ function sheetScanned(s) {
       : "This barcode is new. Fill it in and it is saved when you tap the button.",
     `
     ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Barcode</span>
+    <label class="mb-8 field"><span class="eyebrow">Barcode</span>
       <input class="inp code" value="${esc(s.code)}" data-act="setScanCode"></label>
 
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is a kind of</span>
+    <label class="mb-8 field"><span class="eyebrow">This is a kind of</span>
       ${pickBtn(known ? known.name : "A new item", 'data-act="pickScanTarget"', "What kind of thing this is")}</label>
 
     ${
       known
-        ? `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Which one</span>
+        ? `<label class="mb-8 field"><span class="eyebrow">Which one</span>
              ${pickBtn(whichText, 'data-act="pickScanProduct"', "Which one")}</label>`
-        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Call the item</span>
+        : `<label class="mb-8 field"><span class="eyebrow">Call the item</span>
              <input class="inp" value="${esc(s.name)}" placeholder="Cheddar" data-act="setScanName"></label>`
     }
 
     ${
       making
-        ? `<div class="grid2" style="margin-bottom:8px">
+        ? `<div class="mb-8 grid2">
              <label class="field"><span class="eyebrow">${
                known ? "What it is called" : "What this one is called"
              }</span>
@@ -2824,12 +2821,12 @@ function sheetScanned(s) {
                <input class="inp mono" type="number" step="0.5" min="0.5" value="${s.portions}"
                  data-act="setScanPortions"></label>
            </div>`
-        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Portions per pack</span>
+        : `<label class="mb-8 field"><span class="eyebrow">Portions per pack</span>
              <input class="inp mono" type="number" step="0.5" min="0.5" value="${trim2(perPack)}"
                data-act="setScanPortions"></label>`
     }
 
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shop you are in</span>
+    <label class="mb-8 field"><span class="eyebrow">Shop you are in</span>
       <input class="inp" list="fb-scan-stores" value="${esc(s.store)}" placeholder="Leave blank to sort later"
         data-act="setScanStore">
       <datalist id="fb-scan-stores">${stores
@@ -2846,7 +2843,7 @@ function sheetScanned(s) {
     <div class="subcard">
       <div class="row">
         <div class="grow">
-          <span class="eyebrow" style="display:block">In the trolley</span>
+          <span class="d-block eyebrow">In the trolley</span>
           <span class="muted">${
             here
               ? `${trim2(stockNow)} portion${Math.abs(stockNow - 1) < 0.001 ? "" : "s"} of it in stock`
@@ -2854,17 +2851,17 @@ function sheetScanned(s) {
           }</span>
         </div>
         <button class="btn small ghost" data-act="lessScanBought">&minus;</button>
-        <span class="num" style="min-width:26px;text-align:center;font-weight:700;font-size:16px">${bought}</span>
+        <span class="minw-24 ta-c fw7 fs16 num">${bought}</span>
         <button class="btn small ghost" data-act="moreScanBought">+</button>
       </div>
       ${
         bought > 0
-          ? `<p class="muted" style="margin:7px 0 0">That is £${money(spend)}${
+          ? `<p class="mt-8 mb-0 muted">That is £${money(spend)}${
               full - spend > 0.004 ? `, saving £${money(full - spend)} on the offer` : ""
             }. ${bought} pack${bought === 1 ? "" : "s"} at ${trim2(perPack)} a pack is ${trim2(
               adding
             )} portions, so its stock goes to ${trim2(stockNow + adding)} on save.</p>`
-          : `<p class="muted" style="margin:7px 0 0">Packs in the trolley. Leave at 0 to record the price only.</p>`
+          : `<p class="mt-8 mb-0 muted">Packs in the trolley. Leave at 0 to record the price only.</p>`
       }
     </div>
 
@@ -2928,44 +2925,44 @@ function sheetSettings(s) {
 
   const repoBox = set.showRepo
     ? `
-    <div class="grid2" style="margin-bottom:10px">
+    <div class="mb-12 grid2">
       <label class="field"><span class="eyebrow">Owner</span>
         <input class="inp" value="${esc(set.owner)}" placeholder="your-username" data-act="setSetting" data-key="owner"></label>
       <label class="field"><span class="eyebrow">Repo</span>
         <input class="inp" value="${esc(set.repo)}" placeholder="shop-data" data-act="setSetting" data-key="repo"></label>
     </div>
-    <div class="grid2" style="margin-bottom:10px">
+    <div class="mb-12 grid2">
       <label class="field"><span class="eyebrow">File path</span>
         <input class="inp" value="${esc(set.path)}" data-act="setSetting" data-key="path"></label>
       <label class="field"><span class="eyebrow">Branch</span>
         <input class="inp" value="${esc(set.branch)}" data-act="setSetting" data-key="branch"></label>
     </div>
-    <label class="field" style="margin-bottom:12px"><span class="eyebrow">Access token</span>
+    <label class="mb-12 field"><span class="eyebrow">Access token</span>
       <input class="inp code" type="password" value="${esc(set.token)}" placeholder="github_pat_…"
         data-act="setSetting" data-key="token"></label>
 
     <h3>Receipt reading</h3>
-    <div class="row" style="margin-bottom:10px">
+    <div class="mb-12 row">
       <label class="row grow"><input type="radio" name="prov" value="gemini" data-act="setProvider"${on("gemini")}> Gemini</label>
       <label class="row grow"><input type="radio" name="prov" value="anthropic" data-act="setProvider"${on("anthropic")}> Claude</label>
     </div>
     ${
       set.provider === "anthropic"
-        ? `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Anthropic key</span>
+        ? `<label class="mb-12 field"><span class="eyebrow">Anthropic key</span>
             <input class="inp code" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
               data-act="setSetting" data-key="anthropicKey"></label>
-           <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
+           <label class="mb-12 field"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.anthropicModel)}" data-act="setSetting" data-key="anthropicModel"></label>`
-        : `<label class="field" style="margin-bottom:10px"><span class="eyebrow">Gemini key</span>
+        : `<label class="mb-12 field"><span class="eyebrow">Gemini key</span>
             <input class="inp code" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
               data-act="setSetting" data-key="geminiKey"></label>
-           <label class="field" style="margin-bottom:10px"><span class="eyebrow">Model</span>
+           <label class="mb-12 field"><span class="eyebrow">Model</span>
             <input class="inp mono" value="${esc(set.geminiModel)}" data-act="setSetting" data-key="geminiModel"></label>`
     }
 
     <h3>Manual backup</h3>
     <textarea class="inp code" data-act="setBackup" spellcheck="false">${esc(backupJson(state.db))}</textarea>
-    <div class="row" style="gap:8px;margin-top:8px">
+    <div class="gap-8 mt-8 row">
       <button class="btn tonal grow" data-act="copyBackup">Copy</button>
       <button class="btn tonal grow" data-act="restoreBackup">Restore</button>
       <button class="btn danger" data-act="resetAll">Reset</button>
@@ -2984,18 +2981,18 @@ function sheetSettings(s) {
       ? `${problems.length} recorded, last ${esc(ago(problems[0].at))}`
       : "none recorded",
     problems.length
-      ? `<div class="card" style="margin-bottom:8px">${problems
+      ? `<div class="mb-8 card">${problems
           .slice(0, 20)
           .map(
             (e) => `<div class="logrow">
-              <div class="row"><span class="grow" style="font-weight:600">${esc(e.what)}</span>
+              <div class="row"><span class="fw6 grow">${esc(e.what)}</span>
                 <span class="muted num">${esc(ukTime(e.at))}</span></div>
               ${e.detail ? `<div class="why num">${esc(e.detail)}</div>` : ""}
             </div>`
           )
           .join("")}</div>
         ${problems.length > 20 ? `<p class="muted">${problems.length - 20} older ones are in the copy.</p>` : ""}
-        <div class="row" style="gap:8px">
+        <div class="gap-8 row">
           <button class="btn tonal grow" data-act="copyLog">Copy all of it</button>
           <button class="btn ghost" data-act="clearLog">Clear</button>
         </div>
@@ -3013,28 +3010,28 @@ function sheetSettings(s) {
   const installBox = standalone()
     ? `
     <h3>Install this app</h3>
-    <p class="muted" style="margin:0 0 14px">Installed. You are running it as its own app,
+    <p class="mt-0 mb-16 muted">Installed. You are running it as its own app,
     not a browser tab.</p>`
     : install.prompt
     ? `
     <h3>Install this app</h3>
     <button class="btn solid wide" data-act="installApp">Install to home screen</button>
-    <p class="muted" style="margin:8px 0 14px">Adds it to your home screen and app list, and
+    <p class="mt-8 mb-16 muted">Adds it to your home screen and app list, and
     runs it in its own window with no browser bar. Your data stays on this device either way.</p>`
     : iOS
     ? `
     <h3>Install this app</h3>
-    <p class="muted" style="margin:0 0 14px">In Safari, tap the <strong>Share</strong> button, then
+    <p class="mt-0 mb-16 muted">In Safari, tap the <strong>Share</strong> button, then
     <strong>Add to Home Screen</strong>. It then opens as its own app, with no browser bar.</p>`
     : `
     <h3>Install this app</h3>
-    <p class="muted" style="margin:0 0 14px">From the browser menu, choose <strong>Install app</strong>
+    <p class="mt-0 mb-16 muted">From the browser menu, choose <strong>Install app</strong>
     or <strong>Add to Home screen</strong> to run it in its own window with no browser bar. If that is
     not offered, the app is either already installed or open over an insecure connection.</p>`;
 
   const version = `
     <h3>This copy of the app</h3>
-    <div class="row" style="gap:8px">
+    <div class="gap-8 row">
       <span class="muted grow num">${
         build.version ? esc(build.version) : "asking the offline copy\u2026"
       }</span>
@@ -3148,13 +3145,13 @@ function sheetInvite(s) {
     <div class="subcard">
       ${qrSvg(code, { label: "Invite code" })}
     </div>
-    <p class="muted" style="margin-top:0">On their phone: <strong>Settings</strong>, then
+    <p class="mt-0 muted">On their phone: <strong>Settings</strong>, then
     <strong>Enter an invite</strong>, then <strong>Scan the code</strong>.</p>
 
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or send them this</span>
-      <textarea class="inp code" style="height:78px" readonly spellcheck="false"
+    <label class="mb-8 field"><span class="eyebrow">Or send them this</span>
+      <textarea class="h-invite inp code" readonly spellcheck="false"
         data-act="selectInvite">${esc(code)}</textarea></label>
-    <button class="btn tonal wide" style="margin-bottom:10px" data-act="copyInvite">Copy the code</button>
+    <button class="mb-12 btn tonal wide" data-act="copyInvite">Copy the code</button>
 
     <p class="muted"><strong>This code is a key to your list.</strong> Anyone holding it can read and
     change your prices, and it works until you change the token on GitHub. Show it to the person in
@@ -3170,14 +3167,14 @@ function sheetJoin(s) {
     `
     ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
     ${s.msg ? `<div class="ok">${esc(s.msg)}</div>` : ""}
-    <button class="btn solid wide" style="margin-bottom:10px" data-act="scanInvite">Scan the code</button>
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Or paste the code</span>
-      <textarea class="inp code" style="height:78px" placeholder="FS1." spellcheck="false"
+    <button class="mb-12 btn solid wide" data-act="scanInvite">Scan the code</button>
+    <label class="mb-8 field"><span class="eyebrow">Or paste the code</span>
+      <textarea class="h-invite inp code" placeholder="FS1." spellcheck="false"
         data-act="setJoinCode">${esc(s.code || "")}</textarea></label>
     <button class="btn tonal wide" data-act="applyJoin">Join this list</button>
     <p class="muted">Joining replaces whichever database this phone was pointed at, and pulls their
     list in. Nothing you have is thrown away: the two are merged, and the higher stock count wins.</p>
-    <label class="field" style="margin-top:6px"><span class="eyebrow">Your name, so they can see who changed what</span>
+    <label class="mt-8 field"><span class="eyebrow">Your name, so they can see who changed what</span>
       <input class="inp" value="${esc(state.settings.person)}" placeholder="Sam"
         data-act="setSetting" data-key="person"></label>`
   );
@@ -3246,7 +3243,7 @@ function sheetHelp() {
     <p class="muted">Removing someone: take them off Collaborators on GitHub, and their token stops
     working. If instead you shared a code from <strong>Invite someone</strong>, that one token is the
     key for everybody, so revoking means making a new token on GitHub and re-inviting whoever stays.</p>
-    <button class="btn tonal wide" style="margin-top:10px" data-act="openSettings">Back to settings</button>`,
+    <button class="mt-12 btn tonal wide" data-act="openSettings">Back to settings</button>`,
     true
   );
 }
@@ -3272,7 +3269,7 @@ async function openCamera(title, onCode, opts = {}) {
   el.innerHTML = `<div class="sheet">
     <button class="btn small ghost close" data-cam="close">Close</button>
     <h2>${esc(title)}</h2>
-    <p class="muted" style="margin-top:0">${
+    <p class="mt-0 muted">${
       qr ? "Point this phone at the code on the other one." : "Hold the barcode inside the frame."
     }</p>
     <div class="scanner">
@@ -3284,7 +3281,7 @@ async function openCamera(title, onCode, opts = {}) {
       <input class="inp code"${qr ? "" : ' inputmode="numeric"'} placeholder="${
       qr ? "FS1." : "5010000000000"
     }" data-cam="manual"></label>
-    <button class="btn solid wide" style="margin-top:8px" data-cam="useManual">${
+    <button class="mt-8 btn solid wide" data-cam="useManual">${
       qr ? "Use this code" : "Use this number"
     }</button>
   </div>`;
@@ -3640,14 +3637,14 @@ function sheetLabel(s) {
           aria-label="${label} per 100${unit}${suffix}"></label>`;
 
     inner.push(`<div class="subcard">
-      <span class="eyebrow" style="display:block;margin-bottom:6px">Per 100${unit}, correct anything it misread</span>
-      <div class="grid2" style="margin-bottom:8px">${box("kcal", "Calories", " in kcal")}${box(
+      <span class="d-block mb-8 eyebrow">Per 100${unit}, correct anything it misread</span>
+      <div class="mb-8 grid2">${box("kcal", "Calories", " in kcal")}${box(
       "protein",
       "Protein g",
       ""
     )}</div>
       <div class="grid2">${box("carbs", "Carbs g", "")}${box("fat", "Fat g", "")}</div>
-      <p class="why" style="margin:8px 0 0">From ${esc(s.why)}.${
+      <p class="mt-8 mb-0 why">From ${esc(s.why)}.${
         s.edited ? " Changed by hand since." : ""
       }</p>
     </div>`);
@@ -3681,7 +3678,7 @@ function sheetLabel(s) {
         typeof v === "number" ? Math.abs((Number(product[k]) || 0) - v) < 0.01 : product[k] === v
       );
       if (!same) {
-        inner.push(`<label class="row" style="margin-bottom:6px">
+        inner.push(`<label class="mb-8 row">
           <input type="checkbox" data-act="toggleLabelSize"${s.useSize === false ? "" : " checked"}>
           <span class="grow">Also set the pack size to ${trim2(sizing.packAmount)}${esc(
           sizing.packUnit
@@ -3692,7 +3689,7 @@ function sheetLabel(s) {
         }, from ${esc(sizing.why)}</span></label>`);
         /* The raw against cooked gap gets its own sentence. It is the one
            thing here that looks like an error until it is explained. */
-        if (sizing.note) inner.push(`<p class="why" style="margin:0 0 8px">${esc(sizing.note)}</p>`);
+        if (sizing.note) inner.push(`<p class="mt-0 mb-8 why">${esc(sizing.note)}</p>`);
       }
     }
 
@@ -4296,8 +4293,8 @@ const actions = {
   setScanPortions: (el) => setSheet({ ...state.sheet, portions: Math.max(0.5, Number(el.value) || 1) }),
   setScanStore: (el) => {
     /* Just the shop for the thing being edited. It must not reload from
-       anywhere: doing that used to pull the existing product back in and
-       quietly overwrite it instead of adding the new one beside it. */
+       anywhere, or the existing product is pulled back in and overwritten
+       instead of a new one being added beside it. */
     setSheet({
       ...state.sheet,
       store: canonicalStore(el.value, storeNames(state.db.ingredients)),
@@ -5785,10 +5782,7 @@ function dispatch(e) {
 }
 
 root.addEventListener("click", (e) => {
-  /* A tap on the dim area beside a sheet closes it only where the sheet says
-     it may. Most of them hold something half finished, and a receipt is
-     twenty lines of review that a thumb landing on the edge used to discard
-     without a word. Close is always in the corner. */
+  // a tap beside a sheet closes it only where the sheet says it may (see shell)
   if (e.target.classList && e.target.classList.contains("scrim")) {
     if (e.target.dataset.pickdismiss === "1") closePicker(null);
     else if (e.target.dataset.dismiss === "1") setSheet(null);
