@@ -1707,7 +1707,7 @@ function viewMeals() {
         return `<section class="card"><div class="row" data-act="openMeal" data-id="${meal.id}">
           <div class="grow">
             <div style="font-weight:700">${esc(meal.name)}</div>
-            <div class="muted">${meal.items.length} ingredient${
+            <div class="muted">${meal.items.length} item${
           meal.items.length === 1 ? "" : "s"
         } &middot; ${note}</div>
           </div>
@@ -1727,11 +1727,11 @@ function viewMeals() {
           <span class="eyebrow">Meal name</span>
           <input class="inp" value="${esc(meal.name)}" data-act="setMealName" data-field="name" data-id="${meal.id}">
         </label>
-        ${rows || '<p class="muted">No ingredients yet.</p>'}
+        ${rows || '<p class="muted">No items yet.</p>'}
         <div class="row" style="margin-top:8px;gap:8px">
           <button class="btn small grow" data-act="addMealIng" data-id="${meal.id}"${
         state.db.ingredients.length ? "" : " disabled"
-      }>Add ingredient</button>
+      }>Add an item</button>
           <button class="btn small danger" data-act="delMeal" data-id="${meal.id}">Delete meal</button>
         </div>
         <p class="muted" style="margin:0 0 8px">Portions are for one person. Plan it for both of
@@ -1942,9 +1942,12 @@ function portionEditor(ing, product) {
 
   return fold(
     "portion",
-    "Pack and portion",
+    "Name, pack and portion",
     summary,
-    `<div class="grid2" style="margin-bottom:6px">
+    `<label class="field mb-8"><span class="eyebrow">What it is called</span>
+      <input class="inp" value="${esc(product.name || "")}" placeholder="Cathedral City"
+        data-act="setProductName" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
+    <div class="grid2" style="margin-bottom:6px">
       <label class="field"><span class="eyebrow">Pack size</span>
         <input class="inp mono" type="number" step="1" min="0" value="${trim2(pack)}"
           ${attrs("setProductNumber", "packAmount")} aria-label="How much is in a pack"></label>
@@ -1992,8 +1995,8 @@ function productCard(ing, product, chosen, expanded) {
   const codes = (product.barcodes || []).length
     ? (product.barcodes || [])
         .map(
-          (b) => `<span class="pill on" style="margin:0 5px 5px 0">${esc(b)}
-           <button class="btn small ghost" style="padding:0 0 0 5px;min-height:0" data-act="delBarcode"
+          (b) => `<span class="pill on codechip">${esc(b)}
+           <button class="btn small ghost codex" data-act="delBarcode"
              data-id="${ing.id}" data-product="${esc(product.id)}" data-code="${esc(b)}">&times;</button></span>`
         )
         .join("")
@@ -2023,46 +2026,35 @@ function productCard(ing, product, chosen, expanded) {
 
   if (!expanded) return `<div class="subcard shut">${head}</div>`;
 
+  /* What you change is the shop, the price and the stock, so those come first
+     and the rest stays folded until asked for. */
   return `<div class="subcard">
     ${head}
-    <div class="grid2" style="margin-bottom:8px">
-      <label class="field"><span class="eyebrow">What it is called</span>
-        <input class="inp" value="${esc(product.name || "")}" placeholder="Cathedral City"
-          data-act="setProductName" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
+    <div class="grid2 mb-8">
       <label class="field"><span class="eyebrow">Shop</span>
         <input class="inp" list="fb-stores" value="${esc(product.store || "")}" placeholder="Not set"
           data-act="setProductStore" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
-    </div>
-    <div class="grid2" style="margin-bottom:8px">
-      <label class="field"><span class="eyebrow">Base price £ per pack</span>
+      <label class="field"><span class="eyebrow">Price £ per pack</span>
         <input class="inp mono" type="number" step="0.01" min="0" value="${product.pricePerPack}"
           data-act="setProductPrice" data-id="${ing.id}" data-product="${esc(product.id)}"></label>
-      <label class="field"><span class="eyebrow">In stock (portions)</span>
+    </div>
+    <div class="row ai-end gap-8 mb-8">
+      <label class="field grow"><span class="eyebrow">In stock, portions</span>
         <input class="inp mono" type="number" step="0.5" min="0" value="${trim2(stock)}"
           data-act="setProductNumber" data-id="${ing.id}" data-product="${esc(
     product.id
   )}" data-field="stockPortions"></label>
-    </div>
-    ${portionEditor(ing, product)}
-    <div class="row" style="margin-bottom:8px">
-      <span class="muted grow">${
-        pp > 0
-          ? `${trim2(stock / pp)} pack${Math.abs(stock / pp - 1) < 0.001 ? "" : "s"} of ${trim2(pp)}`
-          : "Set how big a portion is and this counts packs too"
-      }</span>
-      <button class="btn small tonal" data-act="lessStockPack" data-id="${ing.id}"
+      <button class="btn tonal" data-act="lessStockPack" data-id="${ing.id}"
         data-product="${esc(product.id)}" title="Take a pack out of stock">&minus; pack</button>
-      <button class="btn small tonal" data-act="moreStockPack" data-id="${ing.id}"
+      <button class="btn tonal" data-act="moreStockPack" data-id="${ing.id}"
         data-product="${esc(product.id)}" title="Put a pack into stock">+ pack</button>
     </div>
-    <div class="row" style="margin-bottom:8px">
-      <span class="eyebrow grow">This one on the list by hand</span>
-      <button class="btn small tonal" data-act="lessProductExtra" data-id="${ing.id}"
-        data-product="${esc(product.id)}" title="One fewer of this one">&minus;</button>
-      <span class="num" style="min-width:24px;text-align:center;font-weight:700">${own}</span>
-      <button class="btn small tonal" data-act="addProductToList" data-id="${ing.id}"
-        data-product="${esc(product.id)}" title="Put this exact one on the list">+</button>
-    </div>
+    <p class="why mb-8">${
+      pp > 0
+        ? `${trim2(stock / pp)} pack${Math.abs(stock / pp - 1) < 0.001 ? "" : "s"} of ${trim2(pp)}`
+        : "Set how big a portion is and this counts packs too"
+    }. ${product.priceUpdated ? `Priced ${esc(ago(product.priceUpdated))}` : "Never priced"}.</p>
+    ${portionEditor(ing, product)}
     ${fold(
       "offer",
       "Offer",
@@ -2078,17 +2070,12 @@ function productCard(ing, product, chosen, expanded) {
     ${fold(
       "barcodes",
       "Barcodes",
-      (product.barcodes || []).length
-        ? `${product.barcodes.length} scanned`
-        : "none yet",
-      `<div style="margin-bottom:8px">${codes}</div>
+      (product.barcodes || []).length ? `${product.barcodes.length} scanned` : "none yet",
+      `<div class="mb-8">${codes}</div>
       <button class="btn small tonal" data-act="addBarcode" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan a barcode</button>`
     )}
-    <p class="muted${stale ? " stale" : ""}" style="margin:0 0 8px">${
-    product.priceUpdated ? `priced ${esc(ago(product.priceUpdated))}` : "never priced"
-  }${pp > 0 ? ` &middot; £${money(productPortionCost(product))} a portion` : " &middot; portions not set"}</p>
-    <div class="prodacts">
+    <div class="prodacts mt-8">
       <button class="btn small tonal" data-act="copyProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}" title="Same thing, another shop">Copy to a shop</button>
@@ -2096,13 +2083,11 @@ function productCard(ing, product, chosen, expanded) {
       <button class="btn small ghost" data-act="delProduct" data-id="${ing.id}" data-product="${esc(
     product.id
   )}"${only ? " disabled" : ""} title="${
-    only ? "An ingredient needs something to buy" : "Remove this one"
+    only ? "An item needs something to buy" : "Remove this one"
   }">Remove</button>
     </div>${
       only && state.db.ingredients.length > 1
-        ? `<p class="why" style="margin:6px 0 0">The only one here, so moving it takes ${esc(
-            ing.name
-          )} with it.</p>`
+        ? `<p class="why mt-8">The only one here, so moving it takes ${esc(ing.name)} with it.</p>`
         : ""
     }
   </div>`;
@@ -2139,7 +2124,7 @@ function viewItems() {
 
     const head = `<div class="row head" data-act="openItem" data-id="${ing.id}">
       <div class="grow">
-        <div class="trunc" style="font-weight:600">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
+        <div class="trunc fw6">${stale ? '<span class="dot"></span>' : ""}${esc(ing.name)}</div>
         <div class="muted num">${
           // with the shop headings gone, the line has to say where it comes from
           byName && chosen && chosen.store ? `${esc(chosen.store)} &middot; ` : ""
@@ -2151,66 +2136,43 @@ function viewItems() {
       handTotal ? ` &middot; ${handTotal} on the list` : ""
     }</div>
       </div>
-      <div style="text-align:right">
-        <div class="num" style="font-weight:700">£${money(chosen && chosen.pricePerPack)}</div>
+      <div class="ta-r">
+        <div class="num fw7">£${money(chosen && chosen.pricePerPack)}</div>
         <div class="muted num${stale ? " stale" : ""}">${
       chosen && chosen.priceUpdated ? age + "d ago" : "never set"
     }</div>
       </div>
-      <button class="btn small ghost" data-act="addToList" data-id="${ing.id}" title="Add a pack to the shopping list">+</button>
     </div>`;
 
     if (ing.id !== open) return `<section class="card" data-scroll="${ing.id}">${head}</section>`;
 
-    /* Which of this ingredient's products is open. Nothing, until you say so:
-       opening an ingredient is how you look at what is under it, and a list of
-       headers answers that in one screen where an editor already unfolded
-       pushes the rest of them off the bottom. Tapping a header moves the open
-       one rather than stacking editors, so the list stays put. */
+    /* A product is open when it is the only one, because there is nothing to
+       choose between; with several, the headers are how you pick, and tapping
+       one moves the open one rather than stacking editors. */
     const sheet = state.sheet || {};
-    const openProduct = "openProduct" in sheet ? sheet.openProduct : null;
+    const openProduct = "openProduct" in sheet ? sheet.openProduct : all.length === 1 ? all[0].id : null;
 
     return `<section class="card editing" data-scroll="${ing.id}">${head}
-      <div style="border-top:1px solid var(--outline);margin-top:12px;padding-top:12px">
-        <label class="field" style="margin-bottom:6px"><span class="eyebrow">Ingredient</span>
+      <div class="divided">
+        <label class="field mb-8"><span class="eyebrow">Item</span>
           <input class="inp" value="${esc(ing.name)}" data-act="setField" data-id="${ing.id}" data-field="name"></label>
-        <p class="muted" style="margin:0 0 10px">What a meal asks for. The things below are what
-        you can actually buy to satisfy it.</p>
-
-        <div class="row" style="margin-bottom:4px">
-          <span class="eyebrow grow">Any of it, by hand</span>
-          <button class="btn small tonal" data-act="lessExtra" data-id="${ing.id}">&minus;</button>
-          <span class="num" style="min-width:24px;text-align:center;font-weight:700">${extra}</span>
-          <button class="btn small tonal" data-act="addToList" data-id="${ing.id}">+</button>
-        </div>
-        <p class="muted" style="margin:0 0 10px">Rides on whichever is cheapest${
-          chosen && chosen.name ? ` &mdash; ${esc(chosen.name)} right now` : ""
-        }. To put a particular one on the list, or two different kinds at once, use its own + below.</p>
-
-        <div class="row" style="margin-bottom:6px">
-          <span class="eyebrow grow">What to buy</span>
-          <span class="muted">${trim2(stock)} in stock in total</span>
-        </div>
-        <p class="muted" style="margin:0 0 8px">Whichever is cheapest a portion is what the list
-        uses, unless you pin one. A meal can also ask for one of these by name.</p>
+        ${
+          all.length > 1
+            ? `<div class="row mb-8"><span class="eyebrow grow">Products</span>
+                <span class="muted">${trim2(stock)} in stock in total</span></div>`
+            : ""
+        }
         ${all
           .map((product) =>
             productCard(ing, product, product === chosen, product.id === openProduct)
           )
           .join("")}
-        <button class="btn small tonal wide" style="margin-bottom:10px" data-act="addProduct"
-          data-id="${ing.id}">Add another one</button>
-
-        <div style="margin-bottom:10px">
-          <span class="eyebrow" style="display:block;margin-bottom:4px">Last updated</span>
-          <span class="muted num">${
-            ing.updatedAt
-              ? `${esc(stampText(ing.updatedAt))} &middot; ${esc(ago(ing.updatedAt))}`
-              : "not since this ingredient was made"
-          }</span>
-        </div>
+        <button class="btn small tonal wide mb-12" data-act="addProduct"
+          data-id="${ing.id}">Add another product</button>
         <div class="row">
-          <span class="muted grow">Needs ${trim2(needOf(ing))} portions ${state.db.planStart ? "from today" : "across the plan"}</span>
+          <span class="muted grow">Needs ${trim2(needOf(ing))} portions ${state.db.planStart ? "from today" : "across the plan"}${
+            ing.updatedAt ? ` &middot; changed ${esc(ago(ing.updatedAt))}` : ""
+          }</span>
           <button class="btn small danger" data-act="delItem" data-id="${ing.id}">Delete</button>
         </div>
       </div></section>`;
@@ -2228,7 +2190,7 @@ function viewItems() {
       const meta = [
         `${shown.length} item${shown.length === 1 ? "" : "s"}`,
         holding ? `${holding} on the list` : "",
-        g.name === "Unassigned" ? "set a store to file these" : "",
+        g.name === "Unassigned" ? "set a shop to file these" : "",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -2240,7 +2202,7 @@ function viewItems() {
           <span class="chev">${q ? "" : `<i class="ph ph-caret-${shut ? "right" : "down"}"></i>`}</span>
           <span class="grow">
             <span class="gname">${esc(g.name)}</span>
-            <span class="gmeta" style="display:block">${esc(meta)}</span>
+            <span class="gmeta d-block">${esc(meta)}</span>
           </span>
         </button>
         ${shut ? "" : shown.map(card).join("")}
@@ -2254,7 +2216,7 @@ function viewItems() {
     .map(card)
     .join("");
 
-  const sortToggle = `<div class="row" style="margin-bottom:10px">
+  const sortToggle = `<div class="row mb-8">
     <span class="eyebrow grow">Sort</span>
     <div class="seg">
       <button data-act="setItemSort" data-sort="store" data-on="${byName ? 0 : 1}">By shop</button>
@@ -2264,7 +2226,7 @@ function viewItems() {
 
   const search = `<div class="search">
     <span class="mag">&#9906;</span>
-    <input class="inp" type="search" value="${esc(q)}" placeholder="Search items, stores, barcodes"
+    <input class="inp" type="search" value="${esc(q)}" placeholder="Search items, shops, barcodes"
       data-act="setQuery" aria-label="Search items">
     ${q ? `<button class="btn small ghost clear" data-act="clearQuery">Clear</button>` : ""}
   </div>`;
@@ -2277,8 +2239,8 @@ function viewItems() {
   /* Adding sits at the top. With 40-odd items the button was a scroll away
      from the only screen you would press it on. */
   return `${search}
-    ${q ? `<p class="muted" style="margin:-4px 0 10px">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
-    <button class="btn tonal wide" style="margin-bottom:10px" data-act="addItem">Add an item</button>
+    ${q ? `<p class="muted mt-0 mb-8">${matches.length} of ${state.db.ingredients.length} items</p>` : ""}
+    <button class="btn tonal wide mb-8" data-act="addItem">Add an item</button>
     ${sortToggle}
     ${nothing}${byName ? flat : groups}
     <datalist id="fb-stores">${stores.map((st) => `<option value="${esc(st)}"></option>`).join("")}</datalist>
@@ -2607,7 +2569,7 @@ function sheetReceipt(s) {
   if (s.rows && s.rows.length) {
     const old = s.rows.filter((r) => r.outdated).length;
     inner.push(`<div class="grid2" style="margin:12px 0 8px">
-      <label class="field"><span class="eyebrow">Store on this receipt</span>
+      <label class="field"><span class="eyebrow">Shop on this receipt</span>
         <input class="inp" value="${esc(s.store || "")}" placeholder="Tesco" data-act="setReceiptStore"></label>
       <label class="field"><span class="eyebrow">Date on this receipt</span>
         <input class="inp mono" type="date" value="${esc(dayOf(s.date))}" data-act="setReceiptDate"></label>
@@ -2668,7 +2630,7 @@ function sheetReceipt(s) {
                    being a kind of food rather than a kind of milk. */
                 r.targetId === "__new__"
                   ? `<label class="field" style="margin-top:5px">
-                       <span class="eyebrow">Ingredient, the kind of thing this is</span>
+                       <span class="eyebrow">Item, the kind of thing this is</span>
                        <input class="inp" list="fb-ingredients" value="${esc(r.newName)}"
                          placeholder="Milk" data-act="setRowName" data-i="${i}"></label>`
                   : ""
@@ -2689,7 +2651,7 @@ function sheetReceipt(s) {
                    ? `Goes under <strong>${esc(
                        sameNamed(r.newName).name
                      )}</strong>, which you already keep, rather than making a second one.`
-                   : "Keep the ingredient general, since that is what a meal asks for: Milk, not Arla Lactofree 2l. Type one you already have and it files itself there instead."
+                   : "Keep the item general, since that is what a meal asks for: Milk, not Arla Lactofree 2l. Type one you already have and it files itself there instead."
                }</p>`
             : ""
         }
@@ -2846,7 +2808,7 @@ function sheetScanned(s) {
       known
         ? `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Which one</span>
              ${pickBtn(whichText, 'data-act="pickScanProduct"', "Which one")}</label>`
-        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Call the ingredient</span>
+        : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Call the item</span>
              <input class="inp" value="${esc(s.name)}" placeholder="Cheddar" data-act="setScanName"></label>`
     }
 
@@ -2915,7 +2877,7 @@ function sheetScanned(s) {
     }</button>
     <p class="muted">Saving binds this barcode to that one thing, so next time the scan comes
     straight here. A meal asking for ${esc(
-      (known && known.name) || "the ingredient"
+      (known && known.name) || "the item"
     )} in general can be satisfied by any of them.</p>`
   );
 }
@@ -2956,8 +2918,8 @@ function sheetSettings(s) {
       aria-label="${a.name}"${on ? ' aria-current="true"' : ""}>${on ? '<i class="ph ph-check"></i>' : ""}</button>`;
   }).join("");
 
-  const flag = (key, label, note) => `<div class="row" style="margin-bottom:10px">
-      <span class="grow"><span style="font-weight:600">${label}</span><br>
+  const flag = (key, label, note) => `<div class="row mb-12">
+      <span class="grow"><span class="fw6">${label}</span><br>
         <span class="muted">${note}</span></span>
       <button class="pill${set[key] ? " on" : ""}" data-act="toggleFlag" data-key="${key}">${
     set[key] ? "On" : "Off"
@@ -3083,17 +3045,12 @@ function sheetSettings(s) {
     <p class="muted">The app fetches itself fresh whenever there is signal, so this should look
     after itself. The button is for when you want to be sure.</p>`;
 
-  return shell(
-    "Settings",
-    configured ? "Restore before you edit, update when you are done." : "Connect a database below to sync and share.",
-    `
-    ${s.msg ? `<div class="${s.err ? "err" : "ok"}">${esc(s.msg)}</div>` : ""}
-
-    <div class="row" style="gap:8px;margin-bottom:8px">
+  const sync = `
+    <div class="row gap-8 mb-8">
       <button class="btn tonal grow" data-act="pullNow"${configured ? "" : " disabled"}>Restore from database</button>
       <button class="btn solid grow" data-act="pushNow"${configured ? "" : " disabled"}>Update database</button>
     </div>
-    <p class="muted" style="margin:0 0 14px">${
+    <p class="muted mt-0 mb-16">${
       configured
         ? `${esc(set.owner)}/${esc(set.repo)} &middot; last updated ${esc(ago(set.lastPush))}${
             set.lastPush ? ` (${esc(ukTime(set.lastPush))})` : ""
@@ -3101,53 +3058,63 @@ function sheetSettings(s) {
         : "No database connected yet."
     }</p>
 
-    <label class="field" style="margin-bottom:12px"><span class="eyebrow">Your name, shown in the change log</span>
+    <label class="field mb-12"><span class="eyebrow">Your name, shown in the change log</span>
       <input class="inp" value="${esc(set.person)}" placeholder="Lee" data-act="setSetting" data-key="person"></label>
 
-    <h3>Appearance</h3>
-    <div class="seg" style="margin-bottom:12px">
+    ${flag("autoMerge", "Merge on opening", "Pick up the other person's changes automatically.")}
+    ${flag("warnOnLeave", "Save when leaving", "Update the database as you close or switch away.")}
+
+    <h3>Share this list</h3>
+    <div class="row gap-8 mb-8">
+      <button class="btn tonal grow" data-act="openInvite"${configured ? "" : " disabled"}>Invite someone</button>
+      <button class="btn tonal grow" data-act="openJoin">Enter an invite</button>
+    </div>
+    <p class="muted mt-0 mb-8">${
+      configured
+        ? "An invite hands over this database and its token, so their phone needs no GitHub account."
+        : "Connect a database below first, then you can invite someone with one code."
+    }</p>
+    <button class="btn ghost wide mb-8" data-act="openHelp">The long way, with their own token</button>
+
+    <button class="btn ghost wide head" data-act="toggleRepoBox">
+      <span class="chev"><i class="ph ph-caret-${set.showRepo ? "down" : "right"}"></i></span> Database, keys and backup
+    </button>
+    ${repoBox}`;
+
+  const look = `
+    <h3 class="mt-0">Theme</h3>
+    <div class="seg mb-12">
       ${themeBtn("light", "Light")}${themeBtn("dark", "Dark")}${themeBtn("system", "System")}
     </div>
     <h3>Accent colour</h3>
     <div class="swatches">${swatches}</div>
-    <label class="row" style="margin-bottom:6px">
+    <label class="row mb-8">
       <span class="grow muted">Or pick your own</span>
       <input class="pickcol" type="color" value="${esc(current)}" data-act="setAccent"
         aria-label="A colour of your own">
     </label>
-    <p class="muted" style="margin:0 0 14px">${
+    <p class="muted mt-0">${
       set.accent
         ? `Set to ${esc(set.accent)}. Writing on it is ${
             onAccent(set.accent) === "#161826" ? "dark" : "light"
           }, worked out from the colour rather than guessed.`
         : "Nocturne's own blurple."
     } This is kept on this device, like the theme, so you and anyone
-    sharing the list can each have your own.</p>
+    sharing the list can each have your own.</p>`;
 
-    <h3>Syncing</h3>
-    ${flag("autoMerge", "Merge on opening", "Pick up the other person's changes automatically.")}
-    ${flag("warnOnLeave", "Save when leaving", "Update the database as you close or switch away.")}
+  const about = `${installBox}${problemBox}${version}`;
 
-    <h3>Share this list</h3>
-    <div class="row" style="gap:8px;margin-bottom:8px">
-      <button class="btn tonal grow" data-act="openInvite"${configured ? "" : " disabled"}>Invite someone</button>
-      <button class="btn tonal grow" data-act="openJoin">Enter an invite</button>
-    </div>
-    <p class="muted" style="margin:0 0 10px">${
-      configured
-        ? "An invite hands over this database and its token, so their phone needs no GitHub account."
-        : "Connect a database below first, then you can invite someone with one code."
-    }</p>
+  const group = s.group === "look" || s.group === "about" ? s.group : "sync";
+  const tab = (key, label) =>
+    `<button data-act="setSettingsGroup" data-group="${key}" data-on="${group === key ? 1 : 0}">${label}</button>`;
 
-    <button class="btn ghost wide" style="margin-bottom:10px" data-act="openHelp">The long way, with their own token</button>
-
-    <button class="btn ghost wide head" data-act="toggleRepoBox">
-      <span class="chev"><i class="ph ph-caret-${set.showRepo ? "down" : "right"}"></i></span> Database, keys and backup
-    </button>
-    ${repoBox}
-    ${installBox}
-    ${problemBox}
-    ${version}`
+  return shell(
+    "Settings",
+    configured ? "Restore before you edit, update when you are done." : "Connect a database below to sync and share.",
+    `
+    ${s.msg ? `<div class="${s.err ? "err" : "ok"}">${esc(s.msg)}</div>` : ""}
+    <div class="seg wide mb-16">${tab("sync", "Sync")}${tab("look", "Appearance")}${tab("about", "About")}</div>
+    ${group === "look" ? look : group === "about" ? about : sync}`
   );
 }
 
@@ -3882,7 +3849,7 @@ function applyReceipt() {
       created ? `, ${created} new item${created === 1 ? "" : "s"} added` : ""
     }${
       addedProducts
-        ? `, ${addedProducts} new thing${addedProducts === 1 ? "" : "s"} to buy under ingredients you already had`
+        ? `, ${addedProducts} new thing${addedProducts === 1 ? "" : "s"} to buy under items you already had`
         : ""
     }${
       stockedItems
@@ -4116,7 +4083,8 @@ const actions = {
     goToTab(el.dataset.tab, 0);
   },
   closeSheet: () => setSheet(null),
-  openSettings: () => setSheet({ kind: "settings", msg: "", err: false }),
+  openSettings: () => setSheet({ kind: "settings", msg: "", err: false, group: state.sheet && state.sheet.kind === "settings" ? state.sheet.group : "sync" }),
+  setSettingsGroup: (el) => setSheet({ ...state.sheet, group: el.dataset.group }),
   openReceipt: () => setSheet({ kind: "receipt", busy: false, err: "", store: "", rows: null }),
 
   openPlanSettings: () => {
@@ -4600,10 +4568,6 @@ const actions = {
       { formats: QR_FORMATS }
     ),
   applyJoin: () => joinList(state.sheet.code),
-  addToList: (el) => {
-    const ing = ingredient(el.dataset.id);
-    if (ing) patchIngredient(ing.id, { extraPacks: (Number(ing.extraPacks) || 0) + 1 });
-  },
   lessExtra: (el) => {
     const ing = ingredient(el.dataset.id);
     if (ing) patchIngredient(ing.id, { extraPacks: Math.max(0, (Number(ing.extraPacks) || 0) - 1) });
@@ -4758,20 +4722,6 @@ const actions = {
       });
     set(0, 0);
     toast(`${ing.name} taken off the list`, () => set(ownWas, looseWas));
-  },
-  addProductToList: (el) => {
-    const product = productOf(el.dataset.id, el.dataset.product);
-    if (product)
-      patchProduct(el.dataset.id, el.dataset.product, {
-        extraPacks: (Number(product.extraPacks) || 0) + 1,
-      });
-  },
-  lessProductExtra: (el) => {
-    const product = productOf(el.dataset.id, el.dataset.product);
-    if (product)
-      patchProduct(el.dataset.id, el.dataset.product, {
-        extraPacks: Math.max(0, (Number(product.extraPacks) || 0) - 1),
-      });
   },
 
   /* ---- one product of an ingredient ---- */

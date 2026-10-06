@@ -54,6 +54,7 @@ console.log("--- the problem log ---");
 
   // it shows up in Settings, folded away
   await p.click('[data-act="openSettings"]');
+  await p.click('[data-act="setSettingsGroup"][data-group="about"]');
   await p.waitForTimeout(400);
   const fold = await p.evaluate(() => {
     const head = document.querySelector('.foldhead[data-kind="problems"]');

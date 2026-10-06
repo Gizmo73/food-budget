@@ -58,7 +58,7 @@ const folds = await p.$$eval(".fold", (els) => els.map((e) => ({
 })));
 console.log("  ", JSON.stringify(folds, null, 1));
 ok(folds.length === 4, `four sections (${folds.length})`);
-ok(folds.map((f) => f.kind).join() === "portion,offer,nutrition,barcodes", "pack, offer, nutrition, barcodes");
+ok(folds.map((f) => f.kind).join() === "portion,offer,nutrition,barcodes", "name and pack, offer, nutrition, barcodes");
 ok(folds.every((f) => f.summary.length > 0), "each says what is in it while shut");
 ok(folds.find((f) => f.kind === "portion").open, "pack and portion starts open");
 ok(!folds.find((f) => f.kind === "nutrition").open, "nutrition starts shut, which was the ask");

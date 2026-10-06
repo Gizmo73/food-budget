@@ -144,7 +144,7 @@ a:hover { color:var(--ink); }
 .pinbar .pinstate.over { color:var(--alert); }
 .pinbar .pinsub { margin-top:1px; }
 .cap {
-  display:inline-flex; align-items:center; gap:4px; min-height:36px; padding:0 4px; border:0;
+  display:inline-flex; align-items:center; gap:4px; min-height:44px; padding:0 4px; border:0;
   background:none; color:var(--ink); font:inherit; font-size:inherit; font-weight:500;
   font-variant-numeric:tabular-nums; border-radius:var(--r-s);
 }
@@ -165,19 +165,19 @@ a:hover { color:var(--ink); }
 .btn {
   border:1px solid var(--outline); background:transparent; color:var(--ink);
   padding:0 15px; font-size:14px; font-weight:500; border-radius:var(--r-m);
-  min-height:40px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  min-height:44px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
 }
 .btn:hover { background:color-mix(in srgb, var(--accent) 10%, transparent); }
 .btn:active { background:color-mix(in srgb, var(--accent) 18%, transparent); }
 .btn.solid { border-color:var(--accent); background:transparent; color:var(--ink); }
 .btn.tonal { background:var(--surface-2); border-color:var(--outline); }
 .btn.wide { width:100%; }
-.btn.small { padding:0 11px; font-size:13px; min-height:36px; }
+.btn.small { padding:0 12px; font-size:13px; min-height:44px; min-width:44px; }
 .btn.ghost { border-color:transparent; background:transparent; color:var(--ink-2); }
 .btn.ghost:hover { color:var(--ink); }
 .btn.danger { color:var(--alert); border-color:var(--alert); }
 .btn:disabled { opacity:0.45; cursor:default; }
-.btn.icon { padding:0; width:38px; min-height:38px; border-radius:var(--r-m); font-size:17px; }
+.btn.icon { padding:0; width:44px; min-height:44px; border-radius:var(--r-m); font-size:17px; }
 
 .field { display:block; }
 .field .eyebrow { display:block; margin-bottom:5px; }
@@ -279,6 +279,8 @@ a:hover { color:var(--ink); }
 .pickrow .detail { display:block; font-size:13px; font-weight:400; color:var(--ink-2); }
 .pickrow:active { background:var(--surface-3); }
 .pickrow.on { border-color:var(--accent); }
+.codechip { display:inline-flex; align-items:center; margin:0 4px 4px 0; padding-right:0; }
+.codex { padding:0 12px 0 6px; min-height:44px; }
 
 /* The field that opens the picker, where a select used to be. */
 .pickbtn {
@@ -345,6 +347,7 @@ a:hover { color:var(--ink); }
 /* A shop heading is a line of type with a chevron, not a filled bar: shut, it
    still says how many items and what they come to. */
 .head { cursor:pointer; }
+.row.head { min-height:44px; }
 .chev { font-size:14px; color:var(--ink-2); width:14px; flex:none; }
 
 .grouphead {
@@ -414,7 +417,11 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 /* Spacing is set here, in steps, rather than typed afresh into each template. */
 .ta-r { text-align:right; } .noshrink { flex:0 0 auto; }
 .mt-4 { margin-top:4px; } .mt-8 { margin-top:8px; } .mt-12 { margin-top:12px; } .mt-16 { margin-top:16px; }
-.ml-6 { margin-left:6px; } .fw4 { font-weight:400; } .fw5 { font-weight:500; }
+.ml-6 { margin-left:6px; } .fw4 { font-weight:400; } .fw5 { font-weight:500; } .fw6 { font-weight:600; } .fw7 { font-weight:700; }
+.m-0 { margin:0; } .mt-0 { margin-top:0; } .mb-0 { margin-bottom:0; } .mt-24 { margin-top:24px; } .mb-24 { margin-bottom:24px; }
+.ta-c { text-align:center; } .d-block { display:block; } .nowrap { white-space:nowrap; } .gap-12 { gap:12px; }
+.ai-end { align-items:flex-end; } .minw-24 { min-width:24px; }
+.divided { border-top:1px solid var(--outline); margin-top:12px; padding-top:12px; }
 .mb-4 { margin-bottom:4px; } .mb-8 { margin-bottom:8px; } .mb-12 { margin-bottom:12px; } .mb-16 { margin-bottom:16px; }
 .gap-4 { gap:4px; } .gap-6 { gap:6px; } .gap-8 { gap:8px; }
 .wrap-row { flex-wrap:wrap; }
@@ -440,6 +447,8 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
   padding:4px 9px; border-radius:var(--r-full); color:var(--ink-2); background:transparent;
 }
 .pill.on { border-color:var(--accent); color:var(--ink); background:color-mix(in srgb, var(--accent) 18%, transparent); }
+/* A pill that is a button is a target like any other; one that only labels stays small. */
+button.pill { display:inline-flex; align-items:center; min-height:44px; padding:0 14px; font-size:13px; cursor:pointer; }
 
 .warn { background:var(--surface-2); border:1px solid var(--outline); border-left:2px solid var(--accent);
   padding:11px 12px; font-size:13.5px; margin-bottom:11px; border-radius:var(--r-m); }
@@ -478,19 +487,19 @@ textarea.inp.jot {
 /* accent picker */
 .swatches { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:9px; }
 .swatch {
-  width:100%; min-width:0; height:40px; border-radius:var(--r-m);
+  width:100%; min-width:0; height:44px; border-radius:var(--r-m);
   border:1px solid rgba(255,255,255,0.08); font-size:16px; font-weight:500; line-height:1; padding:0;
 }
 .swatch.on { box-shadow:0 0 0 2px var(--surface-2), 0 0 0 3px var(--ink); }
 .pickcol {
-  width:56px; height:40px; padding:2px; border:1px solid var(--outline);
+  width:56px; height:44px; padding:2px; border:1px solid var(--outline);
   border-radius:var(--r-m); background:var(--surface-2);
 }
 
 /* theme picker */
 .seg { display:flex; background:var(--bg); box-shadow:var(--shadow-1); border-radius:var(--r-m); padding:4px; gap:4px; }
 .seg button {
-  flex:1; border:0; background:none; color:var(--ink-2); padding:0 4px;
-  font-size:14px; font-weight:500; border-radius:var(--r-s); min-height:36px;
+  flex:1; border:0; background:none; color:var(--ink-2); padding:0 4px; min-width:44px;
+  font-size:14px; font-weight:500; border-radius:var(--r-s); min-height:44px;
 }
 .seg button[data-on="1"] { background:var(--surface); color:var(--ink); }

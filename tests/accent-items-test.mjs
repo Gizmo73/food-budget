@@ -72,6 +72,7 @@ ok(shownName === "Milk" && marked === "Milk", `and the row still points at what 
 
 console.log("\n--- the accent colour ---");
 await p.click('[data-act="openSettings"]');
+await p.click('[data-act="setSettingsGroup"][data-group="look"]');
 await p.waitForTimeout(350);
 const swatches = await p.$$eval(".swatch", (els) =>
   els.map((e) => ({ hex: e.dataset.accent, bg: getComputedStyle(e).backgroundColor, on: e.classList.contains("on") })));
@@ -111,6 +112,7 @@ ok(early.toUpperCase() === "#E25A93", `it is still set after a reload (${early})
 
 // choosing the app's own colour clears the override
 await p.click('[data-act="openSettings"]');
+await p.click('[data-act="setSettingsGroup"][data-group="look"]');
 await p.waitForTimeout(300);
 await p.click('.swatch[data-accent=""]');
 await p.waitForTimeout(400);
@@ -234,8 +236,8 @@ const single = await p.evaluate(() => ({
   heads: document.querySelectorAll(".prodtitle").length,
   editors: document.querySelectorAll('[data-act="setProductPrice"]').length,
 }));
-ok(single.heads === 1 && single.editors === 0,
-  `a different ingredient starts collapsed too, rather than inheriting the choice (${JSON.stringify(single)})`);
+ok(single.heads === 1 && single.editors === 1,
+  `an item with one product opens it straight away, as there is nothing to choose between (${JSON.stringify(single)})`);
 
 console.log("\npage errors:", errs.length ? errs : "none");
 if (errs.length) fail.push("page errors");
