@@ -128,7 +128,7 @@ const db = migrate({
   schema: SCHEMA_VERSION, ingredients: [brothIng, minceIng, blankIng],
   meals: [recipe, mixed], plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
 });
-const c = computeShopping(db);
+const c = computeShopping(db, { asOf: "2026-08-03" });
 ok(near(c.dayNutrition[0][0].kcal, 1000, 2), `day 1 person 1 is 400g of mince (${Math.round(c.dayNutrition[0][0].kcal)})`);
 ok(c.dayNutrition[0][1].kcal === 0, "person 2 ate nothing");
 ok(near(c.dayNutrition[1][1].kcal, 1000, 2), "day 2 both, split kept");

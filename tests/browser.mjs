@@ -23,6 +23,13 @@ export async function browser(opts = {}) {
   return pw.chromium.launch(path ? { ...opts, executablePath: path } : opts);
 }
 
+/* The plan is dated and the list counts only from today, so a test whose plan
+   starts on a fixed August day needs "today" to be just before it. Time still
+   flows from there, so stamps and timers behave normally. */
+export async function pinClock(ctx, when = "2026-08-02T09:00:00") {
+  await ctx.clock.install({ time: new Date(when) });
+}
+
 export const BASE = process.env.FS_BASE || "http://localhost:8123";
 
 /* Where a test may leave a screenshot. Handy locally, ignored by git. */

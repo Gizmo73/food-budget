@@ -1,8 +1,8 @@
 /* Writing something down before you know which shop it will come from. The
-   "No shop yet" group is always offered, even with nothing planned and
-   nothing written, so there is never a state where something cannot be
-   written down - and once it is, it can be filed onto an existing shop with a
-   tap, or onto a brand new one. */
+   add sheet is offered even with nothing planned and nothing kept, so there is
+   never a state where something cannot be written down - and once it is, with
+   no shop, it can be filed onto an existing shop with a tap, or onto a brand
+   new one. */
 import { browser, BASE } from "./browser.mjs";
 
 const b = await browser();
@@ -24,19 +24,22 @@ await p.evaluate(async () => {
 await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
-// &#0; is a null character reference, which HTML replaces with U+FFFD per spec
-const looseHeadSel = 'button[data-act="toggleStore"][data-store="�loose"]';
-ok((await p.$(looseHeadSel)) !== null, "the No shop yet group renders with nothing planned or written");
-const addBtn = await p.$('button[data-act="addJotting"][data-store=""]');
-ok(addBtn !== null, "and it offers Add something by hand");
+ok((await p.$('button[data-act="openAdd"]')) !== null, "the list offers Add to the list with nothing planned or written");
+ok((await p.$('button[data-act="toggleStore"]')) === null, "and shows no empty group while there is nothing in it");
+
+/* Through the add sheet, left on its default of no shop. */
+async function writeIn(text) {
+  await p.click('[data-act="openAdd"]');
+  await p.waitForSelector('[data-act="addWritten"]');
+  await p.fill('[data-act="setAddText"]', text);
+  await p.click('[data-act="addWritten"]');
+  await p.waitForTimeout(300);
+  await p.click(".sheet >> text=Done");
+  await p.waitForTimeout(200);
+}
 
 console.log("\n--- writing one with no shop ---");
-await p.click('button[data-act="addJotting"][data-store=""]');
-await p.waitForTimeout(200);
-const box = p.locator('textarea[data-act="setJotting"]').last();
-await box.fill("Stamps");
-await box.blur();
-await p.waitForTimeout(300);
+await writeIn("Stamps");
 
 const stored = await p.evaluate(async () => {
   const store = await import("./lib/store.js");
@@ -46,6 +49,9 @@ const stored = await p.evaluate(async () => {
 console.log("   ", JSON.stringify(stored));
 ok(stored.length === 1 && stored[0].store === "" && stored[0].text === "Stamps",
   "it is saved with an empty store, not guessed at");
+// &#0; is a null character reference, which HTML replaces with U+FFFD per spec
+ok((await p.$('button[data-act="toggleStore"][data-store="\ufffdloose"]')) !== null,
+  "and a No shop yet group now appears to hold it");
 
 console.log("\n--- it offers real shops to file it against ---");
 await p.evaluate(async () => {
@@ -86,12 +92,7 @@ ok(filed.length === 1 && filed[0].store === "Tesco" && filed[0].text === "Stamps
 ok((await p.$('button[data-act="fileJotting"]')) === null, "and there is nothing left to file, so no chips remain");
 
 console.log("\n--- filing onto a brand new shop ---");
-await p.click('button[data-act="addJotting"][data-store=""]');
-await p.waitForTimeout(200);
-const box2 = p.locator('textarea[data-act="setJotting"]').last();
-await box2.fill("Washing powder");
-await box2.blur();
-await p.waitForTimeout(300);
+await writeIn("Washing powder");
 p.once("dialog", (d) => d.accept("Boots"));
 await p.click('button[data-act="fileJottingNew"]');
 await p.waitForTimeout(300);

@@ -168,6 +168,19 @@ Each person's day also has an **extras** list, for the odd thing eaten that is n
 
 A day's loose edits and extras are part of the plan, so they travel with it: they survive a save and reload, ride along when you roll the fortnight over keeping its meals, and come across on a merge with whichever device's plan is the more recent.
 
+### The list is for today onward
+
+The shopping list, the stock check and each item's "needs" figure count meals on
+**today and later**, so last week's dinners never have to be deleted to keep the
+list honest. A day that has gone stays on the plan, dimmed, with its cost and
+calories still on the Plan and Food tabs; it just asks the shops for nothing. The
+List says how many earlier days it left out, and the Plan marks today and opens
+on the week that holds it.
+
+Without a start date no day has a date, so every day counts. Nothing takes stock
+out as meals pass, so the list can under-buy by what was eaten from stock that
+was bought for those days: the stock check is the remedy.
+
 ## Filing something under the right ingredient
 
 The ingredient is the category a meal asks for; the product is the thing you put in the trolley. Scanning a new item makes both at once, which is right the first time and wrong the second: "Arla Lactofree Semi Skimmed Milk" becomes its own kind of food when it is really one of the milks.
@@ -384,6 +397,8 @@ Not everything is a meal ingredient. Tapping an item opens it for editing, and t
 
 That top-level **+** adds *any* of the item, so it rides on whichever source is cheapest, the same rule the rest of the list follows. Sometimes that is not what you mean: under Bread you might want a white loaf **and** a seeded one on the same trip, two different kinds rather than two of the cheapest. So each product has its own **+** too, on its card inside the item. Adding one there puts that exact thing on the list, and it gets its own line — *this one only, added by hand* — so a single ingredient can carry as many different kinds as you like at once. The loose "any of it" packs and each product's own are counted together in the *N on the list* the item shows, and **Got it** on a line settles only the packs on that line.
 
+**Adding from the List tab.** The bar at the top of the List opens a search over the items you keep. It matches loosely, the same way the Items tab does, so `stkpies` finds Steak Pies. Tap a result and a pack goes on the list, riding on the cheapest shop as the **+** above does; tap again for another, or the **−** to take one back. For anything that is not an item, such as bin bags or stamps, the same sheet has a line to write it in and the shop to put it under: one you already use, **No shop yet**, or a new one typed there. Written lines have no pack behind them, so **Got it** only strikes them off.
+
 New items start with **no store**, and land in an *Unassigned* group that sorts to the top of the Items tab until you file them. Guessing a store would be worse than leaving it empty, because an item in the wrong group is harder to spot than one in an obviously empty one. Receipts are the exception: the receipt tells you which shop it was, so items created from one inherit it.
 
 Store names are folded to one spelling on the way in, because receipts shout: `ASDA` becomes Asda, `SAINSBURYS` becomes Sainsbury's, `CO-OP` and `co op` both become Co-op. A spelling already in your data always wins, so if you typed something a particular way it stays that way. Anything unrecognised gets plain title case, and grouping ignores case regardless as a backstop.
@@ -477,6 +492,8 @@ Three things do that together, because no one of them is enough:
 
 **Nothing focusable is ever under 16px.** Safari on iOS zooms the whole page in the moment you tap a control smaller than that, and does not zoom back out. The meal pickers on the Plan tab were 15px and the backup box was 12px, which is what made them feel like they would not scroll: the page had silently zoomed and the gesture was landing somewhere else. It is a hard floor now, not a preference, and a test walks every tab asserting it.
 
+In the installed app the back gesture never leaves it. It closes the camera, then the sheet on top (a sheet opened from Settings returns to Settings), then goes to the List, and past that is absorbed. A browser cannot switch the button off, only keep an entry in front of the one it would fall to, so this is done only when the page is running installed: in a browser tab back is how you leave.
+
 Sheets keep a scroll gesture to themselves rather than chaining it to the page underneath, which is the other half of a sheet that feels stuck.
 
 ## Folding an item's editor away
@@ -513,7 +530,7 @@ Two things worth knowing when it happens. A private window bypasses the service 
 ```
 npm install                     once, to get Playwright
 npx playwright install chromium
-npm test                        the lot, about 80 seconds
+npm test                        the lot, a couple of minutes
 npm test -- sync meal           only tests whose name contains one of these
 ```
 

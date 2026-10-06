@@ -4,10 +4,11 @@
    2. a freshly added ingredient defaults to one portion, not half;
    3. a shopping line reads "Name × N · £x each · offer", with no stock to
       reconcile in your head. */
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: "dark" });
+await pinClock(ctx);
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
