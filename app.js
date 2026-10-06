@@ -35,6 +35,8 @@ const root = document.getElementById("app");
 const state = {
   db: null, settings: null, tab: "list", sheet: null, flash: null,
   calc: null, reveal: null, query: "", incoming: null,
+  // a question asked over whatever is open, and the undo offered after a routine action
+  dialog: null, toast: null,
   /* Which week of the fortnight is on screen, and the day being moved. */
   planWeek: 0, swapFrom: null,
 };
@@ -239,6 +241,54 @@ function setSheet(sheet) {
 
 function flash(kind, text) {
   state.flash = { kind, text };
+  draw();
+}
+
+/* Questions are asked in the app, not by the browser: a native box shows the
+   page address, breaks the look, and some browsers stop showing it after a few.
+   These resolve to the answer, so an action reads straight down. A confirmation
+   is for what cannot be taken back and says what will go; anything routine gets
+   an undo toast instead, since people learn to click through a question they
+   are asked every time. */
+function openDialog(spec) {
+  return new Promise((resolve) => {
+    state.dialog = { ...spec, resolve };
+    draw();
+  });
+}
+
+// resolves true or false
+const confirmDialog = ({ title, text = "", ok = "Delete", danger = true }) =>
+  openDialog({ title, text, ok, danger });
+
+// resolves the typed text, or null if it was cancelled
+const askDialog = ({ title, label, value = "", placeholder = "", ok = "Save" }) =>
+  openDialog({ title, input: { label, value, placeholder }, ok, danger: false });
+
+function closeDialog(answer) {
+  const d = state.dialog;
+  if (!d) return;
+  state.dialog = null;
+  draw();
+  d.resolve(answer);
+}
+
+const dialogNo = () => closeDialog(state.dialog && state.dialog.input ? null : false);
+const dialogYes = () => closeDialog(state.dialog && state.dialog.input ? state.dialog.input.value : true);
+
+/* The undo offered after something routine. The closure puts things back the
+   way they were, and the toast goes by itself so it never piles up. */
+let toastTimer = null;
+function toast(text, undo = null) {
+  const id = (state.toast ? state.toast.id : 0) + 1;
+  state.toast = { id, text, undo };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    if (state.toast && state.toast.id === id) {
+      state.toast = null;
+      draw();
+    }
+  }, 7000);
   draw();
 }
 
@@ -480,6 +530,8 @@ function render() {
     `</div>`,
     viewTabs(),
     viewSheet(),
+    viewToast(),
+    viewDialog(),
   ].join("");
 
   /* Textareas do not grow themselves, and a rebuild throws away any height
@@ -508,6 +560,15 @@ function render() {
     if (s) s.scrollTop = sheetScroll;
   }
 
+  // a question's box takes the cursor once, and the button that opened it must not take it back
+  const dialogBox = state.dialog && state.dialog.input ? root.querySelector(".dialog input") : null;
+  const dialogFresh = !!dialogBox && !state.dialog.focused;
+  if (dialogFresh) {
+    state.dialog.focused = true;
+    dialogBox.focus();
+    dialogBox.select();
+  }
+
   if (state.reveal) {
     const card = root.querySelector(`[data-scroll="${state.reveal}"]`);
     if (card) {
@@ -522,7 +583,7 @@ function render() {
     return;
   }
 
-  if (focusKey) {
+  if (focusKey && !dialogFresh) {
     const again = [...root.querySelectorAll("[data-act]")].find((el) => fieldKey(el) === focusKey);
     if (again) {
       /* preventScroll, or restoring focus drags the page to wherever the
@@ -537,6 +598,34 @@ function render() {
       }
     }
   }
+}
+
+function viewToast() {
+  const t = state.toast;
+  if (!t) return "";
+  return `<div class="toast" role="status"><span class="grow">${esc(t.text)}</span>${
+    t.undo ? '<button class="btn small ghost" data-act="undoToast">Undo</button>' : ""
+  }</div>`;
+}
+
+function viewDialog() {
+  const d = state.dialog;
+  if (!d) return "";
+  return `<div class="scrim dialogscrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title">
+    <h2 id="dialog-title">${esc(d.title)}</h2>
+    ${d.text ? `<p class="muted mt-8">${esc(d.text)}</p>` : ""}
+    ${
+      d.input
+        ? `<label class="field mt-12"><span class="eyebrow">${esc(d.input.label)}</span>
+            <input class="inp" value="${esc(d.input.value)}" placeholder="${esc(d.input.placeholder)}"
+              data-act="setDialogValue" autocomplete="off"></label>`
+        : ""
+    }
+    <div class="row gap-8 mt-16">
+      <button class="btn grow" data-act="dialogNo">Cancel</button>
+      <button class="btn solid grow${d.danger ? " danger" : ""}" data-act="dialogYes">${esc(d.ok)}</button>
+    </div>
+  </div></div>`;
 }
 
 /* The five pages, in the order a swipe moves through them. */
@@ -1801,7 +1890,7 @@ function portionEditor(ing, product) {
 /* One product: a thing you can actually put in a trolley. It has a name of its
    own, because "which cheddar is this" is a question the app has to be able to
    answer, and its own stock, because a meal may ask for this one specifically. */
-function productCard(ing, product, chosen, stores, expanded) {
+function productCard(ing, product, chosen, expanded) {
   const age = daysSince(product.priceUpdated);
   const stale = age > STALE_DAYS;
   const pinned = isPinned(ing, product);
@@ -2016,7 +2105,7 @@ function viewItems() {
         uses, unless you pin one. A meal can also ask for one of these by name.</p>
         ${all
           .map((product) =>
-            productCard(ing, product, product === chosen, stores, product.id === openProduct)
+            productCard(ing, product, product === chosen, product.id === openProduct)
           )
           .join("")}
         <button class="btn small tonal wide" style="margin-bottom:10px" data-act="addProduct"
@@ -2434,9 +2523,9 @@ function sameNamed(name) {
 /* The stock control on a receipt line. Counted in portions like everywhere
    else, stepped by whole packs because that is how a receipt counts, and
    pre-filled from the quantity the model read off the paper. */
-function receiptStockRow(r, i, store) {
-  const add = rowStock(r, store);
-  const perPack = rowPackPortions(r, store);
+function receiptStockRow(r, i) {
+  const add = rowStock(r);
+  const perPack = rowPackPortions(r);
   const known = r.targetId === "__new__" ? sameNamed(r.newName) : ingredient(r.targetId);
   const now = known ? stockPortions(known) : 0;
   const packs = perPack > 0 ? add / perPack : 0;
@@ -2587,7 +2676,7 @@ function sheetReceipt(s) {
               r.barcode ? "Rescan" : "Scan barcode"
             }</button>
         </div>
-        ${r.targetId ? receiptStockRow(r, i, s.store) : ""}
+        ${r.targetId ? receiptStockRow(r, i) : ""}
         <div class="row" style="margin-top:5px">
           <span class="eyebrow" style="white-space:nowrap">Paid</span>
           <select class="inp grow" data-act="setRowOfferKind" data-i="${i}">
@@ -2617,7 +2706,7 @@ function sheetReceipt(s) {
 
     const live = s.rows.filter((r) => r.use && r.targetId && r.price > 0);
     const ready = live.length;
-    const stocking = live.filter((r) => rowStock(r, s.store) > 0).length;
+    const stocking = live.filter((r) => rowStock(r) > 0).length;
     inner.push(`<button class="btn solid wide" style="margin-top:10px" data-act="applyReceipt"${
       ready ? "" : " disabled"
     }>Update ${ready} price${ready === 1 ? "" : "s"}${stocking ? " and stock" : ""}</button>
@@ -3439,7 +3528,7 @@ function receiptRow(line, store) {
    The comparison is by day. A receipt from this afternoon and a correction
    made this morning are treated as equal standing, because a receipt carries
    no time and guessing one would only annoy. */
-function refreshRows(rows, date, store) {
+function refreshRows(rows, date) {
   return rows.map((r) => {
     const ing = r.targetId && r.targetId !== "__new__" ? ingredient(r.targetId) : null;
     // Compared against the price this line would actually overwrite. A
@@ -3459,7 +3548,7 @@ function refreshRows(rows, date, store) {
 
 /* One pack's worth of portions for whatever a receipt line points at, at the
    shop the receipt came from, since that is the pack being bought. */
-function rowPackPortions(r, store) {
+function rowPackPortions(r) {
   if (r.targetId === "__new__" || r.productId === "__new__") {
     return Math.max(0.5, Number(r.newPortions) || 1);
   }
@@ -3472,7 +3561,7 @@ function rowPackPortions(r, store) {
    update prices, and "Got it" on the List tab is where a trolley becomes
    stock, so a receipt adds nothing by default and each line starts at zero.
    Bump it up on a line where the receipt is the moment you want to stock it. */
-function rowStock(r, store) {
+function rowStock(r) {
   if (r.stockTouched) return Math.max(0, Number(r.stockAdd) || 0);
   return 0;
 }
@@ -3483,8 +3572,7 @@ function bumpRowStock(i, dir) {
   const rows = state.sheet.rows.slice();
   const r = rows[i];
   if (!r) return;
-  const store = state.sheet.store;
-  const next = Math.max(0, rowStock(r, store) + dir * rowPackPortions(r, store));
+  const next = Math.max(0, rowStock(r) + dir * rowPackPortions(r));
   rows[i] = { ...r, stockAdd: Math.round(next * 100) / 100, stockTouched: true };
   setSheet({ ...state.sheet, rows });
 }
@@ -3654,7 +3742,7 @@ async function shootReceipt() {
         store,
         date,
         dateRead: !!out.date,
-        rows: refreshRows(out.lines.map((line) => receiptRow(line, store)), date, store),
+        rows: refreshRows(out.lines.map((line) => receiptRow(line, store)), date),
       });
     } catch (err) {
       setSheet({ ...state.sheet, busy: false, err: err.message });
@@ -3746,7 +3834,7 @@ function applyReceipt() {
       // Stock is in portions and sits on the product, because a meal is
       // allowed to ask for this one specifically. The line was pre-filled from
       // the receipt's quantity and may have been corrected.
-      const add = rowStock(r, s.store);
+      const add = rowStock(r);
       if (add > 0) {
         product.stockPortions = (Number(product.stockPortions) || 0) + add;
         // buying it settles whatever was on the list by hand
@@ -3981,6 +4069,19 @@ async function pushNow() {
 /* ------------------------------- actions ------------------------------- */
 
 const actions = {
+  dialogYes,
+  dialogNo,
+  setDialogValue: (el) => {
+    if (state.dialog && state.dialog.input) state.dialog.input.value = el.value;
+  },
+  undoToast: () => {
+    const t = state.toast;
+    state.toast = null;
+    clearTimeout(toastTimer);
+    if (t && t.undo) t.undo();
+    else draw();
+  },
+
   tab: (el) => {
     state.flash = null;
     goToTab(el.dataset.tab, 0);
@@ -4282,13 +4383,28 @@ const actions = {
     const packs = Number(el.dataset.packs) || 0;
     const product = productOf(ing.id, el.dataset.product) || chooseProduct(ing);
     if (!product) return;
-    patchProduct(ing.id, product.id, {
-      stockPortions: productStock(product) + packs * packPortions(product),
-      // buying settles this product's own hand-added packs
-      extraPacks: 0,
-    });
-    // and the loose "any of it" ones, if this is the shelf they rode to
-    if (product.id === (chooseProduct(ing) || {}).id) patchIngredient(ing.id, { extraPacks: 0 });
+    // the loose "any of it" packs ride on the cheapest shelf, so buying that one settles them
+    const rides = product.id === (chooseProduct(ing) || {}).id;
+    const was = { stock: product.stockPortions, own: product.extraPacks, loose: ing.extraPacks };
+
+    const set = (stock, own, loose) =>
+      commit((db) => {
+        const i = db.ingredients.findIndex((x) => x.id === ing.id);
+        if (i < 0) return;
+        const cur = db.ingredients[i];
+        db.ingredients[i] = {
+          ...cur,
+          updatedAt: now(),
+          ...(rides ? { extraPacks: loose } : {}),
+          products: (cur.products || []).map((p) =>
+            p.id === product.id ? { ...p, stockPortions: stock, extraPacks: own } : p
+          ),
+        };
+      });
+
+    // buying also settles this product's own hand-added packs
+    set(productStock(product) + packs * packPortions(product), 0, 0);
+    toast(`${ing.name} bought`, () => set(was.stock, was.own, was.loose));
   },
 
   moreStockPack: (el) => {
@@ -4455,9 +4571,10 @@ const actions = {
     });
   },
 
-  fileJottingNew: (el) => {
+  fileJottingNew: async (el) => {
     const id = el.dataset.id;
-    const store = (prompt("Which shop?") || "").trim();
+    const named = await askDialog({ title: "Which shop?", label: "Shop", placeholder: "Boots", ok: "File it" });
+    const store = canonicalStore((named || "").trim(), listShops());
     if (!store) return;
     commit((db) => {
       const j = (db.jottings || []).find((x) => x.id === id);
@@ -4483,22 +4600,49 @@ const actions = {
      other phone writes it back on the next merge. */
   gotJotting: (el) => {
     const id = el.dataset.id;
+    const line = (state.db.jottings || []).find((j) => j.id === id);
+    if (!line) return;
     commit((db) => {
       db.jottings = (db.jottings || []).filter((j) => j.id !== id);
       markDeleted(db, "jot", id);
     });
+    // put back with a newer stamp, which is what lets it outlive its own headstone
+    toast(`${line.text || "That line"} struck off`, () =>
+      commit((db) => {
+        db.jottings = [...(db.jottings || []), { ...line, at: now() }];
+      })
+    );
   },
 
   clearExtra: (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
     const product = el.dataset.product ? productOf(ing.id, el.dataset.product) : null;
-    // clear this exact product's own hand-added packs
-    if (product && Number(product.extraPacks)) patchProduct(ing.id, product.id, { extraPacks: 0 });
-    // and the loose "any of it" ones, but only from the shelf they rode to, so
-    // clearing one specific line does not wipe the cheapest's hand-add too
-    if ((!product || product.id === (chooseProduct(ing) || {}).id) && Number(ing.extraPacks))
-      patchIngredient(ing.id, { extraPacks: 0 });
+    // this exact product's own hand-added packs, and the loose "any of it" ones
+    // only from the shelf they rode to, so one specific line does not wipe the
+    // cheapest's hand-add too
+    const ownWas = product ? product.extraPacks : undefined;
+    const looseWas = ing.extraPacks;
+    const clearOwn = !!(product && Number(product.extraPacks));
+    const clearLoose = (!product || product.id === (chooseProduct(ing) || {}).id) && !!Number(ing.extraPacks);
+    if (!clearOwn && !clearLoose) return;
+
+    const set = (own, loose) =>
+      commit((db) => {
+        const i = db.ingredients.findIndex((x) => x.id === ing.id);
+        if (i < 0) return;
+        const cur = db.ingredients[i];
+        db.ingredients[i] = {
+          ...cur,
+          updatedAt: now(),
+          ...(clearLoose ? { extraPacks: loose } : {}),
+          products: (cur.products || []).map((p) =>
+            clearOwn && p.id === product.id ? { ...p, extraPacks: own } : p
+          ),
+        };
+      });
+    set(0, 0);
+    toast(`${ing.name} taken off the list`, () => set(ownWas, looseWas));
   },
   addProductToList: (el) => {
     const product = productOf(el.dataset.id, el.dataset.product);
@@ -4685,11 +4829,17 @@ const actions = {
       };
     });
   },
-  delProduct: (el) => {
+  delProduct: async (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing || productsOf(ing).length < 2) return;
     const product = productOf(ing.id, el.dataset.product);
-    if (!confirm(`Stop buying ${ing.name} as ${(product && product.name) || "this"}?`)) return;
+    const gone = (product && product.name) || "this one";
+    const yes = await confirmDialog({
+      title: `Stop buying ${ing.name} as ${gone}?`,
+      text: `Meals that asked for ${gone} by name will take any ${ing.name} instead.`,
+      ok: "Remove",
+    });
+    if (!yes) return;
     forgetOpenProduct();
     commit((db) => {
       markDeleted(db, "prod", ing.id, el.dataset.product);
@@ -4873,9 +5023,15 @@ const actions = {
   /* A meal that was never set up. It goes on the day as plain words: it costs
      nothing and asks for nothing, which is exactly right for a takeaway, a
      dinner out, or something you will work out on the night. */
-  writeDay: (el) => {
+  writeDay: async (el) => {
     const idx = Number(el.dataset.idx);
-    const text = (prompt("What are you eating?") || "").trim();
+    const said = await askDialog({
+      title: "What are you eating?",
+      label: "Written in as it is, with nothing to buy",
+      placeholder: "Chinese takeaway",
+      ok: "Write it in",
+    });
+    const text = (said || "").trim();
     if (!text) return;
     commit((db) => {
       const day = db.plan[idx];
@@ -4888,6 +5044,8 @@ const actions = {
   unwriteDay: (el) => {
     const idx = Number(el.dataset.idx);
     const n = Number(el.dataset.n);
+    const text = ((state.db.plan[idx] || {}).written || [])[n];
+    if (text === undefined) return;
     commit((db) => {
       const day = db.plan[idx];
       if (!day || !Array.isArray(day.written)) return;
@@ -4895,6 +5053,16 @@ const actions = {
       if (!day.written.length) delete day.written;
       touchPlan(db);
     });
+    toast(`${text} taken off`, () =>
+      commit((db) => {
+        const day = db.plan[idx];
+        if (!day) return;
+        const list = [...(day.written || [])];
+        list.splice(n, 0, text);
+        day.written = list;
+        touchPlan(db);
+      })
+    );
   },
 
   /* Swapping moves everything on the day — both people's slots, their edits,
@@ -4973,7 +5141,7 @@ const actions = {
     }),
 
   // write the loose edit back into the shared meal, changing it everywhere
-  overwriteMeal: (el) => {
+  overwriteMeal: async (el) => {
     const idx = Number(el.dataset.id);
     const slot = el.dataset.key;
     const who = Number(el.dataset.which) || 0;
@@ -4983,7 +5151,13 @@ const actions = {
     const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
     const base = forSlot[who] ? state.db.meals.find((m) => m.id === forSlot[who]) : null;
     if (!ov || !base) return;
-    if (!confirm(`Save these items into ${base.name}? Every day using ${base.name} changes to match.`)) return;
+    const yes = await confirmDialog({
+      title: `Save these items into ${base.name}?`,
+      text: `Every day that uses ${base.name} changes to match.`,
+      ok: "Save into it",
+      danger: false,
+    });
+    if (!yes) return;
     commit((db) => {
       editMeal(db, base.id, (m) => {
         m.items = ov.items.map(cloneItem);
@@ -4995,7 +5169,7 @@ const actions = {
   },
 
   // keep the loose edit as its own meal, and point this day at it
-  saveDayMeal: (el) => {
+  saveDayMeal: async (el) => {
     const idx = Number(el.dataset.id);
     const slot = el.dataset.key;
     const who = Number(el.dataset.which) || 0;
@@ -5006,7 +5180,13 @@ const actions = {
     const forSlot = Array.isArray(day[slot]) ? day[slot] : [null, null];
     const base = forSlot[who] ? state.db.meals.find((m) => m.id === forSlot[who]) : null;
     const suggested = ov.name || (base ? `${base.name} (new)` : "New meal");
-    const name = (prompt("Name for the new meal", suggested) || "").trim();
+    const asked = await askDialog({
+      title: "Name for the new meal",
+      label: "Meal name",
+      value: suggested,
+      ok: "Save meal",
+    });
+    const name = (asked || "").trim();
     if (!name) return;
     const id = uid();
     commit((db) => {
@@ -5021,14 +5201,19 @@ const actions = {
     flash("ok", `Saved "${name}" as a meal and put it on this day.`);
   },
 
-  clearPlan: () => {
-    if (confirm("Clear both weeks?"))
-      commit((db) => {
-        db.plan = Array.from({ length: 14 }, () => ({
-          breakfast: [null, null], lunch: [null, null], dinner: [null, null],
-        }));
-        touchPlan(db);
-      });
+  clearPlan: async () => {
+    const yes = await confirmDialog({
+      title: "Clear both weeks?",
+      text: "Every planned meal, edit and extra goes. The meals themselves are kept.",
+      ok: "Clear the plan",
+    });
+    if (!yes) return;
+    commit((db) => {
+      db.plan = Array.from({ length: 14 }, () => ({
+        breakfast: [null, null], lunch: [null, null], dinner: [null, null],
+      }));
+      touchPlan(db);
+    });
   },
 
   openItem: (el) => {
@@ -5052,10 +5237,14 @@ const actions = {
     commit((db) => db.ingredients.push(made));
     await revealItem(made.id);
   },
-  delItem: (el) => {
+  delItem: async (el) => {
     const id = el.dataset.id;
     const ing = ingredient(id);
-    if (!confirm(`Delete ${ing ? ing.name : "this item"}? It will be removed from every meal too.`)) return;
+    const yes = await confirmDialog({
+      title: `Delete ${ing ? ing.name : "this item"}?`,
+      text: "It is taken out of every meal that uses it, and its prices and stock go with it.",
+    });
+    if (!yes) return;
     commit((db) => {
       markDeleted(db, "ing", id);
       db.ingredients = db.ingredients.filter((i) => i.id !== id);
@@ -5116,9 +5305,14 @@ const actions = {
     state.reveal = meal.id;
     setSheet({ kind: "meal", id: meal.id });
   },
-  delMeal: (el) => {
+  delMeal: async (el) => {
     const id = el.dataset.id;
-    if (!confirm("Delete this meal? Any planned days using it will empty.")) return;
+    const meal = state.db.meals.find((m) => m.id === id);
+    const yes = await confirmDialog({
+      title: `Delete ${meal ? meal.name : "this meal"}?`,
+      text: "Every day on the plan that uses it empties.",
+    });
+    if (!yes) return;
     commit((db) => {
       markDeleted(db, "meal", id);
       db.meals = db.meals.filter((m) => m.id !== id);
@@ -5172,7 +5366,7 @@ const actions = {
   setReceiptStore: (el) => {
     const store = canonicalStore(el.value, storeNames(state.db.ingredients));
     // which shop it was decides which price the lines are compared against
-    setSheet({ ...state.sheet, store, rows: refreshRows(state.sheet.rows, state.sheet.date, store) });
+    setSheet({ ...state.sheet, store, rows: refreshRows(state.sheet.rows, state.sheet.date) });
   },
   setReceiptDate: (el) => {
     const date = el.value || today();
@@ -5180,7 +5374,7 @@ const actions = {
       ...state.sheet,
       date,
       dateRead: true,
-      rows: refreshRows(state.sheet.rows, date, state.sheet.store),
+      rows: refreshRows(state.sheet.rows, date),
     });
   },
   toggleRow: (el) => {
@@ -5212,7 +5406,7 @@ const actions = {
       stockTouched: false,
     };
     // the item they just chose may itself be newer than this receipt
-    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date, state.sheet.store) });
+    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date) });
   },
   scanRow: (el) => {
     const i = Number(el.dataset.i);
@@ -5249,7 +5443,7 @@ const actions = {
     const i = Number(el.dataset.i);
     rows[i] = { ...rows[i], productId: el.value, stockAdd: 0, stockTouched: false };
     // a different one may have been priced since this receipt was printed
-    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date, state.sheet.store) });
+    setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date) });
   },
   setRowProductName: (el) => {
     const rows = state.sheet.rows.slice();
@@ -5364,7 +5558,12 @@ const actions = {
   },
 
   resetAll: async () => {
-    if (!confirm("Reset to the starting items and meals? Local changes will be lost.")) return;
+    const yes = await confirmDialog({
+      title: "Reset to the starting items and meals?",
+      text: "Everything on this phone is replaced by the starting list. Take a backup first if you want one.",
+      ok: "Reset",
+    });
+    if (!yes) return;
     state.db = seed();
     await saveDb(state.db, true);
     setSheet(null);
@@ -5388,6 +5587,7 @@ const actions = {
 const FROM_SETTINGS = ["invite", "join", "help"];
 
 function goBack() {
+  if (state.dialog) return dialogNo();
   if (cam) return closeCamera();
   const s = state.sheet;
   if (s) return s.kind && FROM_SETTINGS.includes(s.kind) ? actions.openSettings() : setSheet(null);
@@ -5497,6 +5697,7 @@ root.addEventListener("input", (e) => {
   /* The add sheet keeps what is typed in its own state as it goes, and only
      redraws the results, so tapping a button straight after typing is never
      met by a page that has been rebuilt underneath the finger. */
+  if (t.dataset && t.dataset.act === "setDialogValue") return actions.setDialogValue(t);
   const s = state.sheet;
   if (!s || s.kind !== "add") return;
   const act = t.dataset && t.dataset.act;
@@ -5508,6 +5709,14 @@ root.addEventListener("input", (e) => {
     s.err = "";
     const live = root.querySelector("#add-live");
     if (live) live.innerHTML = addLive(s);
+  }
+});
+
+// Enter in a question's box answers it
+root.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches && e.target.matches(".dialog input")) {
+    e.preventDefault();
+    dialogYes();
   }
 });
 

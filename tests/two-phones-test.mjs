@@ -1,7 +1,7 @@
 /* The real thing: two browsers, one fake shared file, driven through the app's
    own buttons. The unit test proves the merge rules; this proves the app
    actually stamps what it changes and sends it. */
-import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
 
 const fail = [];
 const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
@@ -154,12 +154,12 @@ await lee.p.waitForTimeout(200);
 // throw an item out
 await lee.p.click('[data-act="tab"][data-tab="items"]');
 await lee.p.waitForTimeout(300);
-lee.p.on("dialog", (d) => d.accept());
 await lee.p.evaluate(() => {
   [...document.querySelectorAll('[data-act="openItem"]')].find((e) => /Beans/.test(e.textContent)).click();
 });
 await lee.p.waitForTimeout(400);
 await lee.p.click('[data-act="delItem"]');
+await answer(lee.p);
 await lee.p.waitForTimeout(500);
 const leeNow = await readDb(lee.p);
 ok(!leeNow.ingredients.includes("Beans"), "Lee's Beans are gone locally");

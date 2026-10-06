@@ -1,7 +1,7 @@
 /* The day popout: tap a day, swap an ingredient for that day only, log an
    extra, and save a loose edit off as its own meal. Drives the real UI so the
    handlers and the fork-on-edit are exercised end to end. */
-import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: "dark" });
@@ -9,8 +9,6 @@ await pinClock(ctx);
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
-// the "save as a new meal" prompt is answered here
-p.on("dialog", (d) => d.accept("Pie and New Potatoes"));
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
@@ -104,6 +102,7 @@ await p.waitForTimeout(300);
 await p.click('[data-act="openDay"][data-idx="0"]');
 await p.waitForTimeout(300);
 await p.click('[data-act="saveDayMeal"][data-id="0"][data-key="dinner"][data-which="0"]');
+await answer(p, { fill: "Pie and New Potatoes" });
 await p.waitForTimeout(500);
 db = await readDb();
 console.log("   ", JSON.stringify(db));

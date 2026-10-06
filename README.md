@@ -478,6 +478,17 @@ No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled a
 
 Restoring focus uses `preventScroll` for the same reason: without it the browser drags the page to wherever the field ended up and undoes the anchoring.
 
+## Questions and undo
+
+The app never uses the browser's own `prompt()` or `confirm()`: a native box shows
+the page address, breaks the look, and some browsers stop showing it after a few.
+Anything that cannot be taken back (delete an item or a meal, reset, clear the plan)
+asks in the app, says what will go, and can be cancelled. Anything routine does not
+ask at all: ticking a line **Got it**, taking hand-added packs off, striking off a
+written line or removing a written-in meal just happens, and a toast offers **Undo**
+for a few seconds. Undo puts back exactly what was there, including the stamp that
+lets a restored written line outlive its own headstone on the other phone.
+
 ## Phones, zooming and Safari
 
 The page is pinned at 1:1 and pinch zoom is refused. Zooming out used to shrink the app inside a blank page it could not scroll back from, which reads as a broken layout rather than a zoom.

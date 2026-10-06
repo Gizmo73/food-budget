@@ -2,7 +2,7 @@
    person, and leaves every other meal where it was. A slot holds one meal per
    person, and this once compared the whole pair with the id, so nothing ever
    matched and the plan kept pointing at a meal that no longer existed. */
-import { browser, BASE } from "./browser.mjs";
+import { browser, BASE, answer } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 390, height: 820 }, colorScheme: "dark" });
@@ -36,8 +36,8 @@ await p.click('[data-act="tab"][data-tab="meals"]');
 await p.waitForTimeout(200);
 await p.click('.card [data-act="openMeal"][data-id="bol"]');
 await p.waitForTimeout(200);
-p.once("dialog", (d) => d.accept());
 await p.click('[data-act="delMeal"]');
+await answer(p);
 await p.waitForTimeout(400);
 
 const plan = await p.evaluate(async () => (await (await import("./lib/store.js")).loadDb()).plan.slice(0, 3));

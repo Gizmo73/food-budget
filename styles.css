@@ -352,6 +352,31 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
   padding:1px 5px; border-radius:var(--r-s);
 }
 
+/* ------------------------- questions, toasts, spacing ------------------- */
+/* A question sits over whatever is open, so it is centred where a sheet is
+   anchored to the bottom, and above everything including the toast. */
+.dialogscrim { align-items:center; padding:0 24px; z-index:70; }
+.dialog {
+  background:var(--surface-2); width:100%; max-width:380px; padding:20px;
+  border-radius:var(--r-l); box-shadow:var(--shadow-3);
+}
+.dialog h2 { margin:0; font-size:20px; font-weight:500; letter-spacing:-0.015em; }
+
+/* The undo after something routine: above the tab bar, below any question. */
+.toast {
+  position:fixed; left:12px; right:12px; bottom:calc(78px + env(safe-area-inset-bottom));
+  max-width:536px; margin:0 auto; z-index:60; display:flex; align-items:center; gap:8px;
+  padding:4px 4px 4px 16px; background:var(--surface-3); border:1px solid var(--outline);
+  border-radius:var(--r-m); box-shadow:var(--shadow-2); font-size:14px;
+}
+.toast .btn { color:var(--accent); }
+
+/* Spacing is set here, in steps, rather than typed afresh into each template. */
+.mt-4 { margin-top:4px; } .mt-8 { margin-top:8px; } .mt-12 { margin-top:12px; } .mt-16 { margin-top:16px; }
+.mb-4 { margin-bottom:4px; } .mb-8 { margin-bottom:8px; } .mb-12 { margin-bottom:12px; } .mb-16 { margin-bottom:16px; }
+.gap-4 { gap:4px; } .gap-6 { gap:6px; } .gap-8 { gap:8px; }
+.wrap-row { flex-wrap:wrap; }
+
 /* --------------------------- scanner and rows --------------------------- */
 .scanner {
   position:relative; background:#000; aspect-ratio:4/3; overflow:hidden;
