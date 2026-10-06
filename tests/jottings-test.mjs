@@ -17,13 +17,13 @@ const total = () => p.$eval(".till .big", (e) => e.textContent.trim());
 
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)), true);
-  location.reload();
 }, readFileSync(FIXTURE, "utf8"));
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- one way in, from the top of the list ---");
@@ -62,7 +62,7 @@ ok((await total()) === before, `the total is unchanged at ${before}`);
 
 console.log("\n--- it survives a reload ---");
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 now = await boxes();
 ok(now.includes("Bin bags"), "the written line is still there after a reload");

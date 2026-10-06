@@ -13,15 +13,15 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 console.log("--- an empty list still offers somewhere to write ---");
 await p.evaluate(async () => {
   const store = await import("./lib/store.js");
   await store.saveDb(store.migrate({ schema: 8, ingredients: [], meals: [], plan: [], jottings: [] }), true);
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
 ok((await p.$('button[data-act="openAdd"]')) !== null, "the list offers Add to the list with nothing planned or written");
@@ -68,9 +68,9 @@ await p.evaluate(async () => {
     { ingredientId: "bread", portions: 1 }, { ingredientId: "milk", portions: 1 }] }];
   db.plan = Array.from({ length: 14 }, () => ({ breakfast: ["brek", "brek"], lunch: [null, null], dinner: [null, null] }));
   await store.saveDb(db, true);
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
 const chips = await p.$$eval('button[data-act="fileJotting"]', (els) => els.map((e) => e.dataset.store));

@@ -9,7 +9,7 @@ const ctx = await b.newContext({ viewport: { width: 390, height: 820 }, colorSch
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
-const booted = () => p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+const booted = () => p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
@@ -28,8 +28,8 @@ await p.evaluate(async () => {
     ],
     plan, people: ["Lee", "Sam"], planStart: "",
   }), true);
-  location.reload();
 });
+await p.reload();
 await booted();
 
 await p.click('[data-act="tab"][data-tab="meals"]');

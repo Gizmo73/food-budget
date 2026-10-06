@@ -11,7 +11,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 console.log("--- the app is at the root now ---");
 const res = await p.goto(`${BASE}/index.html`);
 ok(res.status() === 200, "the root app serves");
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 // the 404 this provokes is the point, so it must not count as a page error
 const expected404 = [];
 p.on("response", (r) => r.status() === 404 && expected404.push(r.url()));
@@ -19,7 +19,7 @@ const gone = await p.goto(`${BASE}/next/index.html`);
 ok(gone.status() === 404, `and /next/ is gone (${gone.status()})`);
 
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
 console.log("\n--- it is not badged as a test any more ---");
@@ -33,7 +33,7 @@ console.log("  ", JSON.stringify(look));
 ok(look.title === "Fortnight Shop", `title is clean (${look.title})`);
 ok(look.eyebrow === "Fortnight Shop", `no test badge (${look.eyebrow})`);
 ok(!/separate data/.test(look.sub), "no warning about separate data");
-ok(look.tabs.join(",") === "list,plan,food,meals,items", `all five tabs present (${look.tabs.join(",")})`);
+ok(look.tabs.join(",") === "list,plan,meals,items", `all four tabs present (${look.tabs.join(",")})`);
 
 console.log("\n--- it opens the database both phones already use ---");
 const dbName = await p.evaluate(async () => {
@@ -72,7 +72,7 @@ await p.evaluate(async (db) => {
   });
 }, v4);
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 // read the current schema out of the module rather than pinning a number here
@@ -107,7 +107,7 @@ await p.evaluate(async (json) => {
   await s.saveDb(s.migrate(JSON.parse(json)), true);
 }, readFileSync(FIXTURE, "utf8"));
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 await p.click('[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(300);
@@ -115,7 +115,7 @@ const restored = await p.evaluate(() => document.querySelectorAll('[data-act="op
 ok(restored === 37, `the 37 items load in the promoted app (${restored})`);
 
 console.log("\n--- every tab still works ---");
-for (const t of ["list", "plan", "food", "meals", "items"]) {
+for (const t of ["list", "plan", "meals", "items"]) {
   await p.click(`[data-act="tab"][data-tab="${t}"]`);
   await p.waitForTimeout(250);
   const n = await p.evaluate(() => document.querySelector(".wrap").textContent.trim().length);

@@ -16,7 +16,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 let native = 0;
 p.on("dialog", (d) => { native += 1; d.dismiss(); });
 
-const booted = () => p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+const booted = () => p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 const db = () => p.evaluate(async () => (await import("./lib/store.js")).loadDb());
 const settle = () => p.waitForTimeout(450);
 
@@ -29,8 +29,8 @@ await p.evaluate(async (json) => {
   d.ingredients.find((i) => i.name === "Eggs").extraPacks = 2; // two put on the list by hand
   d.jottings = [{ id: "bags", store: "Tesco", text: "Bin bags", at: "2026-10-01T10:00:00.000Z" }];
   await s.saveDb(d, true);
-  location.reload();
 }, readFileSync(FIXTURE, "utf8"));
+await p.reload();
 await booted();
 await p.waitForTimeout(300);
 
@@ -56,6 +56,7 @@ await p.click('[data-act="tab"][data-tab="list"]');
 
 console.log("\n--- a question with a box ---");
 await p.click('[data-act="tab"][data-tab="plan"]');
+await p.click('[data-act="openDay"][data-idx="1"]');
 await p.click('[data-act="writeDay"][data-idx="1"]');
 await p.waitForSelector(".dialog input");
 ok(await p.evaluate(() => document.activeElement && document.activeElement.matches(".dialog input")),
@@ -73,6 +74,7 @@ await settle();
 ok(!((await db()).plan[1].written || []).includes("Never written"), "Cancel writes nothing");
 
 console.log("\n--- ticking a line off offers an undo ---");
+await p.click('[data-act="closeSheet"]');
 await p.click('[data-act="tab"][data-tab="list"]');
 await p.waitForTimeout(300);
 const line = await p.$eval('[data-act="bought"]', (e) => ({ id: e.dataset.id, product: e.dataset.product }));

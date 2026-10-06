@@ -1,6 +1,6 @@
 # Fortnight Shop
 
-A fortnightly meal planner and shopping list. Static files with no build step:
+A weekly meal planner and shopping list. Static files with no build step:
 `index.html`, `app.js`, `styles.css`, `sw.js` and `lib/`, served straight from
 GitHub Pages. Nothing here is compiled, so anything committed is what runs.
 

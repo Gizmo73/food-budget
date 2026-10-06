@@ -26,7 +26,7 @@ async function open(installed) {
   if (installed) await p.addInitScript(asInstalled);
   await p.goto("about:blank");
   await p.goto(`${BASE}/index.html`);
-  await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+  await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
   await p.evaluate(() => { window.__alive = true; });
   return p;
 }
@@ -88,10 +88,10 @@ ok(s.alive && s.tab === "list" && /index\.html$/.test(s.url) && s.guard === "app
   "on the List, pressing back again and again leaves the app where it is");
 
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 const len = await p.evaluate(() => history.length);
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 ok((await p.evaluate(() => history.length)) === len, "reloading does not stack up more entries each time");
 await p.context().close();
 

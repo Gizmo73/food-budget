@@ -41,7 +41,7 @@ async function phone(name) {
   });
 
   await p.goto(`${BASE}/index.html`);
-  await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+  await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
   return { ctx, p };
 }
 
@@ -108,7 +108,7 @@ const lee = await phone("Lee");
 await connect(lee.p, "Lee");
 await seedList(lee.p);
 await lee.p.reload();
-await lee.p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await lee.p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await lee.p.waitForTimeout(300);
 console.log("   " + (await push(lee.p)).slice(-60));
 ok(!!file, "the shared file now exists");
@@ -117,7 +117,7 @@ console.log("\n--- Sam joins and gets the same list ---");
 const sam = await phone("Sam");
 await connect(sam.p, "Sam");
 await sam.p.reload();
-await sam.p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await sam.p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await sam.p.waitForTimeout(1200);
 let s = await readDb(sam.p);
 console.log("   Sam sees:", JSON.stringify(s.ingredients), JSON.stringify(s.meals));
@@ -144,7 +144,7 @@ await lee.p.waitForTimeout(300);
 await lee.p.click('[data-act="openDay"][data-idx="0"]');
 await lee.p.waitForTimeout(300);
 await lee.p.evaluate(() => {
-  const sel = document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]');
+  const sel = document.querySelector('[data-act="setDaySlotBoth"][data-id="0"][data-key="dinner"]');
   sel.value = "bol";
   sel.dispatchEvent(new Event("change", { bubbles: true }));
 });

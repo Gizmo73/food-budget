@@ -1,3 +1,7 @@
+/* A day is picked for both of you at once, since most days are. Splitting a slot
+   gives each person their own picker for the day you differ, and "Same for both"
+   gives the second person the first one's choice and folds it back to one. The
+   fifth day is used because the starting list plans the first three for one of you. */
 import { browser, BASE, SHOTS } from "./browser.mjs";
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 800 }, deviceScaleFactor: 2, colorScheme: "dark" });
@@ -6,43 +10,53 @@ const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(400);
 
-/* The "give the other person the same" copy lives in a day's popout now, one
-   per slot on the second person's row. Open a day and check it copies. */
-await p.click('[data-act="openDay"][data-idx="0"]');
-await p.waitForTimeout(300);
+const dinner = () => p.evaluate(async () => (await (await import("./lib/store.js")).loadDb()).plan[4].dinner);
+const settle = () => p.waitForTimeout(450);
 
-const btn = await p.$$eval('[data-act="copyDayCell"]', (els) => ({
-  count: els.length, text: els[0].textContent.trim(), title: els[0].title,
-  aria: els[0].getAttribute("aria-label"),
-  box: (({ width, height }) => ({ w: Math.round(width), h: Math.round(height) }))(els[0].getBoundingClientRect()),
+console.log("--- one picker per part of the day ---");
+await p.click('[data-act="openDay"][data-idx="4"]');
+await p.waitForTimeout(300);
+ok((await p.$$('[data-act="setDaySlotBoth"]')).length === 3, "breakfast, lunch and dinner each have one picker");
+ok((await p.$$('[data-act="setDaySlot"]')).length === 0, "and none per person");
+const split = await p.$$eval('[data-act="splitSlot"]', (els) => els.map((e) => {
+  const r = e.getBoundingClientRect();
+  return { text: e.textContent.trim(), h: Math.round(r.height) };
 }));
-console.log("  ", JSON.stringify(btn));
-ok(btn.text === "=", "the glyph is an equals sign");
-ok(!/[→←]/.test(btn.text), "no arrow left anywhere on the button");
-ok(btn.count === 3, `one per slot on the second person's row (${btn.count})`);
-ok(btn.box.h >= 28 && btn.box.w >= 24, `still a tappable size (${btn.box.w}x${btn.box.h})`);
-ok(/give/i.test(btn.aria || ""), "it announces what it does to a screen reader");
+console.log("  ", JSON.stringify(split));
+ok(split.length === 3 && split.every((s) => s.text === "Split"), "each can be split");
+ok(split.every((s) => s.h >= 36), "at a size a thumb can hit");
 
-// give person 1 a dinner, then copy it across to person 2
-await p.selectOption('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]', { index: 1 });
-await p.waitForTimeout(300);
-const before = await p.$eval('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="1"]', (e) => e.value);
-await p.click('[data-act="copyDayCell"][data-id="0"][data-key="dinner"]');
-await p.waitForTimeout(400);
-const after = await p.evaluate(() => [
-  document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="0"]').value,
-  document.querySelector('[data-act="setDaySlot"][data-id="0"][data-key="dinner"][data-which="1"]').value,
-]);
-console.log("   person 2 before:", JSON.stringify(before), "after:", JSON.stringify(after));
-ok(after[1] === after[0] && after[0] !== "", "pressing it still copies person 1's meal to person 2");
+console.log("\n--- choosing one gives it to both ---");
+await p.selectOption('[data-act="setDaySlotBoth"][data-key="dinner"]', { index: 1 });
+await settle();
+let d = await dinner();
+console.log("  ", JSON.stringify(d));
+ok(d[0] && d[0] === d[1], "both people have the dinner");
+
+console.log("\n--- splitting it for the day you differ ---");
+await p.click('[data-act="splitSlot"][data-key="dinner"]');
+await p.waitForTimeout(250);
+ok((await p.$$('[data-act="setDaySlot"][data-key="dinner"]')).length === 2, "dinner now has a picker for each person");
+await p.selectOption('[data-act="setDaySlot"][data-key="dinner"][data-which="1"]', { index: 2 });
+await settle();
+d = await dinner();
+ok(d[0] && d[1] && d[0] !== d[1], `they now differ (${JSON.stringify(d)})`);
+ok((await p.$$('[data-act="splitSlot"]')).length === 2, "and it stays split on its own, with no button to split it again");
+
+console.log("\n--- same for both folds it back ---");
+await p.click('[data-act="joinSlot"][data-key="dinner"]');
+await settle();
+d = await dinner();
+ok(d[0] === d[1] && d[0] !== null, "the second person has the first one's dinner");
+ok((await p.$$('[data-act="setDaySlot"]')).length === 0, "and it is one picker again");
 
 console.log("page errors:", errs.length ? errs : "none");
 if (errs.length) fail.push("page errors");
-await p.screenshot({ path: `${SHOTS}/plan-equals.png` });
+await p.screenshot({ path: `${SHOTS}/plan-day.png` });
 await b.close();
 console.log(fail.length ? `\n${fail.length} FAILED` : "\nall passed");
 process.exit(fail.length ? 1 : 0);

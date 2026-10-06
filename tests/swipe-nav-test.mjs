@@ -1,4 +1,4 @@
-/* Swiping between the five pages. A drag has to lock onto an axis before it
+/* Swiping between the four pages. A drag has to lock onto an axis before it
    commits to anything: mostly-horizontal moves a tab, mostly-vertical leaves
    the page alone so a long list still scrolls, and a drag starting on the tab
    bar itself never counts as a swipe. There is no page past the first or last
@@ -13,7 +13,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 const currentTab = () => p.evaluate(() => document.querySelector('.tabs button[data-on="1"]').dataset.tab);
 
@@ -48,7 +48,7 @@ ok((await currentTab()) === "list", "starts on List");
 await drag(-150, 0);
 ok((await currentTab()) === "plan", `swiping left goes to Plan (${await currentTab()})`);
 await drag(-150, 0);
-ok((await currentTab()) === "food", "and again to Food");
+ok((await currentTab()) === "meals", "and again to Meals");
 
 console.log("\n--- swiping the other way goes back ---");
 await drag(150, 0);
@@ -78,13 +78,15 @@ const tabsBox = await p.evaluate(() => {
 await drag(-200, 0, { x0: tabsBox.x, y0: tabsBox.y });
 ok((await currentTab()) === "list", `a drag from the tab bar does not swipe (${await currentTab()})`);
 
-console.log("\n--- the tab buttons and the pager agree with the swipe ---");
-await p.click('button[data-act="tab"][data-tab="meals"]');
+console.log("\n--- the tab buttons agree with the swipe ---");
+await p.click('button[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(200);
-const pager = await p.evaluate(() => [...document.querySelectorAll(".pager span")].map((s) => s.dataset.on));
-console.log("   ", JSON.stringify(pager));
-ok(pager.filter((v) => v === "1").length === 1, "exactly one pager segment is lit");
-ok(pager[3] === "1", `and it is the fourth, for Meals (${JSON.stringify(pager)})`);
+const lit = await p.evaluate(() => [...document.querySelectorAll(".tabs button")].map((s) => s.dataset.on));
+console.log("   ", JSON.stringify(lit));
+ok(lit.length === 4, "there are four tabs");
+ok(lit.filter((v) => v === "1").length === 1 && lit[3] === "1", "and exactly one is lit, the fourth, for Items");
+await drag(-150, 0);
+ok((await currentTab()) === "items", "and there is nothing further along to swipe to");
 
 console.log("\npage errors:", errs.length ? errs : "none");
 if (errs.length) fail.push("page errors");

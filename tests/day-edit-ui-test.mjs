@@ -12,7 +12,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 await p.evaluate(async () => {
   const store = await import("./lib/store.js");
@@ -35,9 +35,9 @@ await p.evaluate(async () => {
     ],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(300);
@@ -63,6 +63,9 @@ ok(/Pie and Mash/.test(summary0), `the first day names its dinner (${summary0})`
 console.log("\n--- open the day and swap the mash for new potatoes ---");
 await p.click('[data-act="openDay"][data-idx="0"]');
 await p.waitForTimeout(300);
+// what is in a meal is folded away until asked for
+await p.click('[data-act="toggleDayFold"][data-key="dinner"]');
+await p.waitForTimeout(200);
 // the dinner cell shows beef then potato; swap the potato (i=1) for new potatoes
 const swapSel = '[data-act="setDayIng"][data-id="0"][data-key="dinner"][data-which="0"][data-i="1"]';
 await p.waitForSelector(swapSel, { timeout: 5000 });
@@ -77,6 +80,8 @@ ok(JSON.stringify(db.baseItems) === JSON.stringify(["beef", "potato"]),
   "and the shared Pie and Mash still has ordinary potato");
 
 console.log("\n--- log an extra for the first person ---");
+await p.click('[data-act="toggleDayFold"][data-key="extras"]');
+await p.waitForTimeout(200);
 await p.click('[data-act="addExtra"][data-id="0"][data-which="0"]');
 await p.waitForTimeout(400);
 await p.selectOption('[data-act="setDayIng"][data-id="0"][data-key="extra"][data-which="0"][data-i="0"]', "apple");
@@ -101,6 +106,8 @@ await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(300);
 await p.click('[data-act="openDay"][data-idx="0"]');
 await p.waitForTimeout(300);
+await p.click('[data-act="toggleDayFold"][data-key="dinner"]');
+await p.waitForTimeout(200);
 await p.click('[data-act="saveDayMeal"][data-id="0"][data-key="dinner"][data-which="0"]');
 await answer(p, { fill: "Pie and New Potatoes" });
 await p.waitForTimeout(500);

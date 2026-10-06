@@ -23,13 +23,13 @@ p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)), true);
-  location.reload();
 }, readFileSync(FIXTURE, "utf8"));
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- sorted ---");
@@ -67,7 +67,7 @@ ok(JSON.stringify(filtered) === JSON.stringify(stillSorted), "still in name orde
 
 console.log("\n--- the choice sticks ---");
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 await p.click('[data-act="tab"][data-tab="meals"]');
 await p.waitForTimeout(400);
@@ -102,7 +102,7 @@ await p.waitForTimeout(400);
 // the meal pickers live inside a day's popout now
 await p.click('[data-act="openDay"][data-idx="0"]');
 await p.waitForTimeout(300);
-const opts = await p.$$eval('[data-act="setDaySlot"]', (e) =>
+const opts = await p.$$eval('[data-act="setDaySlotBoth"]', (e) =>
   [...e[0].options].slice(1).map((o) => o.textContent.trim()));
 // close the day popout so it does not sit over the tab bar
 await p.evaluate(() => document.querySelector('[data-act="closeSheet"]')?.click());

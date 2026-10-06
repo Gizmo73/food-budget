@@ -14,7 +14,7 @@ const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 /* Deliberately out of alphabetical order in the database, and one ingredient
    with three products so the folding has something to fold. */
@@ -47,9 +47,9 @@ await p.evaluate(async () => {
     meals: [{ id: "brek", name: "Breakfast", items: [{ ingredientId: "milk", portions: 1 }] }],
     plan: [], people: ["Lee", "Sam"],
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
 console.log("--- ingredient pickers are A to Z ---");
@@ -90,15 +90,18 @@ ok(picked.on.toUpperCase() === "#F3F5FE", `and writing on the pink is the light 
 ok(picked.saved === "#E25A93", "and it is written where the page can read it before it paints");
 
 // it has to reach the actual furniture, not just the variable
+await p.click('[data-act="closeSheet"]');
+await p.click('[data-act="tab"][data-tab="list"]');
+await p.waitForTimeout(250);
 const used = await p.evaluate(() => {
-  const solid = document.querySelector('.pager span[data-on="1"]');
-  return solid ? getComputedStyle(solid).backgroundColor : "";
+  const mark = document.querySelector(".addbar i");
+  return mark ? getComputedStyle(mark).color : "";
 });
 ok(used === "rgb(226, 90, 147)", `a real control is that colour (${used})`);
 
 // survives a reload, with the app's own accent back first
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 const early = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
 ok(early.toUpperCase() === "#E25A93", `it is still set after a reload (${early})`);
 

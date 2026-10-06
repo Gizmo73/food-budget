@@ -14,7 +14,7 @@ const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 await p.evaluate(async () => {
   const store = await import("./lib/store.js");
@@ -34,9 +34,9 @@ await p.evaluate(async () => {
     meals: [{ id: "bol", name: "Bolognese", updatedAt: "", items: [{ ingredientId: "mince", portions: 1 }] }],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 console.log("--- adding a meal jumps to it ---");
 await p.click('[data-act="tab"][data-tab="meals"]');
