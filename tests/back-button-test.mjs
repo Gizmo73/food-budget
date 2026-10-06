@@ -53,10 +53,13 @@ s = await back(p);
 ok(!s.sheet && s.alive && /index\.html$/.test(s.url), "back closes the sheet and stays in the app");
 ok(s.guard === "app", "and the entry is put back for the next press");
 
+await p.click('[data-act="openAdd"]');
 await p.click('[data-act="openScan"]');
 await p.waitForSelector(".scanner");
 s = await back(p);
-ok(!s.camera && s.alive, "back closes the camera first");
+ok(!s.camera && s.alive && s.sheet, "back closes the camera first, leaving the add sheet under it");
+s = await back(p);
+ok(!s.sheet && s.alive, "and the next press closes the sheet");
 
 await p.click('[data-act="openSettings"]');
 await p.click('[data-act="openHelp"]');

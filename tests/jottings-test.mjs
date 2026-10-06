@@ -13,7 +13,7 @@ p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 
 const boxes = () => p.$$eval('textarea[data-act="setJotting"]', (n) => n.map((t) => t.value));
-const total = () => p.$eval(".till .big", (e) => e.textContent.trim());
+const total = () => p.$eval(".pinbar .big", (e) => e.textContent.trim());
 
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);

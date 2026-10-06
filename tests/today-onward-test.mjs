@@ -97,7 +97,7 @@ console.log("   ", JSON.stringify(lines));
 ok(lines.length === 1 && /Mince.*× 1$/.test(lines[0]), `one pack, for the two days left (${lines[0]})`);
 const said = await p.$eval(".wrap", (w) => w.textContent.replace(/\s+/g, " "));
 ok(/Counting from today\. The 3 earlier days stay on the Plan/.test(said), "and it says the earlier days were left out");
-ok(await p.$eval('[data-act="openStocktake"]', (e) => !e.disabled), "the stock check is available, as meals are still to come");
+ok(await p.$('[data-act="goShopping"]') !== null, "and there is a shop to go on");
 
 console.log("\n--- the plan ---");
 await p.click('[data-act="tab"][data-tab="plan"]');
@@ -129,7 +129,10 @@ ok(/A new week has started/.test(await p.$eval(".banner", (e) => e.textContent))
 await p.click('[data-act="tab"][data-tab="list"]');
 await p.waitForTimeout(200);
 ok((await p.$$(".ticket")).length === 0, "and nothing is on the list for a plan that is only history");
-ok(await p.$eval('[data-act="openStocktake"]', (e) => e.disabled), "the stock check has nothing to ask about");
+await p.click('[data-act="goShopping"]');
+await p.waitForTimeout(250);
+ok(/Nothing is planned yet/.test(await p.$eval(".sheet", (e) => e.textContent)), "and the cupboard check has nothing to ask about");
+await p.click('[data-act="closeSheet"]');
 
 console.log("\n--- a plan that has run out ---");
 await load(build({ start: "2026-09-12" }));

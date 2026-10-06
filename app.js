@@ -262,12 +262,12 @@ function openDialog(spec) {
 }
 
 // resolves true or false
-const confirmDialog = ({ title, text = "", ok = "Delete", danger = true }) =>
-  openDialog({ title, text, ok, danger });
+const confirmDialog = ({ title, text = "", ok = "Delete", danger = true, cancel = "Cancel" }) =>
+  openDialog({ title, text, ok, danger, cancel });
 
 // resolves the typed text, or null if it was cancelled
-const askDialog = ({ title, label, value = "", placeholder = "", ok = "Save" }) =>
-  openDialog({ title, input: { label, value, placeholder }, ok, danger: false });
+const askDialog = ({ title, label, value = "", placeholder = "", ok = "Save", type = "text" }) =>
+  openDialog({ title, input: { label, value, placeholder, type }, ok, danger: false, cancel: "Cancel" });
 
 function closeDialog(answer) {
   const d = state.dialog;
@@ -343,6 +343,17 @@ const ingredient = (id) => state.db.ingredients.find((i) => i.id === id);
    for a database and useless for a dropdown of forty. */
 const ingredientsAZ = () =>
   state.db.ingredients.slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+/* A shop in progress, kept on this phone and not shared: what has gone in the
+   trolley so far. Ticking a line turns its packs into stock, which shrinks the
+   list, so this is what keeps the cost of the shop in view while it happens. */
+const shopping = () => state.settings.shopping || null;
+const trolleyTotal = (sh) => (sh ? sh.trolley.reduce((sum, t) => sum + (Number(t.cost) || 0), 0) : 0);
+async function setShopping(next) {
+  state.settings = { ...state.settings, shopping: next };
+  await saveSettings(state.settings);
+  draw();
+}
 
 const isShut = (which, name) => (state.settings[which] || []).includes(name);
 
@@ -523,6 +534,7 @@ function render() {
   const openCard = openId ? root.querySelector(`[data-scroll="${openId}"]`) : null;
   const anchorWas = openCard ? openCard.getBoundingClientRect().top : null;
 
+  root.classList.toggle("has-pin", state.tab === "list");
   root.innerHTML = [
     viewMasthead(),
     `<div class="wrap">`,
@@ -531,6 +543,7 @@ function render() {
       state.tab
     ] || viewList)(),
     `</div>`,
+    state.tab === "list" ? viewPinbar() : "",
     viewTabs(),
     viewSheet(),
     viewToast(),
@@ -620,12 +633,13 @@ function viewDialog() {
     ${
       d.input
         ? `<label class="field mt-12"><span class="eyebrow">${esc(d.input.label)}</span>
-            <input class="inp" value="${esc(d.input.value)}" placeholder="${esc(d.input.placeholder)}"
-              data-act="setDialogValue" autocomplete="off"></label>`
+            <input class="inp${d.input.type === "number" ? " mono" : ""}" value="${esc(d.input.value)}"
+              placeholder="${esc(d.input.placeholder)}" data-act="setDialogValue" autocomplete="off"
+              ${d.input.type === "number" ? 'type="number" inputmode="decimal" step="1" min="0"' : ""}></label>`
         : ""
     }
     <div class="row gap-8 mt-16">
-      <button class="btn grow" data-act="dialogNo">Cancel</button>
+      <button class="btn grow" data-act="dialogNo">${esc(d.cancel || "Cancel")}</button>
       <button class="btn solid grow${d.danger ? " danger" : ""}" data-act="dialogYes">${esc(d.ok)}</button>
     </div>
   </div></div>`;
@@ -663,18 +677,10 @@ function viewTabs() {
 
 function viewList() {
   const c = state.calc;
-  const over = c.total > state.db.budget;
-
-  /* How many of the things this week needs nobody has looked at since it
-     started. A figure carried forward from a receipt is arithmetic about a
-     cupboard rather than a look inside one, and this is how many of those are
-     still propping up the total. */
-  const since = state.db.planStart ? `${dayOf(state.db.planStart)}T00:00:00.000Z` : "";
-  const toCount = state.db.ingredients
-    .filter((ing) => neededPortions(c, ing.id) > 0.0001)
-    .flatMap(productsOf)
-    .filter((p) => !(p.stockCheckedAt || "") || (since && p.stockCheckedAt < since)).length;
-  const pct = state.db.budget > 0 ? Math.min(1, c.total / state.db.budget) : 0;
+  const sh = shopping();
+  /* When nearly every price is old, a red dot on every line says nothing the
+     banner has not already said, so the dots are kept for the exception. */
+  const manyStale = c.staleCount > c.lines.length / 2;
 
   const notes = [];
   if (c.staleCount)
@@ -723,7 +729,7 @@ function viewList() {
         ${
           shut
             ? ""
-            : `<section class="card">${store.lines.map(ticket).join("")}${jots.map((j) => jotting(j)).join("")}</section>`
+            : `<section class="card">${store.lines.map((l) => ticket(l, !manyStale)).join("")}${jots.map((j) => jotting(j)).join("")}</section>`
         }
       </div>`;
   };
@@ -774,43 +780,72 @@ function viewList() {
        </div>`
     : "";
 
+  /* When the cupboard was last counted, said quietly. A count from before this
+     week began is not one for this week, however recent it is. */
+  const lastCount = state.db.ingredients
+    .flatMap(productsOf)
+    .reduce((latest, p) => ((p.stockCheckedAt || "") > latest ? p.stockCheckedAt : latest), "");
+  const weekBegan = state.db.planStart ? `${dayOf(state.db.planStart)}T00:00:00.000Z` : "";
+  const checked = !lastCount
+    ? "The cupboard has not been checked yet."
+    : weekBegan && lastCount < weekBegan
+    ? "The cupboard has not been checked for this week yet."
+    : `Cupboard checked ${ago(lastCount)}.`;
+
   return `
     ${incoming}
     <button class="addbar" data-act="openAdd"><i class="ph ph-plus"></i>Add to the list</button>
-    <div class="row" style="gap:8px;margin-bottom:10px">
-      <button class="btn solid grow" data-act="openReceipt">Read a receipt</button>
-      <button class="btn tonal grow" data-act="openScan">Scan an item</button>
+    <div class="row gap-8 mb-8">
+      ${
+        sh
+          ? '<button class="btn solid grow" data-act="doneShopping">Done shopping</button>'
+          : '<button class="btn solid grow" data-act="goShopping">Go shopping</button>'
+      }
+      <button class="btn tonal grow" data-act="openReceipt">Read a receipt</button>
     </div>
-    <button class="btn tonal wide" style="margin-bottom:10px" data-act="openStocktake"${
-      c.upcomingMeals ? "" : " disabled"
-    }>Stock check${toCount ? ` &middot; ${toCount} to count` : ""}</button>
+    <p class="muted mb-12">${
+      sh
+        ? `Shopping since ${esc(ukTime(sh.startedAt, false))}. Tick lines as they go in the trolley.`
+        : esc(checked)
+    }</p>
     ${notes.join("")}
     ${fromToday}
-    ${body}
-    <div class="till">
-      <div class="line"><span class="lbl">Total</span><span class="big">£${money(c.total)}</span></div>
-      ${
-        c.saving > 0.004
-          ? `<div class="line" style="margin-top:2px"><span class="lbl">Offers save</span>
-             <span class="num" style="font-size:13px">£${money(c.saving)}</span></div>`
-          : ""
-      }
-      <div class="bar${over ? " over" : ""}"><span style="width:${Math.round(pct * 100)}%"></span></div>
-      <div class="row" style="margin-top:8px">
-        <span class="lbl grow">${
-          over ? `£${money(c.total - state.db.budget)} over budget` : `£${money(state.db.budget - c.total)} left`
-        }</span>
-        <input class="inp mono" style="width:82px;padding:5px 7px;text-align:right" type="number"
-          step="1" min="0" value="${state.db.budget}" data-act="setBudget" aria-label="Budget in pounds">
-      </div>
-    </div>
-    <p class="muted">Whole packs only, less the portions you already have.
-    Tap "Got it" after shopping and those packs become portions in stock.${
-      jottings.length
-        ? ' Hand-written lines have no pack behind them, so "Got it" only strikes those off.'
-        : ""
-    }</p>
+    <div class="${sh ? "shopping" : ""}">${body}</div>
     <div class="spacer"></div>`;
+}
+
+/* The total against the budget, pinned above the tab bar so it never scrolls
+   away. In the shop it becomes the trolley against the budget, because ticking
+   lines off makes the list shrink and would otherwise hide what the shop is
+   costing: the trolley and what is still to get always add up to the shop. */
+function viewPinbar() {
+  const c = state.calc;
+  const cap = Number(state.db.budget) || 0;
+  const sh = shopping();
+  const trolley = trolleyTotal(sh);
+  const all = trolley + c.total;
+  const over = cap > 0 && all > cap + 0.004;
+  const pct = (n) => (cap > 0 ? Math.min(100, Math.round((n / cap) * 100)) : 0);
+  const capButton = `<button class="cap" data-act="editBudget" aria-label="Change the budget">£${money(cap)}<i class="ph ph-pencil-simple"></i></button>`;
+  const saves = c.saving > 0.004 ? `offers save £${money(c.saving)}` : "";
+  const sub = (
+    sh ? [`£${money(c.total)} still to get`, `budget ${capButton}`, saves] : [saves]
+  ).filter(Boolean).join(" &middot; ");
+
+  return `<div class="pinbar" role="region" aria-label="Total against the budget">
+    <div class="row">
+      <div class="grow">${
+        sh
+          ? `<span class="big num">£${money(trolley)}</span> <span class="muted">in the trolley</span>`
+          : `<span class="big num">£${money(c.total)}</span> <span class="muted">of</span> ${capButton}`
+      }</div>
+      <span class="pinstate${over ? " over" : ""}">${
+        over ? `£${money(all - cap)} over` : `£${money(cap - all)} left`
+      }</span>
+    </div>
+    ${sub ? `<div class="muted pinsub">${sub}</div>` : ""}
+    <div class="bar two${over ? " over" : ""}"><span class="plan" style="width:${pct(all)}%"></span><span class="got" style="width:${pct(trolley)}%"></span></div>
+  </div>`;
 }
 
 /* One written line, grown to fit what is in it. */
@@ -864,11 +899,12 @@ function jotting(j, shops) {
   </div>`;
 }
 
-function ticket(l) {
+function ticket(l, dots = true) {
   // the shelf price of one pack, then the offer if there is one. Stock, packs
   // left over and hand-added counts are deliberately not here: the line is
   // what to pick up and what it costs, nothing to reconcile in your head.
-  const detail = [`£${money(l.product && l.product.pricePerPack)} each`];
+  const priced = Number(l.product && l.product.pricePerPack) > 0;
+  const detail = [priced ? `£${money(l.product.pricePerPack)} each` : "price to come from the receipt"];
   if (l.offer) detail.push(l.offer);
 
   /* The heading is the ingredient, because that is what the meal asked for.
@@ -879,7 +915,7 @@ function ticket(l) {
 
   return `<div class="ticket">
     <div class="grow">
-      <div class="name trunc">${l.stale ? '<span class="dot"></span>' : ""}${esc(l.ing.name)} <span class="qty">&times; ${l.packs}</span></div>
+      <div class="name trunc">${l.stale && dots ? '<span class="dot"></span>' : ""}${esc(l.ing.name)} <span class="qty">&times; ${l.packs}</span></div>
       ${named ? `<div class="meta">${esc(product)}</div>` : ""}
       <div class="meta">${detail.join(" &middot; ")}</div>
       ${l.saving > 0.004 ? `<div class="meta save">saves £${money(l.saving)}</div>` : ""}
@@ -909,7 +945,7 @@ function ticket(l) {
             : ""
         }
         <button class="btn small ghost" data-act="bought" data-id="${l.ing.id}"
-          data-product="${esc((l.product && l.product.id) || "")}" data-packs="${l.packs}">Got it</button>
+          data-product="${esc((l.product && l.product.id) || "")}" data-packs="${l.packs}" data-cost="${l.cost}">Got it</button>
       </div>
     </div>
   </div>`;
@@ -2260,7 +2296,7 @@ function addLive(s) {
     .map((ing) => {
       const chosen = chooseProduct(ing);
       const on = Math.max(0, Number(ing.extraPacks) || 0);
-      return `<div class="row" style="gap:8px;margin-bottom:8px">
+      return `<div class="row gap-8 mb-8">
         <button class="pickrow subcard grow" style="margin:0" data-act="addFromSheet" data-id="${esc(ing.id)}">
           <span class="shop">${esc(ing.name)}${on ? ` <span class="qty">&times; ${on}</span>` : ""}</span>
           <span class="detail">${
@@ -2269,6 +2305,8 @@ function addLive(s) {
               : "Nothing to buy yet"
           }</span>
         </button>
+        <button class="btn small tonal" data-act="boughtFromSheet" data-id="${esc(ing.id)}"
+          title="Already bought: put a pack straight into stock">Bought</button>
         ${
           // the space is kept when there is nothing to take back, so rows stay one width
           on
@@ -2318,11 +2356,14 @@ function addLive(s) {
 function sheetAdd(s) {
   return shell(
     "Add to the list",
-    "Search what you keep, or write something in.",
-    `<div class="search" data-scroll="add-search">
-       <span class="mag">&#9906;</span>
-       <input class="inp" type="search" value="${esc(s.query || "")}" placeholder="Search your items"
-         data-act="setAddQuery" data-field="name" autocomplete="off" aria-label="Search your items">
+    "Search what you keep, scan something new, or write something in.",
+    `<div class="row gap-8 mb-12">
+       <div class="search grow flush" data-scroll="add-search">
+         <span class="mag">&#9906;</span>
+         <input class="inp" type="search" value="${esc(s.query || "")}" placeholder="Search your items"
+           data-act="setAddQuery" data-field="name" autocomplete="off" aria-label="Search your items">
+       </div>
+       <button class="btn icon" data-act="openScan" aria-label="Scan the barcode on something new"><i class="ph ph-barcode"></i></button>
      </div>
      <div id="add-live">${addLive(s)}</div>
      <button class="btn tonal wide" style="margin-top:14px" data-act="closeSheet">Done</button>`
@@ -2383,12 +2424,13 @@ function sheetStocktake(s) {
 
   if (!wanted.length) {
     return shell(
-      "Stock check",
+      "Check the cupboard",
       "Nothing is planned yet, so there is nothing to count.",
       `<p class="muted">Plan some meals first. This then lists exactly what those
        meals need and nothing else, which is the difference between a stock check
        and reading the whole Items tab.</p>
-       <button class="btn solid wide" data-act="closeSheet">Close</button>`
+       <button class="btn solid wide mb-8" data-act="startShopping">Start shopping anyway</button>
+       <button class="btn ghost wide" data-act="closeSheet">Close</button>`
     );
   }
 
@@ -2446,7 +2488,7 @@ function sheetStocktake(s) {
     .join("");
 
   return shell(
-    "Stock check",
+    "Check the cupboard",
     `${wanted.length} thing${wanted.length === 1 ? "" : "s"} the plan still needs. ${done} of ${
       products.length
     } counted.`,
@@ -2454,11 +2496,14 @@ function sheetStocktake(s) {
       products.length ? Math.round((done / products.length) * 100) : 0
     }%"></span></div>
      ${cards}
-     <button class="btn solid wide" style="margin-top:4px" data-act="finishStocktake">Done</button>
      <p class="muted">Only what the plan asks for, so this is a walk round the kitchen
      rather than a read of the whole list. <strong>Right</strong> means the figure is
      already correct and records that you looked; a count you make here outranks one
-     the other phone worked out from a receipt.</p>`
+     the other phone worked out from a receipt.</p>
+     <div class="sheetfoot">
+       <button class="btn solid wide" data-act="finishStocktake">Start shopping</button>
+       <button class="btn ghost wide mt-4" data-act="startShopping">Skip the check</button>
+     </div>`
   );
 }
 
@@ -2819,9 +2864,9 @@ function sheetScanned(s) {
         .map((st) => `<option value="${esc(st)}"></option>`)
         .join("")}</datalist></label>
 
-    <label class="field" style="margin-bottom:8px"><span class="eyebrow">Shelf price £ per pack</span>
+    <label class="field mb-4"><span class="eyebrow">Shelf price £ per pack, if you have it</span>
       <input class="inp mono" type="number" step="0.01" min="0" inputmode="decimal"
-        value="${s.price}" placeholder="0.00" data-act="setScanPrice"></label>
+        value="${s.price}" placeholder="Leave blank: the receipt will fill it in" data-act="setScanPrice"></label>
     ${delta}
 
     ${offerEditor({ pricePerPack: base, offer: s.offer }, { kind: "setScanOfferKind", field: "setScanOfferField" })}
@@ -2852,7 +2897,11 @@ function sheetScanned(s) {
     </div>
 
     <button class="btn solid wide" data-act="saveScan">${
-      bought > 0 ? `Save and add ${trim2(adding)} portions to stock` : "Save price"
+      bought > 0
+        ? `Save and add ${trim2(adding)} portions to stock`
+        : base > 0
+        ? "Save price"
+        : "Save"
     }</button>
     <p class="muted">Saving binds this barcode to that one thing, so next time the scan comes
     straight here. A meal asking for ${esc(
@@ -4120,10 +4169,44 @@ const actions = {
     draw();
   },
 
-  /* Opened from the List tab once the plan is made, remembering what the list
-     came to so that finishing can say what the count did to the total. */
-  openStocktake: () =>
-    setSheet({ kind: "stock", startedAt: new Date().toISOString(), before: state.calc.total }),
+  /* Go shopping starts with the check of the cupboard, since that is what is
+     done before every shop. It remembers what the list came to, so that finishing
+     can say what the count did to the total, and it can be skipped. */
+  goShopping: () =>
+    setSheet({ kind: "stock", startedAt: new Date().toISOString(), before: state.calc.total, shop: true }),
+
+  startShopping: () => {
+    state.sheet = null;
+    return setShopping({ startedAt: now(), trolley: [] });
+  },
+
+  doneShopping: async () => {
+    const total = trolleyTotal(shopping());
+    await setShopping(null);
+    flash("ok", total > 0 ? `Shopping done. £${money(total)} went in the trolley.` : "Shopping done.");
+    const yes = await confirmDialog({
+      title: "Scan the receipt now?",
+      text: "It updates the prices and matches what you bought.",
+      ok: "Scan receipt",
+      cancel: "Not now",
+      danger: false,
+    });
+    if (yes) actions.openReceipt();
+  },
+
+  editBudget: async () => {
+    const said = await askDialog({
+      title: "Budget for the week",
+      label: "The most the shop should come to, in £",
+      value: String(state.db.budget),
+      type: "number",
+      ok: "Set it",
+    });
+    if (said === null) return;
+    commit((db) => {
+      db.budget = Math.max(0, Number(said) || 0);
+    });
+  },
 
   setStockCount: (el) => {
     const value = el.dataset.value !== undefined ? el.dataset.value : el.value;
@@ -4136,7 +4219,7 @@ const actions = {
   confirmStock: (el) =>
     patchProduct(el.dataset.id, el.dataset.product, { stockCheckedAt: now() }),
 
-  finishStocktake: () => {
+  finishStocktake: async () => {
     const s = state.sheet;
     const before = s && typeof s.before === "number" ? s.before : null;
     const counted = state.db.ingredients
@@ -4156,6 +4239,7 @@ const actions = {
               : `£${money(Math.abs(moved))} ${moved > 0 ? "more" : "less"}, at`
           } £${money(after)}.`
     );
+    if (s && s.shop) await setShopping({ startedAt: now(), trolley: [] });
   },
 
   openScan: () =>
@@ -4244,11 +4328,13 @@ const actions = {
 
   saveScan: () => {
     const s = state.sheet;
-    const price = Number(s.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      setSheet({ ...s, err: "Type the shelf price first." });
-      return;
-    }
+    /* The price is optional. Prices are not usually typed in the shop: the
+       receipt brings them when you get home and finds this product by its
+       barcode. An item saved without one is marked never priced, which is true,
+       and what the receipt then fills in. */
+    const typed = Number(s.price);
+    const priced = Number.isFinite(typed) && typed > 0;
+    const price = priced ? typed : 0;
     const bought = Math.max(0, Number(s.bought) || 0);
     const offer = cleanOffer(s.offer);
     const portions = Math.max(0.5, Number(s.portions) || 1);
@@ -4269,8 +4355,9 @@ const actions = {
         id: nextId,
         name,
         store: s.store,
-        pricePerPack: price,
-        priceUpdated: now(),
+        // with no price typed, what is already recorded stands
+        pricePerPack: priced ? price : existing ? existing.pricePerPack : 0,
+        priceUpdated: priced ? now() : existing ? existing.priceUpdated : "",
         offer,
         portionsPerPack: portions,
         barcodes: [...new Set([...((existing && existing.barcodes) || []), s.code].filter(Boolean))],
@@ -4306,18 +4393,17 @@ const actions = {
 
       const delta = price - before;
       const moved =
-        existing && before > 0 && Math.abs(delta) > 0.004
+        priced && existing && before > 0 && Math.abs(delta) > 0.004
           ? `, ${delta > 0 ? "up" : "down"} £${money(Math.abs(delta))}`
           : existing
           ? ""
           : `, a new kind of ${ing.name}`;
+      const said = priced ? `${product.name} now £${money(price)}${moved}` : `${product.name} saved, with its price to come from the receipt`;
       flash(
         "ok",
         bought > 0
-          ? `${product.name} now £${money(price)}${moved}. ${bought} pack${
-              bought === 1 ? "" : "s"
-            }, ${trim2(added)} portions, added to stock.`
-          : `${product.name} now £${money(price)}${moved}.`
+          ? `${said}. ${bought} pack${bought === 1 ? "" : "s"}, ${trim2(added)} portions, added to stock.`
+          : `${said}.`
       );
       askForLabel(ing.id, product.id);
       return;
@@ -4334,7 +4420,7 @@ const actions = {
       newProduct((s.productName || "").trim() || name, s.store, {
         pricePerPack: price,
         portionsPerPack: portions,
-        priceUpdated: now(),
+        priceUpdated: priced ? now() : "",
         offer,
         barcodes: s.code ? [s.code] : [],
         stockPortions: bought * portions,
@@ -4343,16 +4429,17 @@ const actions = {
     made.id = uniqueId(name, state.db.ingredients.map((i) => i.id));
     commit((db) => db.ingredients.push(made));
     state.sheet = null;
+    const at = priced ? ` at £${money(price)}` : ", with its price to come from the receipt";
     flash(
       "ok",
       bought > 0
-        ? `${made.name} added at £${money(price)}, ${trim2(made.products[0].stockPortions)} portions in stock.`
-        : `${made.name} added at £${money(price)}.`
+        ? `${made.name} added${at}, ${trim2(made.products[0].stockPortions)} portions in stock.`
+        : `${made.name} added${at}.`
     );
     askForLabel(made.id, made.products[0].id);
   },
 
-  bought: (el) => {
+  bought: async (el) => {
     const ing = ingredient(el.dataset.id);
     if (!ing) return;
     // packs off a particular shelf, portions onto that particular thing
@@ -4362,6 +4449,7 @@ const actions = {
     // the loose "any of it" packs ride on the cheapest shelf, so buying that one settles them
     const rides = product.id === (chooseProduct(ing) || {}).id;
     const was = { stock: product.stockPortions, own: product.extraPacks, loose: ing.extraPacks };
+    const entry = { id: uid(), cost: Number(el.dataset.cost) || 0 };
 
     const set = (stock, own, loose) =>
       commit((db) => {
@@ -4380,7 +4468,12 @@ const actions = {
 
     // buying also settles this product's own hand-added packs
     set(productStock(product) + packs * packPortions(product), 0, 0);
-    toast(`${ing.name} bought`, () => set(was.stock, was.own, was.loose));
+    // in a shop, what it cost goes in the trolley, which is what the bar shows
+    if (shopping()) await setShopping({ ...shopping(), trolley: [...shopping().trolley, entry] });
+    toast(`${ing.name} bought`, () => {
+      set(was.stock, was.own, was.loose);
+      if (shopping()) setShopping({ ...shopping(), trolley: shopping().trolley.filter((t) => t.id !== entry.id) });
+    });
   },
 
   moreStockPack: (el) => {
@@ -4501,6 +4594,18 @@ const actions = {
       err: "",
     };
     patchIngredient(ing.id, { extraPacks: packs });
+  },
+
+  // a top-up that never went on the list: a pack straight into stock
+  boughtFromSheet: (el) => {
+    const ing = ingredient(el.dataset.id);
+    const product = ing && chooseProduct(ing);
+    if (!product) return;
+    const was = product.stockPortions;
+    const set = (stock) => patchProduct(ing.id, product.id, { stockPortions: stock });
+    state.sheet = { ...state.sheet, msg: `${ing.name}: a pack is in stock.`, err: "" };
+    set(productStock(product) + packPortions(product));
+    toast(`${ing.name}: a pack into stock`, () => set(was));
   },
 
   pickAddShop: (el) =>
@@ -5740,6 +5845,12 @@ root.addEventListener("keydown", (e) => {
     state.settings = await loadSettings();
     applyTheme(state.settings.theme);
     applyAccent(state.settings.accent);
+    // a shop left open from another day is over, whatever it was
+    const sh = state.settings.shopping;
+    if (sh && dayOf(sh.startedAt) !== today()) {
+      state.settings = { ...state.settings, shopping: null };
+      saveSettings(state.settings);
+    }
     draw();
     checkForChanges();
   } catch (err) {

@@ -2,7 +2,7 @@
    not the only thing that empties a cupboard and nobody is going to record a
    snack. So the app asks once, at the point it is worth asking, and only about
    what the plan actually needs. */
-import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
 import { migrate, mergeSnapshots, newIngredient, newProduct, SCHEMA_VERSION } from "../lib/store.js";
 import { computeShopping, neededPortions } from "../lib/calc.js";
 
@@ -107,17 +107,20 @@ await p.reload();
 await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
-const totalNow = () => p.$eval(".till .big", (e) => e.textContent.trim());
+// before shopping starts the big figure is the list; in the shop it is the trolley
+const totalNow = () => p.$eval(".pinbar .big", (e) => e.textContent.trim());
 const started = await totalNow();
 console.log("   list starts at", started);
 
-const badge = await p.$eval('[data-act="openStocktake"]', (e) => e.textContent.replace(/\s+/g, " ").trim());
-console.log("   button:", JSON.stringify(badge));
-ok(/Stock check/.test(badge), "the List tab offers a stock check");
-ok(/2 to count/.test(badge), `and says how many are uncounted (${badge})`);
+const top = await p.$eval(".wrap", (e) => e.textContent.replace(/\s+/g, " "));
+ok(await p.$('[data-act="goShopping"]') !== null, "the List offers to go shopping, which starts with the check");
+ok(/The cupboard has not been checked yet/.test(top), "and says quietly that it has not been checked");
+ok(!/to count/.test(top), "without a count of what is left to do");
 
-await p.click('[data-act="openStocktake"]');
+await p.click('[data-act="goShopping"]');
 await p.waitForTimeout(400);
+ok(/Check the cupboard/.test(await p.$eval(".sheet h2", (e) => e.textContent)), "the check comes first");
+ok(await p.$('.sheetfoot [data-act="finishStocktake"]') !== null, "with its main action pinned where a thumb can reach it");
 
 const shown = await p.$$eval(".sheet .card", (els) =>
   els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
@@ -169,23 +172,28 @@ ok(!stored.cakeAt, "and nothing touched what was never asked about");
 
 await p.screenshot({ path: `${SHOTS}/stocktake.png`, fullPage: true });
 
-console.log("\n--- finishing ---");
+console.log("\n--- finishing starts the shop ---");
 await p.click('[data-act="finishStocktake"]');
 await p.waitForTimeout(600);
 const said = await p.evaluate(() => {
   const el = document.querySelector(".ok, .err");
   return el ? el.textContent.replace(/\s+/g, " ").trim() : "";
 });
-const ended = await totalNow();
-console.log("   said:", JSON.stringify(said), "total", started, "->", ended);
+console.log("   said:", JSON.stringify(said));
 ok(!(await p.$(".sheet")), "the sheet closes");
 ok(/2 counted/.test(said), `it says how many were counted (${said})`);
 ok(/more/.test(said) && /£/.test(said), "and what that did to the shopping total");
-ok(ended !== started, `which really did change (${started} -> ${ended})`);
+ok(await p.$('[data-act="doneShopping"]') !== null, "and the shop has begun");
+const toGet = await p.$eval(".pinbar .pinsub", (e) => e.textContent.replace(/\s+/g, " "));
+ok(/still to get/.test(toGet), `with the list now the part still to get (${toGet})`);
 
-// and the badge now says there is nothing left to count
-const after = await p.$eval('[data-act="openStocktake"]', (e) => e.textContent.replace(/\s+/g, " ").trim());
-ok(!/to count/.test(after), `the button stops nagging once everything is counted (${after})`);
+console.log("\n--- done shopping, and the cupboard is marked checked ---");
+await p.click('[data-act="doneShopping"]');
+await answer(p, { yes: false });
+await p.waitForTimeout(400);
+const after = await p.$eval(".wrap", (e) => e.textContent.replace(/\s+/g, " "));
+ok(/Cupboard checked just now/.test(after), `the List says when it was last checked (${after.slice(0, 80)})`);
+ok(await p.$('[data-act="goShopping"]') !== null, "and offers to go shopping again");
 
 console.log("\n--- nothing planned ---");
 await p.evaluate(async () => {
@@ -197,8 +205,10 @@ await p.evaluate(async () => {
 await p.reload();
 await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
-const off = await p.$eval('[data-act="openStocktake"]', (e) => e.disabled);
-ok(off, "with nothing planned there is nothing to count, and the button says so");
+await p.click('[data-act="goShopping"]');
+await p.waitForTimeout(300);
+ok(/Nothing is planned yet/.test(await p.$eval(".sheet", (e) => e.textContent)), "with nothing planned there is nothing to count, and it says so");
+ok(await p.$('[data-act="startShopping"]') !== null, "but you can still go shopping");
 
 console.log("\npage errors:", fail.filter((f) => /error/.test(f)).length || "none");
 await b.close();
