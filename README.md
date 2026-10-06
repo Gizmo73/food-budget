@@ -45,7 +45,7 @@ Getting that choice right matters more than it looks. A "3 for £8" deal recorde
 
 The offer editor spells out which you have, in words: *"One pack still costs £3.75. Only at 3 does the deal apply"* versus *"Every pack costs £2.67, however many you buy."*
 
-**Barcodes** are the in-store update. Scan an item, type the shelf price, done. The app tells you what changed since last time.
+**Barcodes** are how something new gets in. Scan an item and name it; the shelf price is optional, since the receipt brings prices when you get home and finds the item by its barcode. Typed in the shop, the price replaces what was there. The app tells you what changed since last time.
 
 Saving a scan then offers to photograph the label, but only when that product has no calories or macros on it yet. Scanning is the one moment the pack is in your hand: later means finding the thing again, or reading the figures off a website and hoping. **Not now** is one tap, and nothing else waits on it. It never asks about something already filled in, since a prompt you always dismiss is a prompt you stop reading.
 
@@ -364,13 +364,15 @@ thing that empties a cupboard, and nobody is going to open the app to record a
 biscuit. So the app does not pretend to track what leaves. It asks once, at the
 point where asking is worth it.
 
-**Stock check**, at the top of the List tab, lists the things this week's
-plan needs and nothing else, A to Z. Each says what the plan asks for, whether
-that is covered, when it was last counted, and how the figure reads in packs as
-well as portions. Correct the ones that are wrong; tap **Right** on the ones
-that are not, which changes no figure but records that you looked. The button
-on the List tab says how many are still uncounted, and stops saying anything
-once they are done.
+**Checking the cupboard** is the first step of **Go shopping**, on the List tab. It
+lists the things this week's plan still needs and nothing else, A to Z. Each says
+what the plan asks for, whether that is covered, when it was last counted, and how
+the figure reads in packs as well as portions. Correct the ones that are wrong; tap
+**Right** on the ones that are not, which changes no figure but records that you
+looked. **Start shopping** is pinned at the bottom, and **Skip the check** is there
+for a day it is not worth doing. The List says quietly when the cupboard was last
+checked, and that it has not been for this week once a week has moved on, but never
+nags with a count of what is left.
 
 A count is stamped on the product, which matters in three places. The progress
 survives closing the app halfway round the kitchen. The Items tab can say when
@@ -380,6 +382,23 @@ other looked in the freezer and found 2, the 2 wins, even though it is lower
 and the old rule was that the higher figure survived.
 
 Finishing says what it did: *"6 counted. The list is £4.20 more, at £38.15."*
+
+### In the shop
+
+The total and the budget sit in a bar **pinned above the tab bar**, so the number you
+came for never scrolls away. Tap the budget to change it; it is a weekly cap, and it
+is in **Week settings** too.
+
+Starting a shop turns that bar into **the trolley against the budget**. Ticking **Got it**
+turns a pack into stock, which makes the list shorter, so without this the cost of the
+shop would shrink as you went round it. Instead the bar shows what is in the trolley and
+what is still to get, and the two always add up to what the shop comes to. **Undo** takes
+a line back out of the trolley. The rows get bigger for a thumb with a bag in the other
+hand. **Done shopping** ends it and offers to scan the receipt. A shop is kept on the
+phone it was started on, survives closing the app, and is over by the next day.
+
+A red dot on a line says its price is old only when that is the exception: if most
+prices are old the banner says so once and the dots stay off.
 
 ### Moving on a week
 
@@ -408,7 +427,7 @@ Not everything is a meal ingredient. Tapping an item opens it for editing, and t
 
 That top-level **+** adds *any* of the item, so it rides on whichever source is cheapest, the same rule the rest of the list follows. Sometimes that is not what you mean: under Bread you might want a white loaf **and** a seeded one on the same trip, two different kinds rather than two of the cheapest. So each product has its own **+** too, on its card inside the item. Adding one there puts that exact thing on the list, and it gets its own line — *this one only, added by hand* — so a single ingredient can carry as many different kinds as you like at once. The loose "any of it" packs and each product's own are counted together in the *N on the list* the item shows, and **Got it** on a line settles only the packs on that line.
 
-**Adding from the List tab.** The bar at the top of the List opens a search over the items you keep. It matches loosely, the same way the Items tab does, so `stkpies` finds Steak Pies. Tap a result and a pack goes on the list, riding on the cheapest shop as the **+** above does; tap again for another, or the **−** to take one back. For anything that is not an item, such as bin bags or stamps, the same sheet has a line to write it in and the shop to put it under: one you already use, **No shop yet**, or a new one typed there. Written lines have no pack behind them, so **Got it** only strikes them off.
+**Adding from the List tab.** The bar at the top of the List opens a search over the items you keep. It matches loosely, the same way the Items tab does, so `stkpies` finds Steak Pies. Tap a result and a pack goes on the list, riding on the cheapest shop as the **+** above does; tap again for another, or the **−** to take one back. **Bought** is for a top-up you never put on the list: it puts a pack straight into stock. The barcode button beside the search is how something new gets into the app: scan it, then its label. For anything that is not an item, such as bin bags or stamps, the same sheet has a line to write it in and the shop to put it under: one you already use, **No shop yet**, or a new one typed there. Written lines have no pack behind them, so **Got it** only strikes them off.
 
 New items start with **no store**, and land in an *Unassigned* group that sorts to the top of the Items tab until you file them. Guessing a store would be worse than leaving it empty, because an item in the wrong group is harder to spot than one in an obviously empty one. Receipts are the exception: the receipt tells you which shop it was, so items created from one inherit it.
 

@@ -15,7 +15,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 
 const booted = () => p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 const db = () => p.evaluate(async () => (await import("./lib/store.js")).loadDb());
-const total = () => p.$eval(".till .big", (e) => e.textContent.trim());
+const total = () => p.$eval(".pinbar .big", (e) => e.textContent.trim());
 const results = () => p.$$eval("#add-live .pickrow .shop", (n) => n.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
 const live = () => p.$eval("#add-live", (e) => e.textContent.replace(/\s+/g, " "));
 

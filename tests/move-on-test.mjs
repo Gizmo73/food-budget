@@ -97,7 +97,7 @@ console.log("\n--- stock is untouched, but has to be counted again ---");
 ok(db.ingredients[0].products[0].stockPortions === 8, "the cupboard did not change because the calendar did");
 await p.click('[data-act="tab"][data-tab="list"]');
 await p.waitForTimeout(300);
-ok(/to count/.test(await p.$eval('[data-act="openStocktake"]', (e) => e.textContent)), "and the stock check asks again");
+ok(/not been checked for this week yet/.test(await p.$eval(".wrap", (e) => e.textContent)), "and the List says the cupboard has not been checked for the new week");
 
 console.log("\n--- a week later, moving on empty ---");
 await p.clock.fastForward(7 * 86400 * 1000);

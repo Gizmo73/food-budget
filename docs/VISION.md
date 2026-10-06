@@ -81,8 +81,9 @@ bars goes; the tab bar already says where you are.
 └──────────────────────────────────┘
 ```
 
-- **The add bar** opens the search sheet (built). The camera icon in it is how you
-  add something new to the app: scan its barcode, then its label.
+- **The add bar** opens the search sheet. The barcode button in it is how you add
+  something new to the app: scan it, then its label, and the price can wait for the
+  receipt. **Bought** on each result puts a top-up straight into stock.
 - Hand-written lines and real items look the same in the list; a written line has
   no price and a tick only strikes it off.
 - **Rows**: name, quantity, price, a tick. The tick is *Got it*, and it offers undo.

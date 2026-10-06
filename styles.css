@@ -40,6 +40,7 @@
   --shadow-1:0 0 0 1px #3f424d;
   --shadow-2:0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55);
   --shadow-3:0 0 0 1px #9397ab, 0 16px 40px rgba(0,0,0,0.65);
+  --tabs:70px;
   --r-s:4px; --r-m:8px; --r-l:14px; --r-full:999px;
   --sans:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono:"Inter", system-ui, sans-serif;
@@ -130,19 +131,34 @@ a:hover { color:var(--ink); }
 .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--alert); margin-right:7px; vertical-align:1px; }
 
 /* -------------------------------- total -------------------------------- */
-.till {
-  background:var(--surface); color:var(--ink); padding:17px; margin:11px 0 4px;
-  border-radius:var(--r-l); box-shadow:var(--shadow-1);
+/* The total against the budget, pinned just above the tab bar so it never
+   scrolls away. The page gets room under it while the List is showing. */
+.fb.has-pin { padding-bottom:calc(var(--tabs) + 100px + env(safe-area-inset-bottom)); }
+.pinbar {
+  position:fixed; left:0; right:0; bottom:calc(var(--tabs) + env(safe-area-inset-bottom)); z-index:19;
+  padding:10px 17px 12px; background:var(--surface); border-top:1px solid var(--outline);
 }
-.till .line { display:flex; align-items:baseline; gap:11px; }
-.till .lbl { font-size:13px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-2); }
-.till .big { font-variant-numeric:tabular-nums; font-size:32px; font-weight:500; letter-spacing:-0.015em; margin-left:auto; }
-.bar { height:2px; background:var(--outline); margin-top:14px; overflow:hidden; }
+.pinbar .big { font-variant-numeric:tabular-nums; font-size:24px; font-weight:500; letter-spacing:-0.015em; }
+.pinbar .row { align-items:baseline; }
+.pinbar .pinstate { font-size:14px; font-weight:500; color:var(--ink-2); white-space:nowrap; }
+.pinbar .pinstate.over { color:var(--alert); }
+.pinbar .pinsub { margin-top:1px; }
+.cap {
+  display:inline-flex; align-items:center; gap:4px; min-height:36px; padding:0 4px; border:0;
+  background:none; color:var(--ink); font:inherit; font-size:inherit; font-weight:500;
+  font-variant-numeric:tabular-nums; border-radius:var(--r-s);
+}
+.cap i { font-size:13px; color:var(--ink-2); }
+.pinbar .big + .muted + .cap { font-size:16px; }
+.bar { height:2px; background:var(--outline); margin-top:8px; overflow:hidden; position:relative; }
 .bar span {
   display:block; height:100%; background:var(--accent);
   box-shadow:0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .bar.over span { background:var(--alert); box-shadow:none; }
+/* two lengths on one line: what the shop comes to, and how much of it is in the trolley */
+.bar.two span { position:absolute; left:0; top:0; }
+.bar.two .plan { opacity:0.35; }
 
 /* ------------------------------- controls ------------------------------ */
 /* Primary is an accent outline, not a fill: the accent draws lines here. */
@@ -187,6 +203,7 @@ a:hover { color:var(--ink); }
 
 /* search */
 .search { position:relative; margin-bottom:11px; }
+.search.flush { margin-bottom:0; }
 .search .inp { border-radius:var(--r-m); padding-left:38px; }
 .search .mag { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--ink-2); font-size:16px; }
 .search .clear { position:absolute; right:5px; top:50%; transform:translateY(-50%); }
@@ -198,6 +215,7 @@ a:hover { color:var(--ink); }
   position:fixed; bottom:0; left:0; right:0; display:flex;
   background:var(--surface-2); border-top:1px solid var(--outline);
   padding:6px 6px calc(8px + env(safe-area-inset-bottom)); z-index:20;
+  height:calc(var(--tabs) + env(safe-area-inset-bottom));
 }
 .tabs button {
   flex:1; border:0; background:none; padding:6px 2px; color:var(--ink-2);
@@ -348,6 +366,12 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 .sheet .close { float:right; margin-left:8px; }
 .sheet h3 { font-size:13px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase;
   color:var(--ink-2); margin:20px 0 6px; }
+/* The main action of a long sheet stays in reach at the bottom of it. */
+.sheetfoot {
+  position:sticky; bottom:calc(-24px - env(safe-area-inset-bottom)); z-index:1;
+  margin:12px -17px calc(-24px - env(safe-area-inset-bottom)); padding:10px 17px calc(20px + env(safe-area-inset-bottom));
+  background:var(--surface-2); border-top:1px solid var(--outline);
+}
 .sheet ol, .sheet ul { padding-left:20px; margin:6px 0; }
 .sheet li { margin-bottom:7px; }
 .sheet code {
@@ -367,12 +391,13 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 
 /* The undo after something routine: above the tab bar, below any question. */
 .toast {
-  position:fixed; left:12px; right:12px; bottom:calc(78px + env(safe-area-inset-bottom));
+  position:fixed; left:12px; right:12px; bottom:calc(var(--tabs) + 8px + env(safe-area-inset-bottom));
   max-width:536px; margin:0 auto; z-index:60; display:flex; align-items:center; gap:8px;
   padding:4px 4px 4px 16px; background:var(--surface-3); border:1px solid var(--outline);
   border-radius:var(--r-m); box-shadow:var(--shadow-2); font-size:14px;
 }
 .toast .btn { color:var(--accent); }
+.fb.has-pin .toast { bottom:calc(var(--tabs) + 100px + env(safe-area-inset-bottom)); }
 
 /* Spacing is set here, in steps, rather than typed afresh into each template. */
 .mt-4 { margin-top:4px; } .mt-8 { margin-top:8px; } .mt-12 { margin-top:12px; } .mt-16 { margin-top:16px; }
@@ -417,6 +442,9 @@ textarea.inp.jot {
 }
 
 .ticket.jotline { align-items:flex-start; }
+/* In the shop the rows are for a thumb with a bag in the other hand. */
+.shopping .ticket { padding:14px 0; }
+.shopping .ticket .btn { min-height:44px; padding:0 18px; border-color:var(--outline); color:var(--ink); }
 
 /* banner offering a merge when the shared file has moved on */
 .banner {

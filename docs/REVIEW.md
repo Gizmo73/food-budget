@@ -278,6 +278,6 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
 | Phase 0 | Shipped, PR #5 |
 | A. Foundations | Built: dialogs, undo toasts, spacing utilities, B9, unused parameters |
 | B. The week | Built: one week plus the leftovers Saturday, Move on, Both/Split day sheet, Food folded into Plan, four tabs |
-| C. The list and the shop | Not started |
+| C. The list and the shop | Built: pinned total and budget, Go shopping with the trolley, Bought, scan in the add sheet, optional price |
 | D. Editing and polish | Not started |
 | Back button blank page | Guard should prevent it; needs confirming on the phone |

@@ -49,6 +49,7 @@ await p.waitForTimeout(400);
 const scan = async (code) => {
   await p.click('[data-act="tab"][data-tab="list"]');
   await p.waitForTimeout(250);
+  await p.click('[data-act="openAdd"]');
   await p.click('[data-act="openScan"]');
   await p.waitForSelector('[data-cam="manual"]', { timeout: 10000 });
   await p.fill('[data-cam="manual"]', code);
