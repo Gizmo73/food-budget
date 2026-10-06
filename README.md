@@ -79,7 +79,7 @@ The QR code is generated on the device by `lib/qr.js`, written for this app rath
 
 The meal plan is the one thing that cannot merge sensibly, since two different weeks are not combinable. If you both plan meals, agree who owns the plan.
 
-Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
+Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings → Sync and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
 
 Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
 
@@ -549,7 +549,7 @@ A folded section renders nothing at all rather than hiding it with CSS, so a lon
 
 ## Appearance
 
-Light, dark or follow the system, under Settings. The theme is applied before first paint, so a dark-mode phone never flashes white on open.
+Light, dark or follow the system, under Settings → Appearance. The theme is applied before first paint, so a dark-mode phone never flashes white on open.
 
 ## Finding things
 

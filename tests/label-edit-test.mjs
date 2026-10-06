@@ -53,7 +53,8 @@ await p.click('[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(300);
 await p.click('[data-act="openItem"]');
 await p.waitForTimeout(400);
-await p.click('.prodtitle[data-open="0"]');
+// an item with one product has it open already
+if (await p.$('.prodtitle[data-open="0"]')) await p.click('.prodtitle[data-open="0"]');
 await p.waitForTimeout(400);
 await p.click('.foldhead[data-kind="nutrition"]');
 await p.waitForTimeout(400);
@@ -132,7 +133,7 @@ console.log("\n--- a reading left alone ---");
    getting back to the button means opening the item again from the top. */
 await p.click('[data-act="openItem"]');
 await p.waitForTimeout(400);
-await p.click('.prodtitle[data-open="0"]');
+if (await p.$('.prodtitle[data-open="0"]')) await p.click('.prodtitle[data-open="0"]');
 await p.waitForTimeout(400);
 await p.evaluate(() => {
   const head = document.querySelector('.foldhead[data-kind="nutrition"]');

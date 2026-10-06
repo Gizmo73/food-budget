@@ -91,7 +91,7 @@ await p.evaluate(() => {
 });
 await p.waitForTimeout(400);
 // and the product itself is folded away under the ingredient, so open it
-await p.click('.prodtitle[data-open="0"]');
+if (await p.$('.prodtitle[data-open="0"]')) await p.click('.prodtitle[data-open="0"]');
 await p.waitForTimeout(350);
 // nutrition is folded away by default too, which is the whole point of it
 await p.click('.foldhead[data-kind="nutrition"]');

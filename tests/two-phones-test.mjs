@@ -190,7 +190,7 @@ await sam.p.evaluate(() => {
 });
 await sam.p.waitForTimeout(400);
 // products start collapsed under an ingredient, so open the one being priced
-await sam.p.evaluate(() => document.querySelector('.prodtitle[data-open="0"]').click());
+await sam.p.evaluate(() => document.querySelector('.prodtitle[data-open="0"]')?.click());
 await sam.p.waitForTimeout(400);
 await sam.p.fill('[data-act="setProductPrice"]', "1.95");
 await sam.p.evaluate(() => document.querySelector('[data-act="setProductPrice"]').blur());

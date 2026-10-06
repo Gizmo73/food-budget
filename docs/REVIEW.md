@@ -240,7 +240,7 @@ last. [VISION.md](VISION.md) is the destination; this is the route.
    scan targets. Choosing among things you own goes through it; the short fixed
    lists (offer kind, pack unit) stay native, since four known options gain
    nothing from a search.
-2. Items: price, stock and shop up front, the rest folded; the thin **+** goes.
+2. Items: price, stock and shop up front, the rest folded; the thin **+** goes, and so does the *by hand* count on the Items tab (the add sheet is the one way to put something on the list; a pack you named is still counted and cleared from the List).
 3. Settings in three groups: Sync, Appearance, About.
 4. One word per level (*item*, *product*, *pack*, *week*, *shop*), 44px targets,
    pinned sheet actions, and the README rewritten to a single model.
@@ -266,7 +266,7 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
    starting page, not of the app: the installed app has no entry behind it, back
    falls onto that, and no page is there to run code, which is why only closing and
    reopening helps. The guard keeps an entry in front of it. Please check after
-   updating that *Settings → Install this app* says "Installed. You are running it
+   updating that *Settings → About → Install this app* says "Installed. You are running it
    as its own app" (the condition the guard runs under) and that back from the
    List does nothing. If it still goes blank I would widen the condition.
 6. **Open: how the week rolls over.** I propose a banner and one tap, not an
@@ -282,5 +282,5 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
 | A. Foundations | Built: dialogs, undo toasts, spacing utilities, B9, unused parameters |
 | B. The week | Built: one week plus the leftovers Saturday, Move on, Both/Split day sheet, Food folded into Plan, four tabs |
 | C. The list and the shop | Built: pinned total and budget, Go shopping with the trolley, Bought, scan in the add sheet, optional price |
-| D. Editing and polish | In progress. Built: one item picker (items, meals, products, receipt and scan targets, Move) and one line editor for meals and days, B10. Still to do: Items tab, Settings groups, words and 44px targets, inline-style sweep, README |
+| D. Editing and polish | In progress. Built: one item picker (items, meals, products, receipt and scan targets, Move) and one line editor for meals and days, B10; the Items tab (shop, price and stock up front, the rest folded, an item's only product open, no plus of its own), Settings in Sync / Appearance / About, *item* and *shop* for what was *ingredient* and *store* on screen, and 44px targets with a test that walks the screens. Still to do: inline-style sweep, README |
 | Back button blank page | Guard should prevent it; needs confirming on the phone |

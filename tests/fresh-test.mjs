@@ -51,10 +51,8 @@ await p.waitForFunction(() => document.getElementById("app")?.dataset.booted ===
 await p.waitForTimeout(800);
 await p.evaluate(() => document.querySelector('[data-act="openSettings"]').click());
 await p.waitForTimeout(500);
-await p.evaluate(() => {
-  const b = document.querySelector('[data-act="toggleRepoBox"]');
-  if (b) b.click();
-});
+// the version is under About
+await p.click('[data-act="setSettingsGroup"][data-group="about"]');
 await p.waitForTimeout(600);
 const shown = await p.evaluate(() => {
   const sheet = document.querySelector(".sheet");
