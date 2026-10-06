@@ -4,6 +4,8 @@ Reviewed 2026-10-06 against `main` at 5411b95. Everything here was read in the
 code, then checked on screen: the fixture list at 390px, dark theme, every tab
 plus the day sheet and Settings. Suite was 35/35 green before any change.
 
+How the app should end up looking and working is in [VISION.md](VISION.md).
+
 Sections: [Summary](#summary) · [A journey, start to finish](#a-journey-start-to-finish) ·
 [Findings](#findings) · [Other apps](#other-apps) · [Plan](#plan) ·
 [Decisions I want challenged](#decisions-i-want-challenged) · [Status](#status)
@@ -137,137 +139,144 @@ forward: a comment says why the code is shaped this way *now*; the history is in
 
 ## Other apps
 
-Web fetches were blocked in this environment, so this rests on search-result
-summaries rather than hands-on use. Treat it as direction, not a teardown.
+Read on 2026-10-06 from each vendor's own pages, fetched with `curl` once the
+network was opened (the WebFetch tool kept reporting the hosts as blocked, so
+these were read as text by hand). Vendor pages describe themselves favourably,
+so treat claims about results as marketing and the described *features* as fact.
+Still unreachable: `docs.mealie.io`, `chromium.googlesource.com`; and the Material
+bottom-sheet page is built by script and returned no text.
 
-| App | Worth borrowing | Applies here |
+| App | What the page says it does | What it means here |
 |---|---|---|
-| [Plan to Eat](https://learn.plantoeat.com/help/change-your-shopping-list-date-range) | The shopping list is built from a **date range** with presets: today, next 7 days, current week, custom. Stores are remembered per item. | Direct support for "today or later". A range chip on the List, defaulting to *today onward*, with *whole plan* as the other option. |
-| [Mealime](https://expertbeacon.com/mealime-review/) | The list is the product: consolidated, grouped, then nothing else competes with it. | The List first screen should be the list. |
-| [Paprika](https://apps.apple.com/ae/app/id1303222868) | Daily/weekly/monthly calendar; **save a week as a reusable menu**; move items between pantry and list. | "Start a new week" as *copy last week* or *a saved menu*, not only *keep everything or nothing*. |
-| [AnyList](https://www.anylist.com) | Shared list with recipes feeding it. | Already matched by sync; add-from-meal is a possible later step. |
-| [Listonic](https://listonic.com/compare-apps/listonic-vs-bring) and Bring! | Type-ahead from your own history, one-tap frequent items. | The new add sheet. A "frequent" strip is a later step, once there is a history to rank by. |
-| Eat This Much | Calorie and macro **targets** per day. | Food shows actuals only. A target line per person would give the numbers somewhere to land. |
-| [Trolley](https://thegrocer.co.uk/news/go-compare-launches-deal-finder-desktop-supermarket-app/545612.article) and similar | Compares one basket across supermarkets. | This app already holds per-shop prices for the same item. *This list at Aldi would be £x* needs no scraping. |
+| [Plan to Eat](https://learn.plantoeat.com/help/change-your-shopping-list-date-range) | The shopping list follows a **date range**, defaulting to the next 7 days, with *today*, *next 2 weeks*, *current week* (from the planner's **start-day setting**) and a custom range. | Direct support for "today onward", and for the week start being a setting rather than a rule. For you the range is always *today to Friday*, so no range control is needed. |
+| [Mealime](https://support.mealime.com/article/151-getting-started-guide) | Lands on the meal plan; starting the next plan is one button (*Start Your Next Meal Plan*). The list groups by store department, and extra items are added **in a text box at the top of the list**. Supports planning a week ahead or day by day. | Same shape as the add bar. "Start your next plan" is the model for *Move on a week*: one obvious button at the moment it is needed. |
+| [AnyList](https://www.anylist.com/features) | **Autocomplete** and automatic categories; **Favorites** as a master list; **recently used** items to build a list; categories matched to the local store; **prices on items to stick to a budget** (paid tier). | Confirms the add sheet. Recently used and favourites are the next step for it once the app has a history to rank by. |
+| [Listonic](https://listonic.com/compare-apps/listonic-vs-bring) | Saved item prices and a **running total at the point of shopping**; compares itself with Bring!, which it says has no price tracking. Suggestions from past use. | The in-shop running total is the part to copy: *in the trolley £x, still to get £y*. |
+| [Paprika](https://paprikaapp.com/) | Lists sorted by aisle with similar items combined; several lists; custom aisles; cloud sync of recipes, lists and plans. | Nothing new beyond what the app has. Its pantry and saved menus remain the idea worth borrowing. |
+| [Eat This Much](https://www.eatthismuch.com/) | Daily calorie and macro **targets**; a virtual **pantry** that the plan uses up first; grocery list updates as the plan changes. | Targets are a later option on the Plan's nutrition line. The pantry idea is what your stock check already is. |
+| Trolley and similar price sites | One basket compared across supermarkets (from search summaries only; the site itself was blocked). | The app already holds per-shop prices, so *this list at Aldi would be £x* needs no scraping. |
+
+Two things from outside the apps changed the plan:
+
+- **Confirm or undo** ([Nielsen Norman Group](https://www.nngroup.com/articles/confirmation-dialog/)):
+  confirmation dialogs belong on serious or irreversible actions and should name
+  what will happen; routine actions should not have them, because people learn to
+  click through; and an undo should be offered wherever it can be. So routine
+  actions (*Got it*, removing a pack) get an undo toast, and the few truly
+  destructive ones (delete an item or meal, reset) get a specific in-app
+  confirmation, not the browser's.
+- **Back button** (Chromium's history manipulation intervention, from search
+  summaries of its design doc): an entry a page adds without any user tap can be
+  skipped by the back button, but a page that has received a tap at any point has
+  its entries treated as ordinary. The guard adds its entry on load, so it behaves
+  as intended once you have tapped anything, which you will have. Only a back
+  gesture before touching the app at all could still slip past it.
 
 ## Plan
 
-Each phase is shippable on its own and leaves the suite green. Order is by how
-much of the felt clunkiness it removes per line changed.
+Phase 0 shipped in PR #5. The rest is now delivered as four pull requests, each
+merged only when the suite is green, in this order because each one needs the
+last. [VISION.md](VISION.md) is the destination; this is the route.
 
-### Phase 0, done in this change
+### Phase 0, shipped
 
-- **The list counts today onward.** Days before today stay on the plan, their
-  costs and calories stay on Plan and Food, but they add nothing to the shopping
-  list, stock check, or "needs" figures. Without a start date nothing can be
-  dated, so everything counts as before.
-- **Add from the List tab with a fuzzy search.** One *Add* button replaces the
-  per-shop buttons. It opens a search over your real items (the same matcher as
-  the Items tab); tap one to put a pack on the list. Below the results: a free-text
-  line with a shop chooser for things that are not items, and a new shop typed in
-  place rather than via `prompt()`.
-- **Back button.** In the installed app, back closes the camera, then a sheet,
-  then returns to the List, and is otherwise absorbed. Not applied in a normal
-  browser tab.
-- Fixed B1 (`delMeal`), B2 (UTC `today()`) and B8 (`storeNames`). Removed the ten
-  unused imports, `knownShops`, the never-wired `setProductField` action and the
-  dead CSS, and moved the misplaced comments. The unused parameters are left for
-  Phase 1, since they run through the receipt code and are not worth a noisy diff
-  here. B9 is left too: it is one line and wants your wording.
-- The eight tests that failed once past days stopped counting did so because their
-  plan starts on a fixed August day and the clock had moved on. They now pin the
-  browser clock (`pinClock` in `tests/browser.mjs`), which also stops them
-  depending on the date they happen to be run on.
+- **The list counts today onward.** Days before today stay on the plan with their
+  cost and calories but add nothing to the list, stock check or "needs" figures.
+  Without a start date everything counts, as before.
+- **Add from the List with a fuzzy search**, with a write-in line and a shop
+  chooser for anything that is not an item.
+- **Back button**: closes the camera, then a sheet, then returns to the List, and
+  is otherwise absorbed. Installed app only.
+- Fixed B1 (`delMeal`), B2 (UTC `today()`), B8 (`storeNames`); removed dead
+  imports, an unwired action and dead CSS. The eight tests that planned from a
+  fixed August day now pin the browser clock (`pinClock`).
 
-### Phase 1, foundations (no visible change)
+### A. Foundations that the rest stands on
 
-1. One **item-line editor** used by the meal editor and the day sheet.
-2. One **ingredient picker** (fuzzy, as the add sheet) replacing the native
-   `<select>` in meal lines, day lines, receipt targets and scan targets.
-3. One **dialog**: an in-app ask/confirm sheet replacing all `prompt()` and
-   `confirm()`.
-4. **Spacing utilities** (`.stack`, `.gap-*`, `.mb-*`) replacing the 206 inline
-   styles, and one `fmtDate`.
-5. README rewritten to one model. Comment pass per the rule above.
+1. **An undo toast** and **one in-app confirm** replacing every `prompt()` and
+   `confirm()`. Routine actions get the toast; the destructive few (delete an
+   item or a meal, reset, clear the week) get a confirmation that names what goes.
+2. **Spacing utilities** in the CSS. No new inline `style` from here on; each view
+   is converted as it is rewritten in B to D, and a last sweep takes what is left.
+3. Small fixes that ride with it: B9 (manifest description), unused parameters.
 
-### Phase 2, weeks
+### B. The week
 
-1. **A rolling window.** Today is marked, past days are dimmed and folded under
-   "Earlier this week".
-2. **Move on a week** replaces *Start the next fortnight* as the primary action:
-   shift the start by 7 days (`shiftPlan` already does the sliding), so the second
-   week becomes the first and a new empty week appears. *Copy last week* as the
-   option on the empty one. The date-picked rollover stays as a fallback in the
-   sheet.
-3. Setup (names, start date) moves behind a *Plan settings* row. *Write a meal
-   in* and *Swap* move into the day sheet. *Clear* moves out of the routine column.
-4. Day sheet opens on the six meal pickers; item tweaks sit behind *Tweak items*
-   per slot, collapsed.
-5. Labels say *week*; the 14 is derived from one constant; the Saturday rule is
-   either enforced or dropped from the label.
+1. **One week, Saturday to Friday, plus a single carry-over day** (the next
+   Saturday) for leftovers. Storage stays at fourteen days so nothing is lost and
+   an older phone still merges; only the first eight are shown.
+2. **Move on a week**: a banner on the Plan once the week is over, and a button
+   always. It slides the plan back seven days, and offers *Move on, empty* or
+   *Move on, repeat this week* (copy into empty slots only, so the carry-over day
+   is never overwritten). It replaces *Start the next fortnight*, which goes.
+3. Today is marked; days that have gone fold under *Earlier this week*.
+4. Names, week start and budget move into *Plan settings*.
+5. **A day opens on its meal pickers**, one per slot for *Both* of you, with
+   *Split* when you differ. *Write a meal in*, *Swap* and *We had something else*
+   live inside the day. Changing what is in a meal is folded away per slot.
+6. **Food folds into Plan**: a calories line per day and a *Nutrition* toggle.
+   Four tabs: List, Plan, Meals, Items. The pager bars go.
 
-### Phase 3, the List tab
+### C. The list and the shop
 
-1. A **sticky total and budget** so the number you came for is always visible.
-2. The first screen is the list: Receipt, Scan and Stock check become one row of
-   quiet actions beneath it, or an overflow, and the stock check only asks on the
-   first day of a new week.
-3. **Range chip**: *Today onward* (default), *Next 7 days*, *Whole plan*.
-4. **Undo** after *Got it*. Stale dot only where it is the exception.
-5. Drop the per-product "+" stepper clutter from the Items tab now the List owns
-   adding.
+1. **Pinned total and budget.** The budget (a weekly cap) is edited by tapping it,
+   and in Plan settings.
+2. **Go shopping**: the stock check as the front door, then the list recalculated,
+   then the in-shop view with *in the trolley £x, still to get £y* against the cap.
+   *Done shopping* offers the receipt.
+3. **Undo** on *Got it*. The stale-price dot only when it is the exception.
+4. **Scan moves into the add sheet** (new items), with the price optional because
+   the receipt fills it in. Each result also gets *Bought*, which puts a pack
+   straight into stock for a top-up you never put on the list.
+5. Receipt moves out of the top of the list to the end of *Go shopping* and the
+   add sheet's menu.
 
-### Phase 4, navigation and words
+### D. Editing and polish
 
-1. Fold **Food** into Plan (a calories line under each day and a *Nutrition*
-   toggle), taking the bar to four tabs and dropping the pager.
-2. Settings in three groups: Sync, Appearance, About.
-3. Pick one word for each level of the model and use it everywhere.
-4. A first-run step for names, budget and shops, so the demo is a choice rather
-   than a trap.
+1. One **item-line editor** for meals and days, and one fuzzy **item picker**
+   replacing the native `<select>` in meal lines, day lines, receipt targets and
+   scan targets.
+2. Items: price, stock and shop up front, the rest folded; the thin **+** goes.
+3. Settings in three groups: Sync, Appearance, About.
+4. One word per level (*item*, *product*, *pack*, *week*, *shop*), 44px targets,
+   pinned sheet actions, and the README rewritten to a single model.
 
-### Phase 5, borrowed ideas
+### Later
 
-Saved menus, a cheapest-shop basket comparison, calorie targets, frequent items
-in the add sheet.
+A read-only *This week's meals* view or share for the other person, saved menus,
+a cheapest-shop total, calorie targets, recently used items in the add sheet.
 
-## Decisions I want challenged
+## Decisions
 
-1. **Today onward changes what the budget bar means.** It used to say "this
-   plan costs £x of £60". It now says "what is left to buy costs £x of £60", so
-   mid-week it reads as headroom the week has already spent. If the budget is a
-   weekly cap, the honest figure is *spent so far + still to buy*, and that needs
-   somewhere to record what was spent (receipts have it).
-2. **Stock is never taken out, so the list can under-buy.** Nothing decrements
-   stock as meals pass. Counting every day used to offset that by accident:
-   total need minus total ever bought. Counting only the days left removes the
-   offset, so stock bought on Saturday and eaten by Tuesday still reduces what
-   Wednesday's list buys. This is exactly what already happens when you delete
-   last week's meals by hand, so it is no worse than your current routine, but it
-   is a real limit. The stock check is the existing remedy; the alternative is
-   treating a day's meals as eaten when the day passes, which has merge costs.
-3. **Disabling back is a trade.** Browsers offer no way to disable it, only to
-   add history entries and answer when they are popped. In an installed app on
-   Android, back is also the exit gesture, so absorbing it at the root removes
-   the quickest way out (Home still works). Closing layers first is the part that
-   helps; I have limited the trap to the installed app. I could not reproduce
-   "the page breaks", so please tell me what you see: a blank page, the previous
-   screen, or the app closing.
-4. **Is the add sheet the right shape?** I have made it a bottom sheet with the
-   search focused. The alternative is a search row pinned at the top of the List.
-   The sheet is quieter when you are not adding; the pinned row is one tap
-   fewer when you are.
-5. **Four tabs or five?** Folding Food into Plan removes a destination but makes
-   the Plan denser, which is the screen already carrying the most. It is worth
-   doing only after Phase 2 has thinned the Plan.
+1. **Settled: stock under-buying.** You do the stock check by hand before every
+   shop, which counts what is really in the cupboard, including leftovers from
+   meals you swapped. Counting from today is right.
+2. **Settled: the budget is a weekly cap**, adjustable. On shop day the list total
+   is the week's cost. Ticking *Got it* shrinks that total (the pack becomes
+   stock), so in the shop the bar shows what is in the trolley against the cap.
+3. **Settled: one week, Saturday to Friday, shop on Saturday**, with one carry-over
+   day. The window is eight days; the fortnight goes.
+4. **Settled: Food folds into Plan**; four tabs.
+5. **Back button.** *Reported 2026-10-06:* back gives a completely blank page in
+   the app's background colour. That is the signature of the browser's empty
+   starting page, not of the app: the installed app has no entry behind it, back
+   falls onto that, and no page is there to run code, which is why only closing and
+   reopening helps. The guard keeps an entry in front of it. Please check after
+   updating that *Settings → Install this app* says "Installed. You are running it
+   as its own app" (the condition the guard runs under) and that back from the
+   List does nothing. If it still goes blank I would widen the condition.
+6. **Open: how the week rolls over.** I propose a banner and one tap, not an
+   automatic change, because the plan is shared between devices and a silent edit
+   on opening would be hard to explain. Say if you would rather it just happened
+   on Saturday.
 
 ## Status
 
 | Item | State |
 |---|---|
-| Today onward | Done. `today-onward-test`; eight older tests pinned to a clock |
-| Fuzzy add from List | Done. `list-add-test`; the two jotting tests rewritten for the new way in |
-| Back button | Done. `back-button-test`, which fails with the guard removed |
-| B1, B2, B8 | Done. `meal-delete-test` covers B1; the add sheet's shop chips exercise B8 |
-| Dead code | Done, except unused parameters |
-| Phase 1 onwards | Not started, waiting on your steer on the decisions above |
+| Phase 0 | Shipped, PR #5 |
+| A. Foundations | Built: dialogs, undo toasts, spacing utilities, B9, unused parameters |
+| B. The week | Not started |
+| C. The list and the shop | Not started |
+| D. Editing and polish | Not started |
+| Back button blank page | Guard should prevent it; needs confirming on the phone |

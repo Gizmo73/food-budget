@@ -70,6 +70,16 @@ ok(!s.sheet && s.alive, "and the next press closes Settings");
 await p.click('[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(200);
 ok((await here(p)).tab === "items", "on the Items tab");
+
+await p.click('[data-act="openItem"]');
+await p.click('[data-act="delItem"]');
+await p.waitForSelector(".dialog");
+s = await back(p);
+ok(!(await p.$(".dialog")) && s.alive, "back answers a question with no, and the item is still there");
+ok((await p.$$('[data-act="openItem"]')).length > 5, "(nothing was deleted)");
+s = await back(p);
+ok(s.tab === "items" && !(await p.$(".card.editing")), "the next press closes the open item");
+
 s = await back(p);
 ok(s.tab === "list" && s.alive, "back goes to the List");
 

@@ -30,6 +30,15 @@ export async function pinClock(ctx, when = "2026-08-02T09:00:00") {
   await ctx.clock.install({ time: new Date(when) });
 }
 
+/* Answer the app's own question: type into its box if it has one, then say yes
+   or no. The app asks in its own dialog, never the browser's. */
+export async function answer(p, { fill, yes = true } = {}) {
+  await p.waitForSelector(".dialog");
+  if (fill !== undefined) await p.fill(".dialog input", fill);
+  await p.click(yes ? '[data-act="dialogYes"]' : '[data-act="dialogNo"]');
+  await p.waitForSelector(".dialog", { state: "detached" });
+}
+
 export const BASE = process.env.FS_BASE || "http://localhost:8123";
 
 /* Where a test may leave a screenshot. Handy locally, ignored by git. */

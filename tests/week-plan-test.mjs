@@ -2,7 +2,7 @@
    them and stop at each end, a meal can be written straight onto a day with
    no ingredients behind it, and two days can be swapped wholesale - slots,
    edits, extras and anything written all moving together. */
-import { browser, BASE, pinClock } from "./browser.mjs";
+import { browser, BASE, pinClock, answer } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 390, height: 900 }, colorScheme: "dark" });
@@ -67,8 +67,8 @@ await p.click('[data-act="planWeek"][data-w="0"]');
 await p.waitForTimeout(200);
 
 console.log("\n--- writing a meal in with no ingredients behind it ---");
-p.once("dialog", (d) => d.accept("Chinese takeaway"));
 await p.click('[data-act="writeDay"][data-idx="1"]');
+await answer(p, { fill: "Chinese takeaway" });
 await p.waitForTimeout(450);
 const written = await p.evaluate(async () => {
   const store = await import("./lib/store.js");

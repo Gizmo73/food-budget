@@ -41,5 +41,14 @@ screenshots and is ignored by git.
   `mergeSnapshots` writes the deleted thing straight back.
 - **Anything added to the database shape** needs handling in `seed()`,
   `migrate()` and `mergeSnapshots()` in `lib/store.js`.
+- **No native `prompt()` or `confirm()`.** Ask with `confirmDialog` or `askDialog`
+  (in-app, they resolve to the answer), and give anything routine an undo with
+  `toast(text, undo)`. A question is for what cannot be taken back and names what
+  will go.
+- **No new inline `style="…"`.** Spacing comes from the utilities in `styles.css`
+  (`mt-8`, `mb-12`, `gap-8`, …). Convert a view's old inline styles when you
+  rewrite that view.
+- **Tests that plan from a fixed date pin the browser clock** with `pinClock`, and
+  answer the app's questions with `answer` (both in `tests/browser.mjs`).
 - **`sw.js` caches the app shell.** Adding a file the app loads means adding it
   to `SHELL` and bumping `CACHE`, or phones will run a half-old set of files.

@@ -1,7 +1,7 @@
 {
   "name": "Fortnight Shop",
   "short_name": "Shop",
-  "description": "Test build: one ingredient, several shops. Separate data from the live app.",
+  "description": "A weekly meal planner and food shopping budget: plan the week, check the cupboard, shop to a cap.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

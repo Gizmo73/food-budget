@@ -3,7 +3,7 @@
    never a state where something cannot be written down - and once it is, with
    no shop, it can be filed onto an existing shop with a tap, or onto a brand
    new one. */
-import { browser, BASE } from "./browser.mjs";
+import { browser, BASE, answer } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 390, height: 820 }, colorScheme: "dark" });
@@ -93,8 +93,8 @@ ok((await p.$('button[data-act="fileJotting"]')) === null, "and there is nothing
 
 console.log("\n--- filing onto a brand new shop ---");
 await writeIn("Washing powder");
-p.once("dialog", (d) => d.accept("Boots"));
 await p.click('button[data-act="fileJottingNew"]');
+await answer(p, { fill: "Boots" });
 await p.waitForTimeout(300);
 const withNewShop = await p.evaluate(async () => {
   const store = await import("./lib/store.js");
