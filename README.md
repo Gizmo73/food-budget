@@ -1,288 +1,167 @@
 # Fortnight Shop
 
-A portion-based meal planner and food budget for UK shopping. Static site, no build step, no server. Prices are captured from receipts and barcodes rather than scraped, so nothing breaks when a supermarket changes its website.
+A meal planner and food budget for UK shopping, built around one week at a time. Static site, no build step, no server. Prices come from receipts and barcodes rather than scraping, so nothing breaks when a supermarket changes its website.
 
-Ported from the Meal_Planner spreadsheet. The maths is identical: portions needed across 14 days, minus the portions in stock, rounded up to whole packs, grouped by store. The seeded data reproduces the spreadsheet's £12.60 total exactly.
+The maths started as a spreadsheet and is unchanged: the portions the week needs, minus the portions in stock, rounded up to whole packs, grouped by shop.
+
+(The name is older than the app's idea of a week. Renaming it touches only the title, the install name and a few labels; the storage names stay as they are so nobody loses data.)
+
+## The week
+
+Every week runs the same loop, and the app is shaped around it.
+
+1. **Move on a week** (Saturday) and plan it, with Friday's leftover day already in.
+2. **Check the cupboard**, just before leaving.
+3. **Go shopping** from a list that is already right, against the weekly budget, with a running trolley.
+4. **Scan the receipt** when you get home. That is the only time prices change.
+5. Cook, swap, eat out. Tell the app only if it changes what you will need.
+
+Four tabs: **List**, **Plan**, **Meals**, **Items**. Settings is the gear.
 
 ## Setup, about 15 minutes
 
-1. **Publish the app.** Copy these files into your Pages repo, either at the root or in a subfolder like `/shop/`. Push. Everything is relative-pathed, so a subfolder is fine.
-2. **Create a private repo for the data.** Call it `shop-data`. Leave it empty. Private repos are free and unlimited, and Pages never needs to read it.
-3. **Make a token.** GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: only `shop-data`. Permissions: Contents → Read and write. Nothing else. **Set the expiry to the longest offered**, because the default is 30 days and syncing simply stops when it lapses. Copy the token.
-4. **Get a Gemini key** from Google AI Studio if you do not already have one. The free tier covers a receipt a week many times over.
-5. **Open the site on your phone**, tap Settings, fill in the owner, repo and token, paste the Gemini key, then tap **Push to repo**. That creates `prices.json` on the first push.
-6. **Add to Home screen** from the Chrome menu. It then runs full screen and works offline.
+1. **Publish the app.** Copy these files into your Pages repo, at the root or in a subfolder like `/shop/`. Everything is relative-pathed.
+2. **Create a private repo for the data.** Call it `shop-data` and leave it empty. Private repos are free, and Pages never needs to read it.
+3. **Make a token.** GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Repository access: only `shop-data`. Permissions: Contents → Read and write. Nothing else. **Set the expiry to the longest offered**, because the default is 30 days and syncing simply stops when it lapses.
+4. **Get a Gemini key** from Google AI Studio if you do not have one. The free tier covers a receipt a week many times over.
+5. **Open the site on your phone**, tap the gear, and under **Sync** open *Database, keys and backup*. Fill in the owner, repo and token, paste the Gemini key, then tap **Update database**. That creates `prices.json` on the first push.
+6. **Install it** (Settings → About says how for your browser). It then runs full screen and works offline.
 
-## How pricing works
+## The Plan
 
-**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items with unit prices and quantities, and each line is matched to one of your items. You confirm before anything changes. A receipt updates **prices**; it does not add stock by default, since it is read after shopping and **Got it** on the List tab is what turns a trolley into stock. Bump a line's *Into stock* up if the receipt is the moment you would rather stock it.
+The plan is **one week, Saturday to Friday**, and the Saturday after it, where Friday's leftovers get eaten. It is stored as fourteen days so that nothing is lost and an older copy of the app still merges, but only those eight are shown.
 
-**A receipt is dated evidence, not the current truth.** The date is read off the photo, shown beside the store and editable if the model misread it, and it is the date recorded against every price on that receipt. So entering a shop a week late no longer outranks corrections you made in between. Any line whose item has been updated since that date is switched off automatically and labelled **old price**, naming what changed and when; tick it back on if you disagree. Correcting the date brings those lines back.
+**Tap a day** to open it. It opens on one meal picker for each of breakfast, lunch and dinner, set for **both** of you at once, since most days are. **Split** gives each person their own picker for the day you differ, and **Same for both** folds it back. A day where you are the same reads once on the plan, headed *Both*. **Portions on a meal are for one person**, so planning it for both counts it twice.
 
-The comparison is by day, not to the minute. A receipt photographed this afternoon and a price you fixed this morning are treated as equal standing, because a receipt carries no time of day and inventing one would only produce false alarms.
+Today is marked, and days that have gone fold away under *Earlier this week*. Every row shows its date, which is what tells you whether a use-by will still hold when that evening comes round. **Week settings** holds the names, the day the week starts, the weekly **budget** and **Clear the plan**.
 
-**A line that matches nothing now defaults to being added as a new item**, rather than to being ignored. Ignoring was the safe-looking default and the wrong one: it quietly dropped everything you had not recorded yet.
+**Move on a week.** Once the week is over the Plan says *A new week has started* and offers **repeat meals** or **empty**. Either slides the plan back seven days, so the Saturday becomes day one and keeps what was planned on it, including a meal written in for Friday's leftovers. Repeating copies the week just finished into the new week's *empty* places only, and leaves one-day edits behind since they belonged to that day. A phone left alone for weeks catches up in one tap. This is different from correcting the start date under Week settings, which slides the plan so a meal keeps the day you chose it for; one date box could not tell which you meant. Stock is left alone, since the cupboard did not change because the calendar did.
 
-A confirmed line also puts stock in, since a receipt is proof you bought the thing. Each line carries an **Into stock** figure in portions, worked out from the quantity on the receipt times that item's portions per pack, with ± stepping a whole pack at a time. It is editable because a receipt often cannot tell your items apart: three yoghurts on one line may be three flavours you keep separately, so knock that line down to one pack and put the others where they belong. Set it to 0 to record the price and nothing else. Pointing a line at a different item re-derives the figure, because portions are a different size on a different item.
+**Changing a meal for one day.** Under each meal, **Change what's in it** opens its items. The moment you change one, that meal becomes a **loose edit** kept on the day alone: the shared meal, and every other day using it, is untouched, and the shopping list follows what the day actually says. The grid marks it with a **✎**. A loose edit has three ways out: leave it, **Save into** the shared meal (changing it everywhere), or **Save as a new meal**. Choosing a different meal drops the edit.
 
-Matching gets better every shop, because confirming a line saves that receipt's wording as an alias:
+**Extras** are single things eaten outside a set meal, such as two apples. They are per person, count towards that person's calories, stock and the list, and do not add to the "meals planned" count.
+
+**Write a meal in** puts plain words on a day (a takeaway, a dinner out): it costs nothing and asks for nothing. **Swap** exchanges two whole days. **Repeat** copies a slot from the first planned day into the empty days.
+
+A day's edits, extras and written meals are part of the plan, so they survive a save and reload, ride along when a week is moved on, and come across on a merge.
+
+**Food is part of the Plan.** Switch **Nutrition** on at its foot and every day gets a line of calories and macros, with an average beneath. A day shared by both of you reads once, as *Each*.
+
+## The List
+
+The list counts meals on **today and later**, so last week's dinners never have to be deleted. A day that has gone stays on the Plan with its cost and calories; it just asks the shops for nothing. Without a start date every day counts.
+
+**The total and the budget sit in a bar pinned above the tab bar**, so the number you came for never scrolls away. Tap the budget to change it: it is a weekly cap.
+
+**The add bar** at the top opens a search over the items you keep. It matches loosely (`stkpies` finds Steak Pies). Tap a result and a pack goes on the list, riding on the cheapest shop; tap again for another, or **−** to take one back. **Bought** is for a top-up you never put on the list: it puts a pack straight into stock. The barcode button is how something new gets into the app: scan it, then its label. For anything that is not an item, such as bin bags, the same sheet has a line to write it in and the shop to put it under, one you use, **No shop yet**, or a new one typed there. A written line has no pack behind it, so **Got it** only strikes it off.
+
+**Got it** turns a line's packs into stock and offers **Undo**. The price on a line gets a red dot when it is over 14 days old, but only when that is the exception: if most prices are old the banner says so once and the dots stay off.
+
+Each line says why a shop was chosen (*cheapest of 2 shops · Tesco is £0.15 more a portion*), or *pinned* if you pinned one.
+
+## Go shopping
+
+**Check the cupboard** is the first step. It lists what this week's plan still needs and nothing else, A to Z. Each row says what the plan asks for, whether that is covered, when it was last counted, and how the figure reads in packs as well as portions. Correct the ones that are wrong; tap **Right** on the ones that are not, which changes no figure but records that you looked. **Start shopping** is pinned at the bottom and **Skip the check** is there for a day it is not worth doing. The List says quietly when the cupboard was last checked, never with a count of what is left.
+
+Stock only goes up on its own (a receipt, a scan, **Got it**). Nothing takes it out, and nothing sensibly could: nobody opens an app to record a biscuit. So the app asks once, when asking is worth it. A count is stamped on the product, so progress survives closing the app halfway round the kitchen, and a merge treats a count as beating arithmetic: if one phone added 8 from receipts and the other looked in the freezer and found 2, the 2 wins.
+
+**In the shop**, the pinned bar becomes **the trolley against the budget**. Ticking **Got it** shortens the list, so without this the cost of the shop would shrink as you went round it. The bar shows what is in the trolley and what is still to get, and the two always add up to what the shop comes to. **Undo** takes a line back out. **Done shopping** ends it and offers the receipt. A shop is kept on the phone it was started on, survives closing the app, and is over by the next day.
+
+## Receipts, barcodes and prices
+
+**Receipts** are the bulk update. Photograph the whole receipt flat, the model returns line items, and each is matched to one of your items. You confirm before anything changes. A confirmed line records the price and, since a receipt is proof you bought it, puts stock in: each line carries an **Into stock** figure in portions, from the quantity times that item's portions per pack, stepped a pack at a time and editable (three yoghurts on one line may be three flavours you keep separately). Set it to 0 to record the price alone. Pointing a line at a different item re-derives it.
+
+**A receipt is dated evidence, not the current truth.** The date is read off the photo, shown beside the shop and editable, and is recorded against every price on it. A line whose item has been updated since that date is switched off and labelled **old price**, naming what changed and when; tick it back on if you disagree. The comparison is by day, since a receipt has no time of day. A line that matches nothing defaults to being **added as a new item**, because ignoring was the safe-looking default that quietly dropped everything not yet recorded.
+
+Matching gets better every shop, because confirming a line saves its wording as an alias:
 
 | Signal | Confidence | Where it comes from |
 |---|---|---|
 | Barcode | certain | You scanned it once |
-| Saved alias | near certain | You confirmed that receipt wording before |
+| Saved alias | near certain | You confirmed that wording before |
 | Name similarity | a guess | Token overlap, shown for you to check |
 
-So the first receipt needs the most tapping and later ones need almost none. This is why the barcode step during receipt review is worth doing even though it is optional: it builds the barcode library that makes in-store scanning work.
+**Barcodes** are how something new gets in. Scan it and name it; the shelf price is optional, since the receipt brings prices and finds the item by its barcode. Saving a scan then offers to photograph the label, but only when that product has no calories or macros yet: scanning is the one moment the pack is in your hand, and it never asks about something already filled in. Scanning is two steps, what kind of thing this is, then which one of them.
 
-**Offers** are recorded per shop on the Items tab, since a Clubcard price is Tesco's business and not Aldi's. There are three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer. Each takes an optional end date, and once that date passes the app quietly reverts to full price rather than flattering the budget with a deal that has finished.
+**Offers** are recorded per product, since a Clubcard price is Tesco's business and not Aldi's. Three kinds: a loyalty card price, N for a fixed price, and buy N pay for fewer, each with an optional end date after which the app reverts to full price. Base price and offer price are kept apart on purpose. A loyalty price applies to every pack, so it feeds portion and meal costs. A multibuy depends on how many packs you buy, so it only affects the list total: a meal is not cheaper because you bought three. Every receipt line therefore carries a **Paid** choice (full price, card price, or multibuy), because "3 for £8" recorded as a card price of £2.67 would tell the app a single pack costs £2.67 when it costs £3.75. The offer editor spells out which you have.
 
-Base price and offer price are kept apart on purpose. A loyalty price applies to every pack, so it feeds portion costs and meal costs. A multibuy depends on how many packs you buy, so it only affects the shopping list total. A meal is not cheaper because you bought three.
+Offers never lower the base price, otherwise it would drift down with every promotion and never come back up.
 
-That separation is also why every receipt line carries a **Paid** choice: full price, card price, or multibuy. Both offer kinds leave the base price untouched, otherwise the base would drift down every time a promotion ran and never come back up.
+## Items and products
 
-Getting that choice right matters more than it looks. A "3 for £8" deal recorded as a card price of £2.67 tells the app a single pack costs £2.67, when a single pack actually costs £3.75. Every portion cost, meal cost and budget total downstream is then wrong. Recorded as a multibuy, one pack stays £3.75 and the deal only applies once three are on the list.
+**An item is what a recipe asks for. A product is what you put in a trolley.** "Cheddar" is the item; Cathedral City at Tesco, Tesco Finest and the Asda own brand are three of its products. Two products may share a shop.
 
-The offer editor spells out which you have, in words: *"One pack still costs £3.75. Only at 3 does the deal apply"* versus *"Every pack costs £2.67, however many you buy."*
-
-**Barcodes** are how something new gets in. Scan an item and name it; the shelf price is optional, since the receipt brings prices when you get home and finds the item by its barcode. Typed in the shop, the price replaces what was there. The app tells you what changed since last time.
-
-Saving a scan then offers to photograph the label, but only when that product has no calories or macros on it yet. Scanning is the one moment the pack is in your hand: later means finding the thing again, or reading the figures off a website and hoping. **Not now** is one tap, and nothing else waits on it. It never asks about something already filled in, since a prompt you always dismiss is a prompt you stop reading.
-
-Anything older than 14 days gets a red dot and a banner, so a stale price never quietly costs a shop.
-
-## Sharing with someone else
-
-Two people can use one shared price list, and there are two ways in.
-
-**The invite code** is the short one. On the phone that is already set up, tap **Settings → Invite someone**. That produces a QR code and a text code carrying the database details and the token. On the other phone, **Settings → Enter an invite**, scan it or paste it, done. They need no GitHub account, no token and no invite to the repo, and joining merges their list into yours rather than replacing either.
-
-Be clear about what that code is: **a key to your list**. Anyone holding it can read and change your prices until you change the token on GitHub. Show it to the person in front of you rather than leaving it in a chat that lives forever. One token then serves everybody, so removing one person means issuing a new token and re-inviting whoever stays.
-
-Attribution survives it anyway. Who did what comes from the **Your name** field on each device, not from the token, so a shared token still produces "Sam saved 10 minutes ago" and a commit log naming them.
-
-**Their own token** is the longer way, and the only reason to prefer it is revoking one person without disturbing the other. On GitHub, open the `shop-data` repo, go to **Settings → Collaborators**, and invite them. They then create their own fine-grained token the same way you did, open the same app URL, and enter the same owner and repo with their own token. **Set the expiry to the longest GitHub offers**: the default is 30 days, and when it lapses the app simply stops saving, reporting only that the token was rejected.
-
-The QR code is generated on the device by `lib/qr.js`, written for this app rather than pulled from a library or an image service, because the code being drawn contains a token with write access and it should never leave the phone.
-
-**Pull merges, it does not overwrite.** That matters, because otherwise whoever pushed second would wipe the other's work. The rules:
-
-| What | Rule |
-|---|---|
-| Prices and offers | Per shop, whoever priced that shop most recently wins it |
-| Sources | The union, since a shop one of you found is real information |
-| Items | The union of both sides, nothing is dropped |
-| Stock and hand-added packs | The higher count, since a bought pack is a physical fact. Stock compares in portions |
-| Barcodes and aliases | Combined, never replaced |
-| Meals | The union |
-| Meal plan | Taken whole from whichever device saved last |
-
-The meal plan is the one thing that cannot merge sensibly, since two different weeks are not combinable. If you both plan meals, agree who owns the plan.
-
-Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings → Sync and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
-
-Times are shown in UK wall-clock time, so they read correctly through British Summer Time rather than an hour behind. If you push and someone beat you to it, the app refuses and tells you to pull first rather than clobbering them.
-
-## Ingredients, and the products under them
-
-**An ingredient is what a recipe asks for. A product is what you put in a trolley.** "Cheddar" is the ingredient; Cathedral City at Tesco, Tesco Finest at Tesco and the Asda own brand are three of its products. Two products may share a shop, because two of those are both cheddar and both Tesco.
-
-| On the ingredient | On each product |
+| On the item | On each product |
 |---|---|
 | Name, aliases | Its own name, and the shop |
 | What meals ask for | Price per pack, portions per pack |
-| Hand-added packs | **Stock, in portions** |
+| | **Stock, in portions** |
 | | Pack size, portion, nutrition, offer, barcodes |
 
-**Stock sits on the product**, because a meal is allowed to demand one specific one and the app has to be able to answer "have I got *that*". An ingredient's stock is the sum of its products', so "any cheddar will do" still pools exactly as it did.
+**Stock sits on the product**, because a meal may demand one specific product and the app has to answer "have I got *that*". An item's stock is the sum of its products', so "any cheddar will do" pools exactly as you would expect: a block in the fridge does not remember which shop it came from.
 
-**A meal item can name a product, or not.** Blank is the useful default: the meal wants cheddar, any cheddar in the house counts, and the list buys the cheapest per portion. Name one and only that one satisfies it, so it goes on the list even with other cheddar in the fridge. Named demands are worked out first and eat their own product's stock, leaving whatever they cannot eat for the loose demand to use.
+**A meal line can name a product, or not.** Blank is the useful default: the list buys the cheapest per portion, and any of it in the house counts. Name one and only that one satisfies it, so it goes on the list even with other cheddar in the fridge. **Pin** a product to always buy it.
 
-**Scanning is two steps**: what kind of thing this is, then which one of them. A barcode names one exact product, so it binds there and nowhere else. **Receipts** do the same with the shop already known: the wording picks the ingredient, then the product at that shop by its printed name, or the only one you buy there, or something new with its name already tidied of the shop and the pack size.
+The list buys from **whichever product is cheapest per portion**, not per pack, so a bigger pack at a higher price can still win. Everything that records a price records it against a shop: a receipt from Asda adds an Asda price to the cheddar you already have rather than creating a second one. Receipts print legal names (`TESCO STORES LTD`) and shop names are folded to one spelling on the way in (`ASDA` becomes Asda); a spelling already in your data always wins.
 
-## One ingredient, several shops
+**The Items tab** opens an item on the three things you change: the shop, the price and the stock. The rest is folded: name, pack and portion; offer; nutrition; barcodes. An item with one product has it open already. There is no **+** here, because putting something on the list is the List's job. New items start with no shop and sort to an *Unassigned* group at the top until you file them: guessing a shop would be worse, since an item in the wrong group is harder to spot than one in an obviously empty one. Receipts are the exception, since they know the shop. Sort by shop or A to Z (remembered per device). The search matches loosely and covers names, shops, barcodes and remembered receipt wording.
 
-**An item is an ingredient, not a product.** "Cheddar" is one thing you cook with; Tesco's and Aldi's are two places to buy it, at two prices, in two pack sizes. Those are its **sources**.
+**Moving a product to another item** (*Move to…*) corrects "Arla Lactofree Semi Skimmed Milk" having become its own kind of food when it is really one of the milks. It keeps its price, stock, pack size, nutrition and barcode. A meal naming that exact product follows it; a meal asking for the old item in general follows only if the old item is left empty. Aliases and hand-added packs move when the old item goes, and a pin on the product that left is cleared. Moving the only product an item has removes the item, and the screen says so before and after.
 
-What lives where follows from that:
+**Copy to a shop** clones a product and blanks only what differs between shops: the shop and the price. Stock does not travel (it is a pack in your cupboard), nor does the offer, and the copy is not stamped as priced. The barcode does travel, since it is the same tin. Once a barcode is on two shops' entries a scan cannot tell which you are standing in, so it lists them with price and age and nothing is editable until you pick one.
 
-| On the ingredient | On each source |
-|---|---|
-| Name, aliases | Shop |
-| **Stock, in portions** | Price per pack |
-| What meals ask for | Portions per pack |
-| Hand-added packs | Pack size, portion, nutrition, offer, barcodes |
+### Pack size, and what a portion is
 
-**Stock is pooled, and that is the whole point.** A block of cheese in the fridge does not remember which shop it came from, so buying cheddar at Asda cancels the cheddar a meal needs even though the plan was priced against Tesco. Before this, the Asda cheddar was a separate item, its stock invisible to the meal, and the list would send you back to Tesco for cheese you already had.
-
-The shopping list buys from **whichever source is cheapest per portion**, and says so on the line: *cheapest of 2 shops · Tesco is £0.15 more a portion*. Per portion, not per pack, so a bigger pack at a higher price can still win. **Pin** a source to override that when you would rather always buy it in one place, and the line says *pinned* instead.
-
-Everything that records a price records it against a shop. A receipt from Asda adds an Asda price to the cheddar you already have, rather than a second cheddar; the flash says *1 new shop price on items you already had*. Scanning does the same, defaulting to the shop that item is normally bought from, and binding the barcode to that shop only, since an own-brand code belongs to one shop.
-
-One item holds **at most one source per shop**, and a source's identity is its shop name. That makes the id the same on every device, so two people who both add Aldi end up with one Aldi rather than two. Renaming a shop onto one the item already has is refused rather than silently swallowing an entry. Two genuinely different cheddars in the same shop are two items, which is what you want, because they are two things.
-
-Receipts print legal names: `TESCO STORES LTD`, `ASDA STORES LIMITED`. Those now fold onto the shop you already have. Left alone they used to make an untidy second heading; under sources they would split one shop's price into two, which is exactly what this is here to prevent.
-
-Sharing merges **per shop**: you price the Aldi cheddar, they price the Tesco one, and both survive rather than the later push winning.
-
-## Choosing a meal
-
-Meals are listed **in name order**, on the Meals tab and in the plan's dropdowns, which are the two places you pick one.
-
-Each meal says whether you could cook it tonight without shopping, and names what is stopping you: *"short of mince and pasta"* rather than a bare no. **Can make N** filters the list down to those, with the count on the button so you can see at a glance how many nights are already covered.
-
-Two decisions inside that:
-
-- **A meal is judged on its own, not against the week.** Two meals may each be makeable while sharing the last portion of mince between them. "Can I cook this one now" is the question being asked when you are standing in the kitchen; worrying about the week as a whole is the shopping list's job.
-- **A meal with nothing in it cannot be made.** Vacuously true is the wrong answer: it would put every half-written meal at the top of a list of things you can cook tonight.
-
-A line naming one specific product can only be met by that product's own stock. A line asking for the ingredient in general can be met by any of it, which is what pooling stock across shops is for.
-
-The meal you are editing is never filtered away, since having it vanish because you just used up its last ingredient would be a strange way to find out.
-
-## The plan, and who is eating
-
-The plan is **one week, Saturday to Friday**, and the Saturday after it, which is where Friday's leftovers get eaten. It is stored as fourteen days so that nothing is lost and an older copy of the app still merges, but only those eight are shown.
-
-**Tap a day** to open it. It opens on one meal picker for each of breakfast, lunch and dinner, set for **both** of you at once, since most days are. **Split** gives each person their own picker for the day you differ, and **Same for both** gives the second person the first one's choice and folds it back to one. A day where you are the same reads once on the plan, headed *Both*.
-
-Under each meal, **Change what's in it** opens the meal's own items to change, for both of you or for the one person, depending on how the slot is set. **Write a meal in** and **Swap with another day** are in the day too.
-
-**Portions on a meal are for one person.** Plan it for both and it counts twice.
-
-Set the day the week **starts** under **Week settings** and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so the plan says what day it is. Today is marked, and days that have gone fold away under *Earlier this week*. **Week settings** also holds the names, the weekly **budget** and **Clear the plan**.
-
-Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
-
-### Editing a meal for one day only
-
-Pie and Mash is planned, but tonight you want new potatoes instead of the mash. Rather than build a whole new meal, open the day and change the item right there. The moment you do, that meal becomes a **loose edit** kept on the day alone — the shared Pie and Mash, and every other day using it, is untouched. The grid marks an edited day with a small **✎**, and the shopping list is worked out from what the day actually says: new potatoes on, mash off.
-
-A loose edit gives you three ways out, none of them forced:
-
-- **leave it** — it stays a one-day tweak and nothing else changes;
-- **Save into Pie and Mash** — write the new items back into the shared meal, changing it everywhere it is used; or
-- **Save as a new meal** — keep the edit as its own meal and point today at it, leaving the original alone.
-
-Choosing a different meal from the dropdown drops the loose edit, since you have said outright what you want instead.
-
-### Extras: single things outside a meal
-
-Each person's day also has an **extras** list, for the odd thing eaten that is not part of a set meal — a couple of apples, a bag of crisps. Extras are logged per person, so they count toward that person's calories on the Plan as well as the shopping list and stock, exactly as a meal's items do. They are not a meal, so they do not add to the "meals planned" count, but a day with only extras on it still counts as one that person ate on.
-
-A day's loose edits and extras are part of the plan, so they travel with it: they survive a save and reload, ride along when a week is moved on, and come across on a merge with whichever device's plan is the more recent.
-
-### The list is for today onward
-
-The shopping list, the stock check and each item's "needs" figure count meals on
-**today and later**, so last week's dinners never have to be deleted to keep the
-list honest. A day that has gone stays on the plan, dimmed, with its cost and
-calories still on the Plan; it just asks the shops for nothing. The
-List says how many earlier days it left out, and the Plan marks today and opens
-on the week that holds it.
-
-Without a start date no day has a date, so every day counts. Nothing takes stock
-out as meals pass, so the list can under-buy by what was eaten from stock that
-was bought for those days: the stock check is the remedy.
-
-## Filing something under the right ingredient
-
-The ingredient is the category a meal asks for; the product is the thing you put in the trolley. Scanning a new item makes both at once, which is right the first time and wrong the second: "Arla Lactofree Semi Skimmed Milk" becomes its own kind of food when it is really one of the milks.
-
-Each product card carries a **Move to…** picker to correct that. Choose another ingredient and the product moves under it, keeping its price, stock, pack size, portion, nutrition and barcode.
-
-What follows it matters more than the move:
-
-| | What happens |
-|---|---|
-| A meal naming that exact product | Follows it, still naming it |
-| A meal asking for the old ingredient in general | Follows only if the old ingredient is left empty, since otherwise it still means whatever remains |
-| Aliases | Move across when the old ingredient goes, so receipts still recognise the wording |
-| Hand-added packs | Move across too, since they are a request that has not been met |
-| A pin naming the product that left | Cleared, because it points at nothing |
-
-**Moving the only thing an ingredient can buy removes that ingredient.** There is nothing left to buy under it, and an ingredient with no products cannot produce a pack count. The picker says so before you choose, and the banner afterwards says it has gone, so it does not read as a deletion that ate your data.
-
-Stock pools automatically once they are together, because stock lives on the product and an ingredient's stock is the sum. Two cartons of milk from different shops are two cartons of milk.
-
-## The same thing at another shop
-
-A product card carries **Copy to a shop**. It clones the product and blanks only the two things that actually differ between shops.
-
-| Comes with it | Left blank |
-|---|---|
-| Name, pack size, portion, nutrition, barcode, pack size note | Shop, price |
-
-Stock does not travel, because that is a physical pack sitting in your cupboard from one shop. The offer does not travel, because a Clubcard price is Tesco's shelf and not Asda's. And the copy is not stamped as priced, because it has not been — so it shows as never priced rather than inheriting a date it did not earn.
-
-The barcode does travel. It is the same tin.
-
-### Which means a scan can be ambiguous
-
-Once the same barcode is on two shops' entries, scanning it cannot tell which shop you are standing in. Taking the first match would write tonight's shelf price onto the wrong shop, quietly.
-
-So the scan asks. It lists every entry carrying that barcode with its shop, its price and when it was last priced, and **nothing is editable until you pick one**. A barcode on only one entry never asks, so the ordinary case is unchanged.
-
-## Pack size, and what a portion is
-
-Two fields decide everything nutritional, and one of them decides the shopping list too.
-
-**Pack size** is a number and a unit — `600` `g`, `1.5` `kg` entered as `1500 g`, `500 ml` — rather than the free text it used to be, so nothing has to be parsed or guessed. "No weight" is a real choice, for six eggs or a roll of kitchen towel.
-
-**A portion is** either a count or a weight, and the app works out whichever you did not give:
+**Pack size** is a number and a unit (`600` `g`, `1500` `g`, `500` `ml`), not free text. "No weight" is a real choice, for six eggs or kitchen towel. **A portion is** either a count or a weight, and the app works out the other:
 
 | You enter | It derives |
 |---|---|
 | 2 portions per pack | a portion is 300g |
 | 300 g per portion | 2 portions per pack |
 
-Portions per pack is what the whole shopping engine runs on — stock is counted in portions and pack counts are the shortfall divided by it — so defining a portion by weight still produces a correct list, worked out from the pack size rather than guessed.
+Portions per pack is what the whole shopping engine runs on, so defining a portion by weight still produces a correct list. Neither is stored twice, so the two cannot drift. New items default to **1** portion per pack: one pack, one use, right for water or cleaning products, and it can never under-order. Setting it to 0 would make the item vanish from the list, so the list names those items in red instead.
 
-Neither is stored twice. The derived side is shown as a sentence under the boxes, so the two can never drift apart.
+### Stock is counted in portions
+
+An opened pack is the normal case, and a half-used pack should not be offered to the planner as a whole one. A pack of pies does 4 portions and 2 are left: plan a meal wanting 4 and the deficit is 2 portions, which cannot be bought as less than a pack, so a whole pack goes on the list and 2 portions show as left over.
+
+Everything that hands you packs converts on the way in:
+
+| Where | What you enter | What is stored |
+|---|---|---|
+| Items, In stock | portions | portions |
+| Items, ± pack | one pack | portions per pack |
+| Got it, on the list | the packs bought | packs × portions per pack |
+| Scan an item | packs in the trolley | packs × portions per pack |
+| Receipt review, Into stock | portions, none by default | portions |
+
+### Recipes in grams
+
+A meal line is written **either in portions or in grams**, per line, and switching carries the amount across. Grams is what a recipe says. **Nutrition** from a gram line is exact (400g at 250kcal per 100g is 1000kcal) and never passes through a portion count. **The list** still needs packs, so a gram line is divided by that product's portion size; without a portion weight the line counts as nothing and the list names the product as a problem rather than dropping it silently.
+
+### Choosing a meal
+
+Meals are listed **in name order**. Each says whether you could cook it tonight without shopping, and names what stops you (*short of mince and pasta*). **Can make N** filters to those. A meal is judged on its own, not against the week, since "can I cook this now" is the question in the kitchen, and a meal with nothing in it cannot be made. A line naming a product can only be met by that product's stock. The meal you are editing is never filtered away.
+
+### When things were last updated
+
+| Source | Recorded as | Why |
+|---|---|---|
+| An edit by hand | the minute | So two changes on one day still have an order |
+| A shelf scan | the minute | Same |
+| A receipt | the day printed on it | A receipt does not know the time |
+
+That ordering stops an old receipt overwriting a correction, and decides who wins when two phones changed the same item. The price stamp and the last-updated stamp are separate: renaming an item or fixing its portions does not pretend the price was rechecked, so the red dot still means what it says.
 
 ## Calories and macros
 
-They show on the Plan: switch **Nutrition** on at the foot of it and every day gets a line of calories and macros, with an average a day beneath. A day shared by both of you reads once, as *Each*.
+Every **product** carries calories, protein, carbs and fat, on the product rather than the item because Tesco Finest cheddar and the value block are not the same food. **They are stored per 100g or 100ml, exactly as the label prints them**, and what a portion comes to is worked out from the portion size when needed, so redefining a portion moves the calories with it. A 600g pot at 40kcal per 100g is 120 kcal a portion at 2 portions, 80 at 3, and 240 as one whole pot.
 
-Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food.
-
-**They are stored per 100g or 100ml, exactly as the label prints them.** That is the fact that does not change. What a portion comes to is worked out from the portion size at the moment it is needed, so redefining a portion moves the calories with it. Under the old per-portion storage, changing portions per pack left the calories stale and wrong, silently.
-
-The editor shows both: the per-100 figures you type, and a line underneath saying what one portion of that works out at.
-
-A 600g pot of soup at 40kcal per 100g:
-
-| Portions per pack | A portion is | Which is |
-|---|---|---|
-| 2 | 300g | 120 kcal |
-| 3 | 200g | 80 kcal |
-| 1 | the whole pot | 240 kcal |
-
-Change the portion count and all three move on their own.
-
-### Photographing the label
-
-**Scan the label** sends the panel to whichever provider you set up for receipts and shows you what it read before anything is saved.
-
-Because the app stores per 100, a normal label needs **no conversion at all** — the per 100g column goes straight in. The only conversion left is a label that prints a serving column but no per-100 column, which is divided back down by the weight of that serving. If that weight is not printed there is nothing to divide by, so the figures come back flagged rather than silently rescaled.
-
-The photograph usually shows enough to size a portion as well, so the sheet offers that, ticked but never applied without you seeing it. It also tells you what a portion of what it just read comes to, so a wrong portion size is obvious there rather than three screens away.
-
-What it read is shown in four boxes, not as a verdict: correct anything it got
-wrong before saving. A photograph of a curved foil packet under supermarket
-lighting is a good guess rather than a fact, and a smudged decimal point turns
-123 into 1230. The portion figure underneath follows the correction as you
-type, so a wrong number is obvious here rather than a week later on the Food
-tab, and the app says plainly when the figures are no longer purely what it
-read.
+**Scan the label** sends the panel to the provider you set up for receipts and shows what it read in four boxes before anything is saved, because a curved foil pack under supermarket lighting is a good guess rather than a fact and a smudged decimal turns 123 into 1230. A normal label needs no conversion: the per-100 column goes straight in. A label with only a serving column is divided back down by that serving's weight, and if the weight is not printed the figures come back flagged rather than silently rescaled. The sheet also offers to size a portion from the photograph, ticked but never applied unseen, and shows what a portion comes to, so a wrong size is obvious there.
 
 ### Raw and cooked weights
 
-Frozen and raw food is the case that quietly goes wrong. A pack of sausage patties is **342g in the freezer and 248g once grilled**, and its nutrition table is headed *"when grilled according to instructions"*, so the per-100g figures describe the cooked food. Pair those figures with the 342g on the front and every portion reads about **forty per cent too heavy**: 162 kcal a patty against the 117 the label prints.
-
-The label answers this itself, if you read the right line. It quotes **one patty at 41g** and **six a pack**, and that serving weight is on the same basis as the nutrition beside it. Six times 41 is 246g, which is the pack weight those figures belong to, so the two can never disagree.
-
-That is what the scan now uses, most trusted first:
+Frozen and raw food is the case that quietly goes wrong. A pack of sausage patties is **342g in the freezer and 248g once grilled**, and its table is headed *"when grilled according to instructions"*, so the per-100g figures describe the cooked food. Pair those figures with the 342g on the front and every portion reads about forty per cent too heavy. The label answers this itself: it quotes one patty at 41g and six a pack, on the same basis as the nutrition beside it, and six times 41 is 246g, the pack weight those figures belong to. The scan uses, most trusted first:
 
 | | Source | When |
 |---|---|---|
@@ -291,345 +170,110 @@ That is what the scan now uses, most trusted first:
 | 3 | The cooked pack weight from a footnote | When the table is for cooked food |
 | 4 | The weight on the front | Anything you do not cook |
 
-The first one matters more than it looks. **A label's cooked weight only describes the pack that label was printed for.** Two different authorities are at work: your pack size is the authority on what you have, and the label is the authority on what cooking does to it, so it is the *proportion* that travels rather than the number. A 342g pack that grills down to 248g has lost 27%; record a 346g pack of the same thing and it comes out at 251g, not 248g.
+A label's cooked weight only describes the pack it was printed for, so it is the *proportion* that travels: a 342g pack that grills to 248g has lost 27%, and a 346g pack of the same thing comes out at 251g. Where the two differ by more than 1% the sheet says so. A known servings count is stored as a **count**, not a weight, so six patties are exactly six. If the printed pack size is more than 5% from what the servings come to, the sheet says so in words. The list is unaffected: six patties is still one pack.
 
-That needs no threshold to tune, because where the two packs match it produces the label's own answer anyway. Where they differ by more than 1% the sheet says so, since a label quoting one cooked weight while the app shows another looks like an error until it is explained.
+**Nutrition is merged on its own clock.** A shop trip updates prices and nothing else, and merging by the price stamp alone would let a phone that only shopped drag its blank label over one the other phone had read. A filled-in label always beats a blank one, and between two the more recent reading wins.
 
-When the servings count is known it is stored as a **count**, not a weight. Six patties are exactly six; the weight of one is a division with a remainder, and rounding it would leave the pack holding 6.005 portions.
+## Sharing and syncing
 
-When the printed pack size is more than 5% away from what the servings come to, the sheet says so in plain words rather than silently picking one — that gap is nearly always raw against cooked, and it looks like an error until it is named.
+Two people can use one list, and there are two ways in.
 
-The shopping list is unaffected by any of it: six patties is still one pack, because the servings-a-pack figure comes from the same line.
+**The invite code** is the short one. On the set-up phone, **Settings → Sync → Invite someone** produces a QR code and a text code carrying the database details and the token. On the other phone, **Enter an invite**, scan or paste it, done: no GitHub account, no token, and joining merges their list into yours rather than replacing either. That code is **a key to your list**. Anyone holding it can read and change your prices until you change the token on GitHub, so show it to the person in front of you rather than leaving it in a chat that lives forever. One token serves everybody, so removing one person means issuing a new token and re-inviting whoever stays. The QR code is drawn on the device by `lib/qr.js`, written for this app, because the code contains a token with write access and should never leave the phone. Attribution survives a shared token: who did what comes from **Your name** on each device.
 
-### Nutrition is merged on its own clock
+**Their own token** is the longer way, and the only reason to prefer it is revoking one person without disturbing the other. On GitHub, open `shop-data`, go to **Settings → Collaborators**, and invite them; they make their own fine-grained token the same way and enter the same owner and repo.
 
-A shop trip updates prices and nothing else. Merging by the price stamp alone would let a phone that had only done a shop drag its blank label over one the other phone had actually read. Nutrition therefore carries its own stamp: a filled-in label always beats a blank one, and between two filled-in ones the more recent reading wins.
+**Pull merges, it does not overwrite**, otherwise whoever pushed second would wipe the other's work.
 
-## Recipes in grams
+| What | Rule |
+|---|---|
+| Prices and offers | Per product, whoever priced it most recently |
+| Items and products | The union; nothing is dropped |
+| Stock | A count beats arithmetic, the later count wins; otherwise the higher figure, since a bought pack is a physical fact |
+| Hand-added packs | The higher count |
+| Barcodes and aliases | Combined, never replaced |
+| Meals | The union; a meal held by both keeps the one edited more recently |
+| Written lines | The union |
+| Deletions | A headstone is kept for each, so the union cannot write a deleted thing back |
+| The plan | Taken whole from whichever phone edited it last |
 
-A meal ingredient is written **either in portions or in grams**, chosen per line.
+The plan cannot merge sensibly, since two different weeks are not combinable, so if you both plan, agree who owns it. Opening the app checks the database and merges anything new, naming who it came from; turn that off under Settings → Sync and a banner offers it instead. Leaving the app or switching away saves, which is the only reliable moment on a phone. If you push and someone beat you to it, the app refuses and tells you to pull first. Times are UK wall-clock.
 
-Grams is what a recipe actually says. "400g mince" is exact; "2.67 portions" is the same thing said awkwardly. Switching between the two carries the amount across rather than blanking it.
+**What syncs.** `prices.json` holds items, meals, the plan and the budget. Tokens and keys live in IndexedDB on the device and are never written to it. IndexedDB is the source of truth; sync is a deliberate snapshot push, not a live database, so Git history gives you free price history (`git log -p prices.json`). The manual backup lists items in the order the Items tab groups them, since it is read as often as pasted back; restoring ignores the order.
 
-The two are used differently, and deliberately:
+**Security.** Everything on a Pages site is public, so no keys are in the repo. The token is fine-grained, scoped to one repo and one permission; revoke it from GitHub if a device is lost. Keys in device storage are readable by anything that gets script execution on the page, a fair trade for a personal tool and the only option without a server.
 
-- **Nutrition** from a gram line is exact — 400g at 250kcal per 100g is 1000kcal, full stop. It never passes through a portion count, so it cannot pick up rounding, and changing how you portion that product does not change what the recipe contains.
-- **The shopping list** still needs packs, so a gram line is divided by that product's portion size to get portions. Without a portion weight there is nothing to divide by, so the line counts as nothing and the list names the product as a problem rather than dropping it in silence.
+## Using it
 
-## When things were last updated
+**One way to choose.** An item, a meal or a product is chosen with the same picker: a search over the rows and a tap, in a layer above whatever is open. A short list skips the search. Cancel, back, or a tap beside it changes nothing. Only short fixed lists (offer kind, pack unit) are native selects.
 
-Every item carries a **Last updated** stamp, shown in its editor. Two shapes of stamp exist on purpose:
+**Questions and undo.** The app never uses the browser's own `prompt()` or `confirm()`. Anything that cannot be taken back (delete an item or a meal, reset, clear the plan) asks in the app, says what will go, and can be cancelled. Anything routine just happens and a toast offers **Undo** for a few seconds: ticking **Got it**, taking hand-added packs off, striking off a written line, removing a written-in meal. Undo puts back exactly what was there.
 
-| Source | Recorded as | Why |
-|---|---|---|
-| An edit by hand | the minute it was made | So two changes on one day still have an order |
-| A shelf scan | the minute it was made | Same, and you are standing at the shelf |
-| A receipt | the day printed on it | A receipt genuinely does not know the time |
+**Sheets.** Tapping beside a sheet that holds work does not close it; Close is in the corner. Only read-only sheets dismiss on a tap outside. Sheets keep a scroll gesture to themselves. An edit that moves a card keeps the card under your thumb: it is measured before the rebuild and put back on the same line of the screen afterwards.
 
-That ordering is what stops an old receipt overwriting a correction, and it is also what decides who wins when two phones have both changed the same item: whoever priced it most recently.
+**Phones.** The page is pinned at 1:1 and pinch zoom is refused (viewport meta, `touch-action: manipulation`, and refusing `gesturestart` on iOS, since no one alone is enough). **No text box or select is under 16px**, because Safari zooms the page when you tap a smaller one and does not zoom back. **Nothing tappable is under 44px** either way, and a test walks the screens asserting it.
 
-The price stamp and the last-updated stamp are separate. Renaming an item or fixing its portions per pack updates the item without pretending the price was rechecked, so the red stale-price dot still means what it says.
+**Back.** In the installed app the back gesture never leaves it: it closes the picker, the camera, then the sheet on top (a sheet opened from Settings returns to Settings), then goes to the List, and past that is absorbed. A browser cannot switch the button off, only keep an entry in front of the one it would fall to, so this is done only when running installed; in a browser tab back is how you leave.
 
-## Portions per pack
+**Folds.** Open sections are remembered by kind, not by product: open nutrition on one item and it is open on all of them. A folded section still shows a summary (*4 a pack, 142g each*, *3 for £8*), and renders nothing at all, so a long editor is genuinely shorter to scroll.
 
-New items default to **1**, meaning one pack is one use. That is right for water, kitchen roll, cleaning products and anything else you do not divide into servings, and it is the safe default because it can never under-order.
-
-Raise it for genuinely portioned things: a 500g bag of pasta that does four meals is 4, a jar of sauce that does two is 2. Or switch that product to **Weight** and say a portion is 125g, which is the same statement made precisely, and give the calories something to scale by at the same time.
-
-Setting it to 0 is a trap the app guards against. An item a planned meal needs but with no portions per pack cannot produce a pack count, so it used to vanish from the shopping list without a word. The list names those items in red instead.
-
-## Stock is counted in portions
-
-**In stock is a portion count, not a pack count.** An opened pack is the normal case, and a pack that is half gone should not be offered to the planner as a whole one.
-
-The arithmetic follows from that. A pack of pies does 4 portions and 2 are left, so stock is 2. Plan a meal wanting 4 and the deficit is 2 portions, which is less than a pack but cannot be bought as less than a pack, so a whole pack goes on the list and 2 portions show as left over. Stock only cancels a pack when it genuinely covers the portions the plan asks for.
-
-Everything that hands you packs converts on the way in, because shelves and receipts count in packs:
-
-| Where | What you enter | What is stored |
-|---|---|---|
-| Items tab, In stock | portions | portions |
-| Items tab, ± pack | one pack | portions per pack |
-| Got it, on the list | the packs bought | packs × portions per pack |
-| Scan an item | packs in the trolley | packs × portions per pack |
-| Receipt review, Into stock | portions, none by default | portions |
-
-Old data migrates itself on first open: a stored count of 2 packs at 4 portions each becomes 8 portions. Where portions per pack was never set, a pack counts as one portion, which matches what the shopping list already assumed. Nothing needs re-entering, and the conversion runs once.
-
-### Checking it, once, when it is worth checking
-
-Stock only ever goes up on its own: a receipt, a scan, a **Got it** on the
-list. Nothing takes it out, and nothing sensibly could. Meals are not the only
-thing that empties a cupboard, and nobody is going to open the app to record a
-biscuit. So the app does not pretend to track what leaves. It asks once, at the
-point where asking is worth it.
-
-**Checking the cupboard** is the first step of **Go shopping**, on the List tab. It
-lists the things this week's plan still needs and nothing else, A to Z. Each says
-what the plan asks for, whether that is covered, when it was last counted, and how
-the figure reads in packs as well as portions. Correct the ones that are wrong; tap
-**Right** on the ones that are not, which changes no figure but records that you
-looked. **Start shopping** is pinned at the bottom, and **Skip the check** is there
-for a day it is not worth doing. The List says quietly when the cupboard was last
-checked, and that it has not been for this week once a week has moved on, but never
-nags with a count of what is left.
-
-A count is stamped on the product, which matters in three places. The progress
-survives closing the app halfway round the kitchen. The Items tab can say when
-something was last counted rather than only what it says. And a merge treats a
-count as beating arithmetic: if one phone added 8 up from receipts and the
-other looked in the freezer and found 2, the 2 wins, even though it is lower
-and the old rule was that the higher figure survived.
-
-Finishing says what it did: *"6 counted. The list is £4.20 more, at £38.15."*
-
-### In the shop
-
-The total and the budget sit in a bar **pinned above the tab bar**, so the number you
-came for never scrolls away. Tap the budget to change it; it is a weekly cap, and it
-is in **Week settings** too.
-
-Starting a shop turns that bar into **the trolley against the budget**. Ticking **Got it**
-turns a pack into stock, which makes the list shorter, so without this the cost of the
-shop would shrink as you went round it. Instead the bar shows what is in the trolley and
-what is still to get, and the two always add up to what the shop comes to. **Undo** takes
-a line back out of the trolley. The rows get bigger for a thumb with a bag in the other
-hand. **Done shopping** ends it and offers to scan the receipt. A shop is kept on the
-phone it was started on, survives closing the app, and is over by the next day.
-
-A red dot on a line says its price is old only when that is the exception: if most
-prices are old the banner says so once and the dots stay off.
-
-### Moving on a week
-
-Once the week is over the Plan says **A new week has started** and offers two ways
-to move on: **repeat meals** or **empty**. Either slides the plan back seven days,
-so the Saturday after the week becomes the first day of the new one and keeps what
-was planned on it, including a meal written in for Friday's leftovers.
-
-Repeating copies the week that has just finished into the new week's *empty* places
-only, so the leftovers day is never overwritten, and it leaves the one-day edits
-behind, since they belonged to that day. If the app was not opened for a while it
-moves on as many weeks as it takes to reach today.
-
-This is not the same as correcting the start date under **Week settings**. Correcting
-the date slides the plan so a meal keeps the day you chose it for; moving on moves the
-plan onto the new week instead. Doing both through one date box would mean guessing
-which you meant.
-
-Stock is left alone: what is in the cupboard did not change because the calendar
-did. But nothing has been *counted* for the new week, so the stock check on the List
-tab starts asking again by itself.
-
-## Adding things by hand
-
-Not everything is a meal ingredient. Tapping an item opens it for editing, and tapping it again closes it. Tap **+** on any item to put a pack on the shopping list regardless of what is planned. The line carries a small **×** to take those hand-added packs back off, and tapping **Got it** after shopping turns the packs into portions of stock and clears the hand-added count.
-
-That top-level **+** adds *any* of the item, so it rides on whichever source is cheapest, the same rule the rest of the list follows. Sometimes that is not what you mean: under Bread you might want a white loaf **and** a seeded one on the same trip, two different kinds rather than two of the cheapest. So each product has its own **+** too, on its card inside the item. Adding one there puts that exact thing on the list, and it gets its own line — *this one only, added by hand* — so a single ingredient can carry as many different kinds as you like at once. The loose "any of it" packs and each product's own are counted together in the *N on the list* the item shows, and **Got it** on a line settles only the packs on that line.
-
-**Adding from the List tab.** The bar at the top of the List opens a search over the items you keep. It matches loosely, the same way the Items tab does, so `stkpies` finds Steak Pies. Tap a result and a pack goes on the list, riding on the cheapest shop as the **+** above does; tap again for another, or the **−** to take one back. **Bought** is for a top-up you never put on the list: it puts a pack straight into stock. The barcode button beside the search is how something new gets into the app: scan it, then its label. For anything that is not an item, such as bin bags or stamps, the same sheet has a line to write it in and the shop to put it under: one you already use, **No shop yet**, or a new one typed there. Written lines have no pack behind them, so **Got it** only strikes them off.
-
-New items start with **no store**, and land in an *Unassigned* group that sorts to the top of the Items tab until you file them. Guessing a store would be worse than leaving it empty, because an item in the wrong group is harder to spot than one in an obviously empty one. Receipts are the exception: the receipt tells you which shop it was, so items created from one inherit it.
-
-Store names are folded to one spelling on the way in, because receipts shout: `ASDA` becomes Asda, `SAINSBURYS` becomes Sainsbury's, `CO-OP` and `co op` both become Co-op. A spelling already in your data always wins, so if you typed something a particular way it stays that way. Anything unrecognised gets plain title case, and grouping ignores case regardless as a backstop.
-
-Both the shopping list and the Items tab group by store, and each store heading collapses. That state is remembered per device rather than synced, since it is a view preference rather than data.
-
-## What syncs and what does not
-
-`prices.json` holds items, meals, the plan and the budget. Tokens and API keys live in IndexedDB on the device and are never written into that file, so nothing secret can end up committed.
-
-The manual backup lists items in the same order the Items tab groups them: by the shop the list would send you to, alphabetical within each, anything unfiled first. It is read by people at least as often as it is pasted back, and a flat array in creation order is hard to check against a shopping trip. Restoring ignores the order entirely, so nothing depends on it.
-
-IndexedDB is the source of truth. Sync is a deliberate snapshot push, not a live database, because a commit per keystroke would be slow and would conflict across devices. Git history then gives you free price history: `git log -p prices.json` shows every price change you have ever made.
-
-If the remote copy is newer than your last pull, Push warns before overwriting. Last write wins otherwise, so pull before editing on a second device.
-
-## Security position
-
-Everything on a Pages site is public, whether through the repo itself or through view-source. So:
-
-- No keys in the repo. They are entered in the app and stored on the device only.
-- The token is fine-grained and scoped to one repo with one permission. Revoke it from GitHub if a device is lost.
-- Keys in device storage are readable by anything that achieves script execution on the page. For a personal tool on your own phone that is a reasonable trade, and it is the only option without a server.
+**Appearance** is under Settings → Appearance: light, dark or system, and an accent colour. The theme is applied before first paint, so a dark phone never flashes white.
 
 ## When something goes wrong
 
-Failures used to be silent. A save that could not be written was swallowed, so
-you carried on typing into something that was not saving. A view that threw
-left the last screen on display with nothing updating, which reads as the app
-having frozen for no reason. Syncing that could not reach GitHub said nothing
-at all, which is right in a supermarket and wrong when the token expired three
-weeks ago.
+A failed save says so on screen and tells you to take a backup. A screen that will not draw says what went wrong instead of freezing. All of it, plus anything the browser catches, goes into **Settings → About → Problems**, which says how many are recorded without being opened. The log lives in `localStorage`, deliberately not IndexedDB: the failures most worth recording are the ones where storage is the problem. **Copy all of it** adds the app version and browser, which is most of any bug report, and nothing about what you eat.
 
-Now: a failed save says so on screen and tells you to take a backup. A screen
-that will not draw says what went wrong instead of freezing. And all of it,
-plus anything the browser catches on its own, goes into **Settings →
-Problems**, which says how many are recorded without being opened.
+If the page sits on "Loading.", a module failed to load, nearly always a file that did not upload or a stale copy on the server. After five seconds the app shows the actual error and the files it expects. A private window bypasses the service worker, so if it works there and not normally, bumping `CACHE` in `sw.js` fixes it. Your data is never involved: it lives in IndexedDB.
 
-That log lives in `localStorage`, deliberately not in IndexedDB with
-everything else. The failures most worth recording are the ones where storage
-itself is the problem, and a log kept inside the thing that just broke is
-empty exactly when it is needed.
-
-**Copy all of it** puts the log on the clipboard with the app version and the
-browser, which is most of any bug report, and nothing about what you eat.
-
-## Files
+## For whoever edits it
 
 ```
 index.html              shell
-styles.css              shelf-edge ticket design system
+styles.css              the design system and the spacing utilities
 app.js                  state, rendering, actions
-lib/calc.js             shopping maths, sources, ported from the spreadsheet
-lib/store.js            IndexedDB, seed data, receipt line matching
+lib/calc.js             shopping maths, search
+lib/store.js            IndexedDB, seed data, migration, merge, receipt matching
 lib/scan.js             live barcode and QR scanning
 lib/qr.js               QR encoder for invite codes
 lib/vendor/             wasm barcode decoder, only loaded by Firefox and Safari
-lib/vision.js           receipt reading, Gemini or Claude
+lib/vision.js           receipt and label reading, Gemini or Claude
 lib/sync.js             GitHub contents API
 lib/log.js              what went wrong, kept outside IndexedDB on purpose
 sw.js                   offline cache
 manifest.webmanifest    home screen install
-tests/                  the test suite, see below
+tests/                  the test suite
 package.json            devDependency on Playwright, for the tests only
+docs/                   REVIEW.md (the review and plan), VISION.md (where it is going)
 ```
 
-`package.json` is not part of the app. The site is static files served as they
-are, and nothing here is built, bundled or installed to deploy it.
+`package.json` is not part of the app: nothing here is built, bundled or installed to deploy it. No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing; buttons and inputs are wired by `data-act` through one delegated listener. The camera overlay lives outside the render tree because a rebuild would kill the video stream. Deleting something leaves a headstone in `db.deleted`. Anything added to the database shape needs `seed()`, `migrate()` and `mergeSnapshots()`. No inline `style=` for spacing: use the utilities in `styles.css`.
 
-No framework. Rendering is a full `innerHTML` rebuild; inputs are uncontrolled and commit on `change`, so a rebuild never interrupts typing. The camera overlay lives outside the render tree because a rebuild would kill the video stream.
-
-## Sheets and scroll position
-
-**Tapping beside a sheet no longer closes it.** Nearly every sheet holds something half finished, and a receipt is twenty lines of review that a thumb landing on the edge used to discard without a word. Close is always in the top corner. Only genuinely read-only sheets, like the invite QR and the long-way instructions, still dismiss on a tap outside.
-
-**An edit that moves a card keeps the card under your thumb.** Giving a product a shop files its item under a different heading, so restoring the old scroll offset left you staring at whatever slid into that gap. The card being edited is measured before the rebuild and the page is scrolled to put it back on the same line of the screen afterwards, which it does to the pixel. On a list of forty items that is the difference between a scroll of two thousand pixels and none at all.
-
-Restoring focus uses `preventScroll` for the same reason: without it the browser drags the page to wherever the field ended up and undoes the anchoring.
-
-## Questions and undo
-
-The app never uses the browser's own `prompt()` or `confirm()`: a native box shows
-the page address, breaks the look, and some browsers stop showing it after a few.
-Anything that cannot be taken back (delete an item or a meal, reset, clear the plan)
-asks in the app, says what will go, and can be cancelled. Anything routine does not
-ask at all: ticking a line **Got it**, taking hand-added packs off, striking off a
-written line or removing a written-in meal just happens, and a toast offers **Undo**
-for a few seconds. Undo puts back exactly what was there, including the stamp that
-lets a restored written line outlive its own headstone on the other phone.
-
-## Phones, zooming and Safari
-
-The page is pinned at 1:1 and pinch zoom is refused. Zooming out used to shrink the app inside a blank page it could not scroll back from, which reads as a broken layout rather than a zoom.
-
-Three things do that together, because no one of them is enough:
-
-| | What it stops |
-|---|---|
-| `user-scalable=no, maximum-scale=1, minimum-scale=1` | Zoom in Chrome and most browsers |
-| `touch-action: manipulation` | Double-tap-to-zoom, which a fast scroll triggers by accident |
-| Refusing `gesturestart` | Pinch on iOS Safari, which has ignored `user-scalable` since iOS 10 |
-
-**Nothing focusable is ever under 16px.** Safari on iOS zooms the whole page in the moment you tap a control smaller than that, and does not zoom back out. The meal pickers on the Plan tab were 15px and the backup box was 12px, which is what made them feel like they would not scroll: the page had silently zoomed and the gesture was landing somewhere else. It is a hard floor now, not a preference, and a test walks every tab asserting it.
-
-In the installed app the back gesture never leaves it. It closes the camera, then the sheet on top (a sheet opened from Settings returns to Settings), then goes to the List, and past that is absorbed. A browser cannot switch the button off, only keep an entry in front of the one it would fall to, so this is done only when the page is running installed: in a browser tab back is how you leave.
-
-Sheets keep a scroll gesture to themselves rather than chaining it to the page underneath, which is the other half of a sheet that feels stuck.
-
-## Folding an item's editor away
-
-A product carries four sections that can be put away: **pack and portion**, **offer**, **nutrition** and **barcodes**. Only pack and portion is open to begin with.
-
-Each folded section still shows a summary, because a fold that does not say what is inside just makes you open all of them: *"4 a pack, 142g each"*, *"3 for £8"*, *"117 kcal a portion"*, *"1 scanned"*.
-
-Which sections are open is remembered **by kind, not by product**. Somebody who is not editing calories does not want to see them on any of forty items, and would not want to close them forty times either. Open nutrition on one item and it is open on all of them.
-
-A folded section renders nothing at all rather than hiding it with CSS, so a long item editor is genuinely shorter to scroll rather than only appearing to be.
-
-## Appearance
-
-Light, dark or follow the system, under Settings → Appearance. The theme is applied before first paint, so a dark-mode phone never flashes white on open.
-
-## Finding things
-
-**Sort by shop or A to Z**, from the toggle at the top of the Items tab. Grouping by shop made sense when an item lived in exactly one; now that it can be sold in three, the heading it sits under is a judgement the app made rather than a fact, and hunting for cheese under whichever shop happens to be cheapest is worse than reading one list. A to Z drops the headings and names the shop on each line instead, so nothing is lost. The choice is remembered per device, like the collapsed groups, since it is a view preference rather than data.
-
-The shopping list still groups by shop always, because that is the order you walk round in.
-
-
-The Items tab has a search box that matches loosely: `chkkrm` finds Chicken Korma, and it searches store names, barcodes and remembered receipt wording as well as item names. Searching temporarily opens every store group that has a hit, and clearing it puts your collapsed groups back as they were.
-
-## If the page sits on "Loading."
-
-That means a module failed to load, and it is nearly always a file that did not upload or a stale copy on the server. After five seconds the app now replaces the blank page with the actual error and the list of files it expects, so read that rather than guessing.
-
-Two things worth knowing when it happens. A private window bypasses the service worker, so if the app works there and not normally, the cache is stale and bumping `CACHE` in `sw.js` fixes it. And your saved data is never involved: it lives in IndexedDB, not in the files being served.
-
-## Tests
+### Tests
 
 ```
 npm install                     once, to get Playwright
 npx playwright install chromium
-npm test                        the lot, a couple of minutes
+npm test                        the lot, a few minutes
 npm test -- sync meal           only tests whose name contains one of these
 ```
 
-`tests/run.mjs` serves the repo on a port of its own and runs each test as its
-own process, so there is nothing to start first, nothing left running
-afterwards, and one wedged browser cannot take the rest down with it. It also
-serves everything `no-store`: a test that passes because the browser kept
-yesterday's `app.js` is worse than no test at all.
+`tests/run.mjs` serves the repo on a port of its own and runs each test as its own process, so there is nothing to start first and one wedged browser cannot take the rest down. It serves everything `no-store`: a test that passes because the browser kept yesterday's `app.js` is worse than none. Tests that plan from a fixed date pin the clock with `pinClock`, and answer the app's questions with `answer` and its picker with `pick` (all in `tests/browser.mjs`).
 
-Two kinds of test, and the difference matters:
+There are two kinds. **Rules**, run in Node against `lib/` with no browser: `sync-test` is the important one, every way a change can fail to reach the other person. **The app**, driven in a real Chromium through its own buttons: `two-phones-test` runs two profiles against one fake shared file and checks that a rename, a new item, a planned day and a deletion all survive the round trip. `tests/fixtures/sample-list.json` is a manufactured list the size and shape of a real one (37 items, a dozen meals, offers, barcodes, part-filled stock, two empty meals), and tests derive their expected numbers from it. `tests/validate-backup.mjs` is a tool as well: point it at a real export before restoring one, and it checks the file migrates without losing anything and reports what it noticed.
 
-- **Rules**, run in Node against `lib/` directly, with no browser. `sync-test`
-  is the important one: every way a change can fail to reach the other person,
-  each case having failed before the code that fixed it.
-- **The app**, driven in a real Chromium through its own buttons.
-  `two-phones-test` is the important one there. It runs two browser profiles
-  against one fake shared file and checks that a rename, a new ingredient, a
-  planned day and a deletion all survive the round trip, with the second phone
-  only backgrounded and brought back rather than reloaded.
+Every push runs the suite on GitHub Actions (`.github/workflows/test.yml`).
 
-`tests/fixtures/sample-list.json` is a manufactured list the size and shape of
-a real one: 37 items, a dozen meals, offers, barcodes, part-filled stock, and
-two meals with no ingredients, because a real list collects those and the app
-has to cope. Tests that need a long list use it, and derive their expected
-numbers from it rather than hard-coding counts that go stale.
-
-`tests/validate-backup.mjs` is a tool as well as a test. Point it at a real
-export before restoring one:
-
-```
-node tests/validate-backup.mjs ~/Downloads/fortnight-shop-backup.json
-```
-
-It checks the file loads, migrates to the current schema without losing
-anything, produces the same shopping total afterwards, and reports what it
-noticed: empty meals on the plan, products with no portion weight, aliases
-shared by two ingredients.
-
-Every push runs the suite on GitHub Actions
-(`.github/workflows/test.yml`). Screenshots from a failing run are kept as an
-artifact.
-
-## Notes
+### Notes
 
 - **Bump `CACHE` in `sw.js`** whenever you change a file, or the service worker keeps serving the old copy.
-- **Scanning needs HTTPS**, which Pages gives you. It will not work over plain HTTP or `file://`.
-- **Firefox on Android is fine.** It needs the fallback decoder, which downloads itself on first scan. Nothing to configure.
-- **Barcode decoding** uses the browser's own `BarcodeDetector` where it exists, which means Chromium browsers. Firefox and Safari have no such API, so the app lazily loads a vendored wasm decoder from `lib/vendor/` the first time you scan. That is a one-off megabyte, cached by the service worker afterwards, and it makes no third-party requests. Decoding is a little slower than native, so hold the barcode steady for an extra beat.
-- **Model names** are editable in Settings. If receipt accuracy disappoints on crumpled thermal paper, try a larger model.
-- **Multi-buy and loyalty prices** come through as the amount actually charged, which is usually what you want for budgeting but will look oddly low if you later buy the item at full price.
+- **Scanning needs HTTPS**, which Pages gives you.
+- **Barcode decoding** uses the browser's own `BarcodeDetector` where it exists (Chromium). Firefox and Safari lazily load a vendored wasm decoder from `lib/vendor/` on first scan: a one-off megabyte, cached afterwards, with no third-party requests.
+- **Model names** are editable under Settings → Sync → *Database, keys and backup*. If receipt accuracy disappoints on crumpled thermal paper, try a larger model.
+- **Multibuy and loyalty prices** come through as the amount actually charged, which suits budgeting but looks oddly low if you later buy the item at full price.
 
-## Known limits
+### Known limits
 
-- Correcting the start of the week slides the plan the other way, so a meal
-  planned for Wednesday stays on Wednesday. Days pushed outside the plan
-  are gone, and the app says how many rather than dropping them quietly.
-- Each day has breakfast, lunch and dinner. Breakfast and lunch usually repeat, so the Plan tab has a **Repeat** button per slot that copies the first planned day from today into the empty days of this week.
-- The app does not suggest buying more to reach a multibuy threshold. It shows the offer terms on the line and leaves the decision to you.
+- Correcting the start of the week slides the plan the other way, so a meal planned for Wednesday stays on Wednesday. Days pushed outside the plan are gone, and the app says how many.
+- The app does not suggest buying more to reach a multibuy threshold; it shows the terms and leaves it to you.
 - Pack sizes are assumed stable. If a product shrinks, update Portions per pack by hand.
-- Two receipt lines with the same name become two separate items, which is usually right for two different tuna tins. Rename one if you would rather merge them.
+- Two receipt lines with the same name become two separate items, usually right for two different tuna tins. Rename one to merge them.
 - Loose produce sold by weight fits awkwardly into a portions-per-pack model. Treat a typical purchase as one pack.

@@ -45,9 +45,14 @@ screenshots and is ignored by git.
   (in-app, they resolve to the answer), and give anything routine an undo with
   `toast(text, undo)`. A question is for what cannot be taken back and names what
   will go.
-- **No new inline `style="…"`.** Spacing comes from the utilities in `styles.css`
-  (`mt-8`, `mb-12`, `gap-8`, …). Convert a view's old inline styles when you
-  rewrite that view.
+- **No inline `style="…"` for spacing or type.** Use the utilities in `styles.css`
+  (`mt-8`, `mb-12`, `gap-8`, `fw6`, …), which sit on the 4/8/12/16/24 scale and
+  override like an inline style would. Only values the data decides, such as the
+  width of a bar, are inline.
+- **Choosing is the picker.** Pick an item, a meal or a product with `pickItem`,
+  `pickMeal` or `pickOne` (a layer that resolves like a dialog), not a native
+  `<select>`; tests drive it with `pick` from `tests/browser.mjs`.
+- **Nothing tappable under 44px.** `tests/targets-test.mjs` walks the screens.
 - **Tests that plan from a fixed date pin the browser clock** with `pinClock`, and
   answer the app's questions with `answer` (both in `tests/browser.mjs`).
 - **`sw.js` caches the app shell.** Adding a file the app loads means adding it

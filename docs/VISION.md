@@ -224,6 +224,6 @@ The model underneath does not change; only what the screen calls it.
 2. **Showing the other person the week.** Not needed now. When it is, the cheapest
    version is a *Share this week* button that sends a plain-text list of the days
    through Android's share sheet, with no account and nothing for them to install.
-3. **Bought.** For top-ups, I plan a second button on each add-sheet result that puts
-   a pack straight into stock without putting it on the list. Say if you would
-   rather keep add-then-tick.
+3. **The name.** The app is still called Fortnight Shop. Renaming touches only the
+   title, the install name and a few labels; the database and cache names must
+   stay so nobody loses data.
