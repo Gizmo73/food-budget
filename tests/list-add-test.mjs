@@ -13,7 +13,7 @@ const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 
-const booted = () => p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+const booted = () => p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 const db = () => p.evaluate(async () => (await import("./lib/store.js")).loadDb());
 const total = () => p.$eval(".till .big", (e) => e.textContent.trim());
 const results = () => p.$$eval("#add-live .pickrow .shop", (n) => n.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
@@ -25,8 +25,8 @@ await booted();
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)), true);
-  location.reload();
 }, readFileSync(FIXTURE, "utf8"));
+await p.reload();
 await booted();
 await p.waitForTimeout(300);
 

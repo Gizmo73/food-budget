@@ -8,15 +8,15 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 const backup = readFileSync(FIXTURE, "utf8");
 
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 console.log("--- put the real list in ---");
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)), true);
-  location.reload();
 }, backup);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 const n = await p.evaluate(async () => (await (await import("./lib/store.js")).loadDb()).ingredients.length);
 ok(n === 37, `37 items stored (${n})`);
@@ -68,7 +68,7 @@ await p.evaluate(async (json) => {
   await s.saveDb(s.migrate(JSON.parse(json)), true);
 }, backup);
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 await p.click('[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(300);

@@ -1,8 +1,9 @@
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock } from "./browser.mjs";
 
 const TH = process.env.FS_THEME || "dark";
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: TH });
+await pinClock(ctx);
 const p = await ctx.newPage();
 const errs = [];
 p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
@@ -12,7 +13,7 @@ const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.
 
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 // Seed a fortnight with nutrition on it, through the app's own store module.
 await p.evaluate(async () => {
@@ -54,17 +55,17 @@ await p.evaluate(async () => {
     ],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- tabs ---");
 const tabs = await p.$$eval('[data-act="tab"]', (els) =>
   els.map((e) => ({ tab: e.dataset.tab, text: e.textContent.replace(/\s+/g, " ").trim() })));
 console.log("   ", JSON.stringify(tabs));
-ok(tabs.length === 5, "five tabs");
-ok(tabs.some((t) => t.tab === "food"), "there is a Food tab");
+ok(tabs.length === 4, "four tabs");
+ok(!tabs.some((t) => t.tab === "food"), "and no Food tab, which is part of the Plan now");
 
 console.log("\n--- items page ---");
 await p.click('[data-act="tab"][data-tab="items"]');
@@ -123,23 +124,29 @@ ok(stamped.kcal === 50, `a typed per-100g figure saves (${stamped.kcal})`);
 // must be stamped NOW, not left on the seeded date, or a merge would lose it
 ok(stamped.stamp > "2026-07-31", `and is stamped with the edit, not the seed (${stamped.stamp})`);
 
-console.log("\n--- food page ---");
-await p.click('[data-act="tab"][data-tab="food"]');
+console.log("\n--- nutrition, under each day on the Plan ---");
+await p.click('[data-act="tab"][data-tab="plan"]');
+await p.waitForTimeout(400);
+ok((await p.$$(".foodrow")).length === 0, "switched off, the Plan shows no calories");
+await p.click('[data-act="toggleFlag"][data-key="showNutrition"]');
 await p.waitForTimeout(400);
 const food = await p.evaluate(() => {
   const rows = [...document.querySelectorAll(".foodrow")].map((e) => e.textContent.replace(/\s+/g, " ").trim());
   const days = [...document.querySelectorAll(".dayblock .dname")].map((e) => e.textContent.replace(/\s+/g, " ").trim());
-  return { rows, days, part: document.querySelectorAll(".part").length,
+  const summaries = [...document.querySelectorAll(".daysummary")].map((e) => e.textContent.replace(/\s+/g, " ").trim());
+  return { rows, days, summaries, part: document.querySelectorAll(".part").length,
            body: document.body.textContent.replace(/\s+/g, " ") };
 });
-console.log("   first rows:", JSON.stringify(food.rows.slice(0, 6), null, 1));
+console.log("   first rows:", JSON.stringify(food.rows.slice(0, 4), null, 1));
 console.log("   days:", JSON.stringify(food.days.slice(0, 4)));
-ok(food.days.length === 14, `fourteen days listed (${food.days.length})`);
+ok(food.days.length === 8, `a week and the Saturday after it (${food.days.length})`);
 ok(/Monday 3 Aug/.test(food.days[0]), `dated from the seed date: ${food.days[0]}`);
 ok(food.rows.some((r) => /Lee/.test(r)) && food.rows.some((r) => /Sam/.test(r)), "both people appear");
-ok(food.rows.filter((r) => /nothing planned/.test(r)).length > 0, "empty days say so");
+ok(food.rows.some((r) => /^Each/.test(r)), "a day you share reads once, as Each");
+ok(food.summaries.some((r) => /nothing planned/.test(r)), "empty days say so");
 ok(food.part > 0, "the partly-known day is flagged");
 ok(/P\b/.test(food.body) && /C\b/.test(food.body) && /F\b/.test(food.body), "macros are shown");
+ok(/Average a day/.test(food.body), "with an average over the days that have meals");
 
 // the figures on the page must match what calc says
 const check = await p.evaluate(async () => {
@@ -150,7 +157,7 @@ const check = await p.evaluate(async () => {
            complete2: c.dayComplete[2][1] };
 });
 console.log("   calc says:", JSON.stringify(check));
-ok(food.rows[2].includes(String(check.d0)), `day 1 row shows ${check.d0} kcal`);
+ok(food.rows.some((r) => /Lee/.test(r) && r.includes(String(check.d0))), `day 1 shows ${check.d0} kcal for Lee`);
 ok(check.complete2 === false, "day 3 is genuinely partly known");
 
 console.log("\n--- other tabs still work ---");
@@ -164,9 +171,9 @@ for (const t of ["list", "plan", "meals", "items"]) {
 console.log("\npage errors:", errs.length ? errs : "none");
 if (errs.length) fail.push("page errors");
 
-await p.click('[data-act="tab"][data-tab="food"]');
+await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(300);
-await p.screenshot({ path: `${SHOTS}/food-${TH}.png` });
+await p.screenshot({ path: `${SHOTS}/plan-${TH}.png` });
 await b.close();
 console.log(fail.length ? `\n${fail.length} FAILED` : "\nall passed");
 process.exit(fail.length ? 1 : 0);

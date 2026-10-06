@@ -10,12 +10,12 @@ import {
   resolveLine, resolveProduct, norm, uid, uniqueId, canonicalStore, storeNames,
   cleanOffer, mergeSnapshots, makeInvite, readInvite, newProduct, productKey,
   findProductByBarcode, findByBarcode, findAllByBarcode, copyToShop, moveProduct,
-  tidyProductName, markDeleted, shiftPlan, daysBetween, SLOTS,
+  tidyProductName, markDeleted, shiftPlan, daysBetween, SLOTS, PLAN_DAYS,
 } from "./lib/store.js";
 import {
   computeShopping, mealCost, portionCost, packCost, activeOffer,
   offerLabel, offerExpired, offerMeaning, groupByStore, searchItems,
-  ukTime, ago, money, today, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
+  ukTime, ago, money, today, localDay, now, dayOf, isEarlierDay, daysSince, STALE_DAYS,
   stockPortions, packPortions, productStock,
   productsOf, productById, chooseProduct, isPinned, productPortionCost, mealStock,
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
@@ -29,7 +29,11 @@ import { readReceipt, readNutrition } from "./lib/vision.js";
 import { pull, push } from "./lib/sync.js";
 import { note, entries as logEntries, clearLog, logText } from "./lib/log.js";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+/* One week, Saturday to Friday, plus the Saturday after it: the day Friday's
+   leftovers get eaten. The plan is still stored as fourteen days so an older copy
+   of the app merges with it, but only these are shown. */
+const WEEK = 7;
+const SHOWN = WEEK + 1;
 const root = document.getElementById("app");
 
 const state = {
@@ -37,8 +41,8 @@ const state = {
   calc: null, reveal: null, query: "", incoming: null,
   // a question asked over whatever is open, and the undo offered after a routine action
   dialog: null, toast: null,
-  /* Which week of the fortnight is on screen, and the day being moved. */
-  planWeek: 0, swapFrom: null,
+  /* The day being moved, and whether the days that have gone are unfolded. */
+  swapFrom: null, showPast: false,
 };
 
 /* ------------------------------- theming ------------------------------- */
@@ -521,10 +525,9 @@ function render() {
 
   root.innerHTML = [
     viewMasthead(),
-    viewPager(),
     `<div class="wrap">`,
     state.flash ? `<div class="${state.flash.kind === "err" ? "err" : "ok"}">${esc(state.flash.text)}</div>` : "",
-    ({ list: viewList, plan: viewPlan, food: viewFood, meals: viewMeals, items: viewItems }[
+    ({ list: viewList, plan: viewPlan, meals: viewMeals, items: viewItems }[
       state.tab
     ] || viewList)(),
     `</div>`,
@@ -628,12 +631,11 @@ function viewDialog() {
   </div></div>`;
 }
 
-/* The five pages, in the order a swipe moves through them. */
-const TAB_ORDER = ["list", "plan", "food", "meals", "items"];
+/* The four pages, in the order a swipe moves through them. */
+const TAB_ORDER = ["list", "plan", "meals", "items"];
 const TABS = {
   list: { label: "List", icon: "list-bullets", title: "Shopping list" },
-  plan: { label: "Plan", icon: "calendar-blank", title: "The fortnight" },
-  food: { label: "Food", icon: "clock", title: "Food" },
+  plan: { label: "Plan", icon: "calendar-blank", title: "The week" },
   meals: { label: "Meals", icon: "bowl-food", title: "Meals" },
   items: { label: "Items", icon: "cube", title: "Items" },
 };
@@ -647,13 +649,6 @@ function viewMasthead() {
     </div>
     <button class="btn icon" data-act="openSettings" aria-label="Settings"><i class="ph ph-gear"></i></button>
   </div></header>`;
-}
-
-/* Where you are in the five, and which way a swipe will take you. */
-function viewPager() {
-  return `<div class="pager">${TAB_ORDER.map(
-    (key) => `<span data-on="${state.tab === key ? 1 : 0}"></span>`
-  ).join("")}</div>`;
 }
 
 function viewTabs() {
@@ -670,7 +665,7 @@ function viewList() {
   const c = state.calc;
   const over = c.total > state.db.budget;
 
-  /* How many of the things this fortnight needs nobody has looked at since it
+  /* How many of the things this week needs nobody has looked at since it
      started. A figure carried forward from a receipt is arithmetic about a
      cupboard rather than a look inside one, and this is how many of those are
      still propping up the total. */
@@ -758,12 +753,11 @@ function viewList() {
 
   /* The list is for today onward, so say so whenever days have been left out;
      otherwise a shorter list reads as a mistake. */
-  const planDays = state.db.plan.length;
-  const gone = state.db.planStart ? Math.min(c.firstDay, planDays) : 0;
+  const gone = state.db.planStart ? Math.min(c.firstDay, SHOWN) : 0;
   const fromToday = gone
-    ? `<p class="muted" style="margin:0 0 10px">${
-        gone >= planDays
-          ? "Every day of this plan has passed, so nothing is left to buy for it. Move the plan on from the Plan tab."
+    ? `<p class="muted mb-12">${
+        gone >= SHOWN
+          ? "The week on the plan has finished, so nothing is left to buy for it. Move on a week from the Plan tab."
           : `Counting from today. The ${gone} earlier day${gone === 1 ? "" : "s"} stay on the Plan but add nothing here.`
       }</p>`
     : "";
@@ -923,8 +917,7 @@ function ticket(l) {
 
 /* ---- plan ---- */
 
-/* Day names come from the start date rather than a fixed Monday, because a
-   fortnight that begins on a Thursday should say so. */
+/* Day names come from the start date, so the week says what day it begins on. */
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function planDate(start, index) {
@@ -935,7 +928,32 @@ function planDate(start, index) {
   return new Date(t + index * 86400000);
 }
 
+const dateText = (d, opts) => (d ? d.toLocaleDateString("en-GB", opts) : "");
+const shortDate = (d) => dateText(d, { day: "numeric", month: "short" });
+const longDate = (d) => dateText(d, { day: "numeric", month: "long" });
+const dayName = (start, idx) => {
+  const d = planDate(start, idx);
+  return d ? WEEKDAYS[d.getDay()] : `Day ${idx + 1}`;
+};
+
 const mealsById = () => Object.fromEntries(state.db.meals.map((m) => [m.id, m]));
+
+const slotPair = (day, key) => (day && Array.isArray(day[key]) ? day[key] : [null, null]);
+
+/* A slot reads as one choice for both of you when you have the same meal in it
+   and have either changed nothing or changed it the same way. Then it is shown
+   once, and edited for both at a time. */
+function sameCell(day, key) {
+  const pair = slotPair(day, key);
+  if (pair[0] !== pair[1]) return false;
+  const a = dayOverride(day, key, 0);
+  const b = dayOverride(day, key, 1);
+  if (!a && !b) return true;
+  return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+}
+
+// which people a control in the day sheet acts on: both, or the one it names
+const bothOf = (el) => (el.dataset.both === "1" ? [0, 1] : [Number(el.dataset.which) || 0]);
 
 /* What to show for one cell on the plan grid: the name of the meal (or the
    loose edit standing in for it), and whether it was edited just for this day.
@@ -1012,13 +1030,14 @@ function tidyExtras(day) {
 function editDayItem(el, mutate) {
   const idx = Number(el.dataset.id);
   const slot = el.dataset.key;
-  const who = Number(el.dataset.which) || 0;
   const i = Number(el.dataset.i);
   commit((db) => {
-    const items = dayItemsMutable(db, idx, slot, who);
-    if (!items || !items[i]) return;
-    const ing = db.ingredients.find((x) => x.id === items[i].ingredientId) || null;
-    items[i] = { ...items[i], ...(mutate(items[i], ing) || {}) };
+    for (const who of bothOf(el)) {
+      const items = dayItemsMutable(db, idx, slot, who);
+      if (!items || !items[i]) continue;
+      const ing = db.ingredients.find((x) => x.id === items[i].ingredientId) || null;
+      items[i] = { ...items[i], ...(mutate(items[i], ing) || {}) };
+    }
     touchPlan(db);
   });
 }
@@ -1067,14 +1086,14 @@ const productPickerOptions = (ing, selected) => {
 /* One editable line, used for both a meal's items and the extras. slot is the
    real slot key, or "extra" for the loose day list. Editing any of these forks
    the base meal into a loose override first (see dayItemsMutable). */
-function dayItemRow(idx, slot, who, it, i, byId) {
+function dayItemRow(idx, slot, who, it, i, byId, both = false) {
   const ing = byId[it.ingredientId];
   const grams = itemIsGrams(it);
   const product = ing ? itemProduct(ing, it) : null;
   const per = gramsPerPortion(product);
   const unit = (product && product.packUnit) === "ml" ? "ml" : "g";
   const named = it.productId && ing ? productById(ing, it.productId) : null;
-  const at = dloc(idx, slot, who, i);
+  const at = dloc(idx, slot, who, i) + (both ? ' data-both="1"' : "");
   const sum = grams
     ? per > 0
       ? `${trim2(Number(it.grams) || 0)}${unit} is ${trim2(itemPortions(ing, it))} portions of ${trim2(per)}${unit}`
@@ -1112,76 +1131,48 @@ function dayItemRow(idx, slot, who, it, i, byId) {
   </div>`;
 }
 
-/* One slot of one person's day: the meal dropdown, the items underneath it, and
-   the choices for what a loose edit becomes. */
-function cellEditor(idx, slot, who, byId, byMeal) {
+/* What one person has in one slot that can be changed for just this day: the
+   items under the meal, the way to add one, and what a loose edit can become.
+   `both` is set when the slot is shared, so every control acts on both of you. */
+function cellItems(idx, slot, who, byId, byMeal, both) {
   const day = state.db.plan[idx];
-  const forSlot = Array.isArray(day[slot.key]) ? day[slot.key] : [null, null];
-  const mealId = forSlot[who];
-  const base = mealId ? byMeal[mealId] : null;
+  const base = slotPair(day, slot.key)[who] ? byMeal[slotPair(day, slot.key)[who]] : null;
   const ov = dayOverride(day, slot.key, who);
   const items = planItems(day, slot.key, who, byMeal);
-  const hasContent = !!ov || !!base;
+  const at = dloc(idx, slot.key, who) + (both ? ' data-both="1"' : "");
 
-  const rows = hasContent
-    ? items.map((it, i) => dayItemRow(idx, slot.key, who, it, i, byId)).join("") ||
-      '<p class="muted" style="margin:0 0 6px">No items — this meal is empty for today.</p>'
+  const rows =
+    items.map((it, i) => dayItemRow(idx, slot.key, who, it, i, byId, both)).join("") ||
+    '<p class="muted mb-8">No items: this meal is empty for today.</p>';
+
+  const actions = ov
+    ? `<div class="row gap-6 wrap-row">
+         ${
+           base
+             ? `<button class="btn small tonal grow" data-act="overwriteMeal" ${at}>Save into ${esc(base.name)}</button>`
+             : ""
+         }
+         <button class="btn small tonal grow" data-act="saveDayMeal" ${at}>Save as a new meal</button>
+         <button class="btn small ghost" data-act="revertCell" ${at}>${base ? "Undo edits" : "Clear"}</button>
+       </div>
+       <p class="why mt-4">${
+         base
+           ? `Edited just for today. Nothing else using ${esc(base.name)} has changed.`
+           : "A loose meal on this day only. Save it if you want to plan it again."
+       }</p>`
+    : base
+    ? `<p class="why">Change an item and it becomes a one-day tweak; ${esc(base.name)} itself stays as it is
+       until you save it back.</p>`
     : "";
 
-  let actions = "";
-  if (ov) {
-    actions =
-      `<div class="row" style="gap:6px;margin-top:2px;flex-wrap:wrap">` +
-      (base
-        ? `<button class="btn small tonal grow" data-act="overwriteMeal" ${dloc(idx, slot.key, who)}
-             title="Change ${esc(base.name)} everywhere it is used">Save into ${esc(base.name)}</button>`
-        : "") +
-      `<button class="btn small tonal grow" data-act="saveDayMeal" ${dloc(idx, slot.key, who)}>Save as a new meal</button>
-       <button class="btn small ghost" data-act="revertCell" ${dloc(idx, slot.key, who)}>${
-        base ? "Undo edits" : "Clear"
-      }</button></div>
-      <p class="why" style="margin:4px 0 0">${
-        base
-          ? `Edited just for today. Nothing else using ${esc(base.name)} has changed.`
-          : "A loose meal on this day only. Save it if you want to plan it again."
-      }</p>`;
-  } else if (base) {
-    actions = `<p class="why" style="margin:2px 0 0">Change an item and it becomes a one-day tweak; ${esc(
-      base.name
-    )} itself stays as it is until you save it back.</p>`;
-  }
-
-  return `<div class="slotedit" style="margin-bottom:12px">
-    <div class="row" style="margin-bottom:6px">
-      <span class="slabel" style="flex:0 0 74px">${slot.label}</span>
-      <select class="inp grow" data-act="setDaySlot" ${dloc(idx, slot.key, who)}>${mealPickerOptions(
-    mealId
-  )}</select>
-      ${
-        who === 1
-          ? `<button class="btn small ghost copy" data-act="copyDayCell" ${dloc(idx, slot.key, 0)}
-              title="Give them the same ${slot.label.toLowerCase()}"
-              aria-label="Give this person the same ${slot.label.toLowerCase()} as the other">=</button>`
-          : ""
-      }
-    </div>
-    ${
-      hasContent
-        ? `${rows}
-           <button class="btn small tonal wide" style="margin-bottom:6px" data-act="addDayIng" ${dloc(
-             idx,
-             slot.key,
-             who
-           )}${state.db.ingredients.length ? "" : " disabled"}>Add an item</button>
-           ${actions}`
-        : actions
-    }
-  </div>`;
+  return `${rows}
+    <button class="btn small tonal wide mb-8" data-act="addDayIng" ${at}${
+    state.db.ingredients.length ? "" : " disabled"
+  }>Add an item</button>${actions}`;
 }
 
-/* The day popout: both people's breakfast, lunch and dinner, each editable on
-   the fly, plus a loose "extras" list each. Everything here writes to the day,
-   not to the shared meals, until you explicitly save an edit back. */
+/* The day: a meal for each part of it, one choice for both of you unless you
+   differ, with the changing-what-is-in-it kept out of the way until asked for. */
 function sheetDay(s) {
   const idx = s.idx;
   const day = state.db.plan[idx];
@@ -1189,285 +1180,306 @@ function sheetDay(s) {
   const people = state.db.people || ["Person 1", "Person 2"];
   const start = state.db.planStart || "";
   const when = planDate(start, idx);
-  const name = when ? WEEKDAYS[when.getDay()] : DAYS[idx % 7];
-  const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "";
+  const dated = longDate(when);
   const byId = Object.fromEntries(state.db.ingredients.map((i) => [i.id, i]));
   const byMeal = mealsById();
   const cost = state.calc.dayCost[idx] || 0;
+  const open = s.open || {};
+  const split = s.split || {};
+  const foldButton = (key, text, extra = "") => `<button class="foldlink" data-act="toggleDayFold" data-key="${key}">
+      <i class="ph ph-caret-${open[key] ? "down" : "right"}"></i> ${text}${extra}</button>`;
 
-  const person = (who) => {
-    const slots = SLOTS.map((slot) => cellEditor(idx, slot, who, byId, byMeal)).join("");
-    const extras = dayExtras(day, who);
-    const extraRows = extras.map((it, i) => dayItemRow(idx, "extra", who, it, i, byId)).join("");
-    return `<section class="card" style="margin-bottom:10px">
-      <div class="eyebrow" style="margin-bottom:10px">${esc(people[who])}</div>
-      ${slots}
-      <div class="eyebrow" style="margin:14px 0 4px">Extras</div>
-      <p class="why" style="margin:0 0 8px">Single things ${esc(
-        people[who]
-      )} is having that day outside a set meal. They count against stock and the shopping list.</p>
-      ${extraRows}
-      <button class="btn small tonal wide" data-act="addExtra" data-id="${idx}" data-which="${who}"${
-      state.db.ingredients.length ? "" : " disabled"
-    }>Add an extra</button>
-    </section>`;
+  const slotBlock = (slot) => {
+    const pair = slotPair(day, slot.key);
+    const shared = sameCell(day, slot.key) && !split[slot.key];
+    const present = [0, 1].some((w) => pair[w] || dayOverride(day, slot.key, w));
+    const edited = [0, 1].some((w) => dayOverride(day, slot.key, w));
+    const choose = (who, both) => `<select class="inp grow" data-act="${both ? "setDaySlotBoth" : "setDaySlot"}"
+        ${dloc(idx, slot.key, who)}>${mealPickerOptions(pair[who])}</select>`;
+
+    const pickers = shared
+      ? choose(0, true)
+      : [0, 1]
+          .map((w) => `<div class="row gap-8 mb-4"><span class="who">${esc(people[w])}</span>${choose(w, false)}</div>`)
+          .join("");
+
+    const inner = !open[slot.key]
+      ? ""
+      : shared
+      ? cellItems(idx, slot, 0, byId, byMeal, true)
+      : [0, 1]
+          .map(
+            (w) => `<div class="eyebrow mb-4">${esc(people[w])}</div>${
+              pair[w] || dayOverride(day, slot.key, w)
+                ? cellItems(idx, slot, w, byId, byMeal, false)
+                : '<p class="muted mb-8">Nothing planned.</p>'
+            }`
+          )
+          .join("");
+
+    return `<div class="slotedit mb-16">
+      <div class="row mb-4">
+        <span class="slabel grow">${slot.label}</span>
+        ${
+          shared
+            ? `<button class="btn small ghost" data-act="splitSlot" data-key="${slot.key}">Split</button>`
+            : `<button class="btn small ghost" data-act="joinSlot" data-id="${idx}" data-key="${slot.key}">Same for both</button>`
+        }
+      </div>
+      ${pickers}
+      ${
+        present
+          ? foldButton(slot.key, "Change what&rsquo;s in it", edited ? ' <span class="edited">&middot; edited today</span>' : "")
+          : ""
+      }
+      ${inner}
+    </div>`;
   };
 
+  /* Extras are single things outside a set meal. They are per person, so the
+     fold holds a list for each. */
+  const extras = `<div class="slotedit mb-16">
+      ${foldButton("extras", "Extras", [0, 1].some((w) => dayExtras(day, w).length)
+        ? ` <span class="edited">&middot; ${dayExtras(day, 0).length + dayExtras(day, 1).length}</span>` : "")}
+      ${
+        open.extras
+          ? `<p class="why">Single things outside a set meal. They count against stock and the shopping list.</p>` +
+            [0, 1]
+              .map(
+                (w) => `<div class="eyebrow mb-4 mt-8">${esc(people[w])}</div>
+                  ${dayExtras(day, w).map((it, i) => dayItemRow(idx, "extra", w, it, i, byId)).join("")}
+                  <button class="btn small tonal wide" data-act="addExtra" data-id="${idx}" data-which="${w}"${
+                  state.db.ingredients.length ? "" : " disabled"
+                }>Add an extra</button>`
+              )
+              .join("")
+          : ""
+      }
+    </div>`;
+
   return shell(
-    `${name}${dated ? ` &middot; ${esc(dated)}` : ""}`,
-    `Set a meal for each part of the day, then tweak its items just for today.${
-      cost > 0 ? ` This day costs £${money(cost)}.` : ""
-    }`,
-    `${person(0)}${person(1)}`
+    `${dayName(start, idx)}${dated ? ` &middot; ${esc(dated)}` : ""}`,
+    `${cost > 0 ? `This day costs £${money(cost)}. ` : ""}Pick a meal for each part of the day.`,
+    `${SLOTS.map(slotBlock).join("")}
+     ${extras}
+     <div class="row gap-8 wrap-row">
+       <button class="btn small tonal grow" data-act="writeDay" data-idx="${idx}">Write a meal in</button>
+       <button class="btn small tonal grow" data-act="startSwap" data-idx="${idx}">Swap with another day</button>
+     </div>
+     <p class="why mt-8">Writing a meal in is for a takeaway or a dinner out: it costs nothing and asks for nothing.</p>`
   );
 }
+
+/* The settings that belong to the plan rather than to a day. */
+function sheetPlanSettings() {
+  const people = state.db.people || ["Person 1", "Person 2"];
+  const start = state.db.planStart || "";
+  const when = planDate(start, 0);
+  const f = state.flash;
+  return shell(
+    "Plan settings",
+    "Who is eating, when the week starts, and what it may cost.",
+    `${f ? `<div class="${f.kind === "err" ? "err" : "ok"}">${esc(f.text)}</div>` : ""}
+     <div class="grid2 mb-12">
+       <label class="field"><span class="eyebrow">${esc(people[0])}</span>
+         <input class="inp" value="${esc(people[0])}" placeholder="Person 1" data-act="setPerson" data-person="0"></label>
+       <label class="field"><span class="eyebrow">${esc(people[1])}</span>
+         <input class="inp" value="${esc(people[1])}" placeholder="Person 2" data-act="setPerson" data-person="1"></label>
+     </div>
+     <label class="field mb-4"><span class="eyebrow">The week starts</span>
+       <input class="inp mono" type="date" value="${esc(dayOf(start))}" data-act="setPlanStart"></label>
+     <p class="muted mb-12">${
+       when
+         ? `A ${WEEKDAYS[when.getDay()]}. It runs for seven days, and the day after is kept for leftovers.`
+         : "Pick the day you shop and every day shows its date, which is what lets the list count from today."
+     }</p>
+     <label class="field mb-4"><span class="eyebrow">Budget for the week, £</span>
+       <input class="inp mono" type="number" step="1" min="0" inputmode="decimal" value="${state.db.budget}"
+         data-act="setBudget" aria-label="Budget for the week in pounds"></label>
+     <p class="muted mb-16">The most you want the shop to come to. It shows under the list.</p>
+     <button class="btn danger wide" data-act="clearPlan">Clear the plan</button>`
+  );
+}
+
+const macroSpans = (n) =>
+  `<span class="macro"><b>${Math.round(n.protein)}</b>P</span>
+   <span class="macro"><b>${Math.round(n.carbs)}</b>C</span>
+   <span class="macro"><b>${Math.round(n.fat)}</b>F</span>`;
 
 function viewPlan() {
   const c = state.calc;
   const people = state.db.people || ["Person 1", "Person 2"];
   const start = state.db.planStart || "";
   const byMeal = mealsById();
+  const nutrition = !!state.settings.showNutrition;
+  const swapping = state.swapFrom !== null && state.swapFrom !== undefined;
 
-  // one person's line under a day: the three meals they are having, with a mark
-  // where a meal was edited just for that day, and a count of any extras
-  const personLine = (day, who) => {
+  // which day of the plan today is, and so which have gone and whether the week is over
+  const todayAt = start ? daysBetween(start, today()) : -1;
+  const over = !!start && todayAt >= WEEK;
+  const gone = start ? Math.min(Math.max(todayAt, 0), SHOWN) : 0;
+
+  /* A day reads once, as "Both", when everything on it is the same for both of
+     you, which is most days. */
+  const shared = (day) =>
+    SLOTS.every((slot) => sameCell(day, slot.key)) && !dayExtras(day, 0).length && !dayExtras(day, 1).length;
+
+  const mealsLine = (day, who) => {
     const cells = SLOTS.map((slot) => cellSummary(day, slot.key, who, byMeal));
     const ex = dayExtras(day, who).length;
-    const anything = cells.some((c) => c.label) || ex;
-    const body = anything
-      ? cells
-          .map((c) => (c.label ? `${esc(c.label)}${c.edited ? " ✎" : ""}` : "—"))
-          .join(" &middot; ") + (ex ? ` &middot; <span class="edited">+${ex} extra</span>` : "")
-      : "nothing planned";
-    return `<div class="daysummary"><b>${esc(people[who])}</b> ${body}</div>`;
+    if (!cells.some((x) => x.label) && !ex) return "nothing planned";
+    return (
+      cells.map((x) => (x.label ? `${esc(x.label)}${x.edited ? " ✎" : ""}` : "—")).join(" &middot; ") +
+      (ex ? ` &middot; <span class="edited">+${ex} extra</span>` : "")
+    );
+  };
+  const line = (name, body) => `<div class="daysummary"><b>${esc(name)}</b> ${body}</div>`;
+
+  const nutLine = (idx, who, name) => {
+    if (!c.dayMeals[idx][who]) return "";
+    const n = c.dayNutrition[idx][who];
+    const partial = !c.dayComplete[idx][who];
+    return `<div class="foodrow"><span class="pname grow">${esc(name)}</span>
+      <span class="kcal num">${Math.round(n.kcal)}<span class="unit"> kcal</span>${
+      partial ? '<span class="part" title="Some items have no nutrition filled in">*</span>' : ""
+    }</span><span class="macros">${macroSpans(n)}</span></div>`;
   };
 
-  /* Seven days at a time, Saturday to Friday. A fortnight seen whole is two
-     screens of scrolling and no week you can hold in your head; a week you
-     step through is the shape a shop actually has. */
-  const w = state.planWeek || 0;
-  const swapping = state.swapFrom;
-
-  const dayRow = (idx, i) => {
+  const dayRow = (idx) => {
     const day = state.db.plan[idx] || {};
     const when = planDate(start, idx);
-    const name = when ? WEEKDAYS[when.getDay()] : DAYS[i];
-    const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-    const armed = swapping === idx;
-    const other = swapping !== null && swapping !== undefined && !armed;
-    const written = (day.written || []).length;
-    // days already gone stay editable but add nothing to the list
-    const past = !!start && idx < c.firstDay;
-    const isToday = !!start && idx === daysBetween(start, today());
+    const name = dayName(start, idx);
+    const dated = shortDate(when);
+    const armed = state.swapFrom === idx;
+    const alike = shared(day);
+    // while a day is being moved, a tap picks the one to swap it with
+    const act = swapping ? "swapDay" : "openDay";
 
-    return `<div class="dayblock"${armed ? ' data-armed="1"' : ""}${past ? ' data-past="1"' : ""}>
-      <button class="dayrow" data-act="openDay" data-idx="${idx}"
-        aria-label="Edit ${name}${dated ? ", " + esc(dated) : ""}">
+    return `<div class="dayblock"${armed ? ' data-armed="1"' : ""}${idx < gone ? ' data-past="1"' : ""}>
+      <button class="dayrow" data-act="${act}" data-idx="${idx}"
+        aria-label="${swapping ? "Swap with" : "Edit"} ${name}${dated ? ", " + esc(dated) : ""}">
         <div class="row">
-          <span class="dname grow">${name}${
-            dated ? ` <span class="muted" style="font-weight:400">${esc(dated)}</span>` : ""
-          }${isToday ? ' <span class="pill on">Today</span>' : ""}</span>
+          <span class="dname grow">${name}${dated ? ` <span class="muted fw4">${esc(dated)}</span>` : ""}${
+      idx === todayAt ? ' <span class="pill on">Today</span>' : ""
+    }${idx === WEEK ? ' <span class="muted fw4">&middot; leftovers</span>' : ""}</span>
           <span class="cost">${c.dayCost[idx] > 0 ? "£" + money(c.dayCost[idx]) : ""}</span>
-          <span class="chev" style="margin-left:6px"><i class="ph ph-caret-right"></i></span>
+          <span class="chev ml-6"><i class="ph ph-caret-right"></i></span>
         </div>
-        ${personLine(day, 0)}${personLine(day, 1)}
+        ${alike ? line("Both", mealsLine(day, 0)) : line(people[0], mealsLine(day, 0)) + line(people[1], mealsLine(day, 1))}
+        ${
+          nutrition
+            ? alike
+              ? nutLine(idx, 0, "Each")
+              : nutLine(idx, 0, people[0]) + nutLine(idx, 1, people[1])
+            : ""
+        }
       </button>
-      ${
-        written
-          ? (day.written || [])
-              .map(
-                (t, n) => `<div class="row writtenline">
-                  <span class="grow trunc">${esc(t)}</span>
-                  <button class="btn small ghost" data-act="unwriteDay" data-idx="${idx}"
-                    data-n="${n}" aria-label="Take it off this day">&times;</button>
-                </div>`
-              )
-              .join("")
-          : ""
-      }
-      <div class="row" style="margin-top:6px">
-        <button class="btn small ghost" data-act="writeDay" data-idx="${idx}"
-          style="padding:0;min-height:0;color:var(--accent);white-space:nowrap">+ Write a meal in</button>
-        <span class="grow"></span>
-        <button class="pill${armed || other ? " on" : ""}" data-act="swapDay" data-idx="${idx}"
-          style="white-space:nowrap"><i class="ph ph-arrows-left-right"></i>
-          ${armed ? "Moving" : other ? "Swap here" : "Swap"}</button>
-      </div>
+      ${(day.written || [])
+        .map(
+          (t, n) => `<div class="row writtenline">
+            <span class="grow trunc">${esc(t)}</span>
+            <button class="btn small ghost" data-act="unwriteDay" data-idx="${idx}"
+              data-n="${n}" aria-label="Take it off this day">&times;</button>
+          </div>`
+        )
+        .join("")}
     </div>`;
   };
 
-  const first = w * 7;
-  const rows = Array.from({ length: 7 }, (_, i) => dayRow(first + i, i)).join("");
-  const subtotal = c.dayCost.slice(first, first + 7).reduce((a, b) => a + b, 0);
-  const edge = (n) => {
-    const d = planDate(start, n);
-    return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-  };
-  const range = start ? `${edge(first)} – ${edge(first + 6)}` : `Week ${w + 1}`;
+  const days = Array.from({ length: SHOWN }, (_, i) => i);
+  const earlier = days.filter((i) => i < gone);
+  const upcoming = days.filter((i) => i >= gone);
+  const range = start ? `${shortDate(planDate(start, 0))} – ${shortDate(planDate(start, WEEK - 1))}` : "This week";
+  const weekCost = c.dayCost.slice(0, WEEK).reduce((a, b) => a + b, 0);
 
-  const weekNav = `<div class="weeknav">
-      <button class="btn icon" data-act="planWeek" data-w="${w - 1}"${w === 0 ? " disabled" : ""}
-        aria-label="The week before"><i class="ph ph-caret-left"></i></button>
-      <div class="grow" style="text-align:center">
-        <div style="font-size:15px;font-weight:500">${esc(range)}</div>
-        <div class="muted">£${money(subtotal)} this week</div>
+  const head = `<div class="row mb-12">
+      <div class="grow">
+        <div class="weekrange">${esc(range)}</div>
+        <div class="muted">£${money(weekCost)} this week</div>
       </div>
-      <button class="btn icon" data-act="planWeek" data-w="${w + 1}"${w === 1 ? " disabled" : ""}
-        aria-label="The week after"><i class="ph ph-caret-right"></i></button>
+      <button class="btn small tonal" data-act="openPlanSettings"><i class="ph ph-sliders-horizontal"></i>Week settings</button>
     </div>`;
 
-  const swapNote =
-    swapping === null || swapping === undefined
-      ? ""
-      : `<div class="warn row">
-           <span class="grow">Moving that day. Pick the day to swap it with.</span>
-           <button class="btn small ghost" data-act="cancelSwap">Cancel</button>
-         </div>`;
+  const noStart = start
+    ? ""
+    : `<section class="card"><label class="field"><span class="eyebrow">The week starts on</span>
+        <input class="inp mono" type="date" value="" data-act="setPlanStart"></label>
+        <p class="muted mt-8">Pick the day you shop. Every day then shows its date, which is what lets the list
+        count from today.</p></section>`;
 
-  const weekView = `${weekNav}${swapNote}<section class="card">${rows}</section>`;
+  const moveOn = over
+    ? `<div class="banner">
+        <strong>A new week has started</strong>
+        <p class="muted mt-4 mb-8">The plan is still showing the one that finished.</p>
+        <div class="row gap-8">
+          <button class="btn solid grow" data-act="moveOn" data-keep="1">Move on, repeat meals</button>
+          <button class="btn grow" data-act="moveOn" data-keep="0">Move on, empty</button>
+        </div>
+      </div>`
+    : "";
 
-  // breakfast and lunch are usually the same all fortnight, so offer to fill them
+  const swapNote = swapping
+    ? `<div class="warn row">
+         <span class="grow">Moving ${esc(dayName(start, state.swapFrom))}. Tap the day to swap it with.</span>
+         <button class="btn small ghost" data-act="cancelSwap">Cancel</button>
+       </div>`
+    : "";
+
+  const earlierBlock = earlier.length
+    ? `<button class="foldlink" data-act="togglePast"><i class="ph ph-caret-${state.showPast ? "down" : "right"}"></i>
+         Earlier this week (${earlier.length})</button>${state.showPast ? earlier.map(dayRow).join("") : ""}`
+    : "";
+
   const fillers = SLOTS.map(
     (slot) => `<button class="btn small ghost grow" data-act="fillSlot" data-slot="${slot.key}">Repeat ${slot.label.toLowerCase()}</button>`
   ).join("");
 
-  return `
-    <section class="card">
-      <div class="grid2" style="margin-bottom:8px">
-        <label class="field"><span class="eyebrow">${esc(people[0])}</span>
-          <input class="inp" value="${esc(people[0])}" placeholder="Person 1"
-            data-act="setPerson" data-person="0"></label>
-        <label class="field"><span class="eyebrow">${esc(people[1])}</span>
-          <input class="inp" value="${esc(people[1])}" placeholder="Person 2"
-            data-act="setPerson" data-person="1"></label>
-      </div>
-      <label class="field"><span class="eyebrow">The fortnight starts (a Saturday)</span>
-        <input class="inp mono" type="date" value="${esc(dayOf(start))}" data-act="setPlanStart"></label>
-      <p class="muted" style="margin:7px 0 0">${
-        start
-          ? "Each day shows its date, so you can tell whether something will still be in date by then."
-          : "Set a date and every day shows the date it falls on, which is what tells you whether a use-by will hold."
-      }</p>
-    </section>
-    ${weekView}
-    <div class="card">
-      <span class="eyebrow" style="display:block;margin-bottom:6px">Fill the fortnight</span>
-      <div class="row" style="gap:6px">${fillers}</div>
-      <p class="muted" style="margin:7px 0 0">Copies day one into every empty day of that slot, for
-      both of you. Tap any day to change its meals, tweak one just for that day, or add an extra.</p>
-    </div>
-    <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
-    <button class="btn tonal wide" style="margin-bottom:8px" data-act="openRollover">Start the next fortnight</button>
-    <button class="btn ghost wide" data-act="clearPlan">Clear both weeks</button>
-    <div class="spacer"></div>`;
-}
-
-/* ---- food ---- */
-
-/* Calories and macros live on their own page so the plan stays a plan. It is
-   the same fortnight, the same two people and the same meals, read a second
-   way: what the choices add up to rather than what they cost. */
-function viewFood() {
-  const c = state.calc;
-  const people = state.db.people || ["Person 1", "Person 2"];
-  const start = state.db.planStart || "";
-  const days = state.db.plan.length;
-
-  const macros = (n) =>
-    `<span class="macro"><b>${Math.round(n.protein)}</b>P</span>
-     <span class="macro"><b>${Math.round(n.carbs)}</b>C</span>
-     <span class="macro"><b>${Math.round(n.fat)}</b>F</span>`;
-
-  const person = (idx, who) => {
-    const n = c.dayNutrition[idx][who];
-    const meals = c.dayMeals[idx][who];
-    const partial = !c.dayComplete[idx][who];
-    return `<div class="foodrow">
-      <span class="pname grow">${esc(people[who])}</span>
-      ${
-        meals
-          ? `<span class="kcal num">${Math.round(n.kcal)}<span class="unit"> kcal</span>${
-              partial ? '<span class="part" title="Some items have no nutrition filled in">*</span>' : ""
-            }</span>
-             <span class="macros">${macros(n)}</span>`
-          : `<span class="muted">nothing planned</span>`
-      }
-    </div>`;
-  };
-
-  const week = (w) => {
-    const idxs = Array.from({ length: 7 }, (_, i) => w * 7 + i).filter((i) => i < days);
-    const rows = idxs
-      .map((idx) => {
-        const when = planDate(start, idx);
-        const name = when ? WEEKDAYS[when.getDay()] : DAYS[idx % 7];
-        const dated = when ? when.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-        const both = c.dayNutrition[idx][0].kcal + c.dayNutrition[idx][1].kcal;
-        return `<div class="dayblock">
-          <div class="row">
-            <span class="dname grow">${name}${
-          dated ? ` <span class="muted num" style="font-weight:400">${esc(dated)}</span>` : ""
-        }</span>
-            <span class="cost">${both > 0 ? `${Math.round(both)} kcal` : ""}</span>
-          </div>
-          ${person(idx, 0)}${person(idx, 1)}
-        </div>`;
-      })
-      .join("");
-
-    return `<section class="card">
-      <div class="row" style="margin-bottom:6px"><span class="eyebrow grow">Week ${w + 1}</span></div>
-      ${rows}</section>`;
-  };
-
   /* An average over the days that actually have meals on them. Dividing by
-     fourteen when only nine are planned would read as a crash diet. */
+     seven when only five are planned would read as a crash diet. */
   const average = (who) => {
-    const fed = Array.from({ length: days }, (_, i) => i).filter((i) => c.dayMeals[i][who] > 0);
+    const fed = days.filter((i) => i < WEEK && c.dayMeals[i][who] > 0);
     if (!fed.length) return null;
     const sum = fed.reduce((acc, i) => addNutrition(acc, c.dayNutrition[i][who]), emptyNutrition());
-    return {
-      days: fed.length,
-      ...Object.fromEntries(NUTRIENTS.map((k) => [k, sum[k] / fed.length])),
-    };
+    return Object.fromEntries(NUTRIENTS.map((k) => [k, sum[k] / fed.length]));
   };
-
-  const averages = [0, 1]
-    .map((who) => {
-      const a = average(who);
-      return `<div class="foodrow">
-        <span class="pname grow">${esc(people[who])}</span>
+  const averages = nutrition
+    ? `<section class="card">
+        <div class="row mb-4"><span class="eyebrow grow">Average a day</span>
+          <span class="muted">over the days with meals on them</span></div>
+        ${[0, 1]
+          .map((who) => {
+            const a = average(who);
+            return `<div class="foodrow"><span class="pname grow">${esc(people[who])}</span>${
+              a
+                ? `<span class="kcal num">${Math.round(a.kcal)}<span class="unit"> kcal</span></span>
+                   <span class="macros">${macroSpans(a)}</span>`
+                : '<span class="muted">no meals planned</span>'
+            }</div>`;
+          })
+          .join("")}
         ${
-          a
-            ? `<span class="kcal num">${Math.round(a.kcal)}<span class="unit"> kcal</span></span>
-               <span class="macros">${macros(a)}</span>`
-            : `<span class="muted">no meals planned</span>`
+          c.dayComplete.slice(0, WEEK).some((d) => !d[0] || !d[1])
+            ? `<p class="muted mt-8">A <span class="part">*</span> means something in that day has no nutrition
+               filled in, so the real figure is higher. Fill it in on the Items tab, or photograph the label.</p>`
+            : ""
         }
-      </div>`;
-    })
-    .join("");
+      </section>`
+    : "";
 
-  const anyPartial = c.dayComplete.some((d) => !d[0] || !d[1]);
-  const blank = state.db.ingredients.filter((i) => productsOf(i).some((p) => !hasNutrition(p))).length;
-
-  const weeks = Array.from({ length: Math.ceil(days / 7) }, (_, w) => week(w)).join("");
-
-  return `<section class="card">
-      <div class="row" style="margin-bottom:6px">
-        <span class="eyebrow grow">Average a day</span>
-        <span class="muted">over the days with meals on them</span>
-      </div>
-      ${averages}
-    </section>
-    ${weeks}
-    ${
-      anyPartial
-        ? `<p class="muted">A <span class="part">*</span> means at least one thing in that day has no
-           nutrition filled in, so the real figure is higher. ${
-             blank ? `${blank} item${blank === 1 ? " is" : "s are"} still blank.` : ""
-           } Fill them in on the Items tab, or photograph the label.</p>`
-        : `<p class="muted">Driven by the meals on the Plan tab. Change a meal there and these move with it.</p>`
-    }
+  return `${head}${noStart}${moveOn}${swapNote}
+    <section class="card">${earlierBlock}${upcoming.map(dayRow).join("")}</section>
+    ${averages}
+    <div class="card">
+      <div class="row gap-6">${fillers}</div>
+      <p class="muted mt-8">Copies the first planned day's meal into the empty days of this week from today, for
+      both of you. Tap a day to change its meals.</p>
+    </div>
+    <div class="row mb-12">
+      <span class="grow"><span class="fw5">Nutrition</span><br>
+        <span class="muted">Calories and macros under each day</span></span>
+      <button class="pill${nutrition ? " on" : ""}" data-act="toggleFlag" data-key="showNutrition">${nutrition ? "On" : "Off"}</button>
+    </div>
+    <p class="muted">Day costs are portion costs, so they show what the meals are worth. The List tab rounds up to whole packs.</p>
     <div class="spacer"></div>`;
 }
 
@@ -2208,7 +2220,7 @@ function viewSheet() {
   if (s.kind === "invite") return sheetInvite(s);
   if (s.kind === "join") return sheetJoin(s);
   if (s.kind === "stock") return sheetStocktake(s);
-  if (s.kind === "rollover") return sheetRollover(s);
+  if (s.kind === "planSettings") return sheetPlanSettings();
   if (s.kind === "labelAsk") return sheetLabelAsk(s);
   if (s.kind === "day") return sheetDay(s);
   if (s.kind === "add") return sheetAdd(s);
@@ -2347,59 +2359,12 @@ function sheetLabelAsk(s) {
   );
 }
 
-/* Ending a fortnight and starting the next one.
-
-   Deliberately not the same as changing the start date. Changing the date
-   slides the plan so meals keep the days they were chosen for; this moves the
-   plan onto a new fortnight, which is the opposite intent, and doing both
-   through one date box would mean guessing which you meant. */
-function sheetRollover(s) {
-  const days = state.db.plan.length;
-  const from = s.start;
-  const last = planDate(from, days - 1);
-  const nice = (d) =>
-    d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "";
-  const planned = state.db.plan.reduce(
-    (n, day) => n + SLOTS.reduce((m, slot) => m + ((day && day[slot.key]) || []).filter(Boolean).length, 0),
-    0
-  );
-
-  return shell(
-    "Start the next fortnight",
-    from ? `${nice(planDate(from, 0))} to ${nice(last)}.` : "Pick the day it begins.",
-    `<label class="field" style="margin-bottom:10px"><span class="eyebrow">It begins</span>
-      <input class="inp mono" type="date" value="${esc(from)}" data-act="setRolloverStart"></label>
-
-    <span class="eyebrow" style="display:block;margin-bottom:6px">The meals already on the plan</span>
-    <div class="seg" style="margin-bottom:8px">
-      <button data-act="setRolloverKeep" data-keep="1" data-on="${s.keep ? 1 : 0}">Keep them</button>
-      <button data-act="setRolloverKeep" data-keep="0" data-on="${s.keep ? 0 : 1}">Start empty</button>
-    </div>
-    <p class="why" style="margin:0 0 12px">${
-      s.keep
-        ? `The ${planned} planned meal${planned === 1 ? "" : "s"} stay where they are and take the new
-           dates, which is usually what you want when breakfast and lunch repeat. Change the ones
-           that should differ.`
-        : `Every day is cleared, and you choose the fortnight from scratch.`
-    }</p>
-
-    <p class="muted" style="margin:0 0 12px">This is not the same as correcting the start date.
-    Correcting it slides the plan so a meal keeps the day you chose it for; this moves the plan
-    onto the new fortnight instead. Stock is left alone, since what is in the cupboard does not
-    change because the calendar did — the List tab will ask you to count it.</p>
-
-    <button class="btn solid wide" data-act="doRollover"${from ? "" : " disabled"}>${
-      s.keep ? `Start it, keeping ${planned} meal${planned === 1 ? "" : "s"}` : "Start it, empty"
-    }</button>`
-  );
-}
-
 /* A stock check, driven by the plan rather than by the whole list.
 
    Nothing takes stock out on its own. Meals are not the only thing that eats
    a cupboard, and nobody is going to record a snack, so the app does not
    pretend to track what leaves. Instead it asks once, at the moment it is
-   worth asking: you have planned the fortnight, so here are the things that
+   worth asking: you have planned the week, so here are the things that
    plan needs and nothing else, with what the app currently believes.
 
    A count is stamped on the product, so a figure somebody has actually looked
@@ -4090,42 +4055,53 @@ const actions = {
   openSettings: () => setSheet({ kind: "settings", msg: "", err: false }),
   openReceipt: () => setSheet({ kind: "receipt", busy: false, err: "", store: "", rows: null }),
 
-  // the next fortnight starts where this one ended: the usual answer, and easy to change
-  openRollover: () => {
-    const days = state.db.plan.length;
-    const start = state.db.planStart || "";
-    const next = start ? planDate(start, days) : new Date();
-    setSheet({
-      kind: "rollover",
-      start: next ? next.toISOString().slice(0, 10) : today(),
-      keep: true,
-    });
+  openPlanSettings: () => {
+    state.flash = null;
+    setSheet({ kind: "planSettings" });
   },
-  setRolloverStart: (el) => setSheet({ ...state.sheet, start: el.value || "" }),
-  setRolloverKeep: (el) => setSheet({ ...state.sheet, keep: el.dataset.keep === "1" }),
-  doRollover: () => {
-    const s = state.sheet;
-    if (!s || !s.start) return;
-    const kept = s.keep;
-    const start = s.start;
-    state.sheet = null;
+
+  /* A new week: the plan slides back seven days, so the Saturday after the old
+     week becomes the first day of the new one and keeps whatever was planned on
+     it. Repeating copies the week that finished into the new week's empty places
+     only, so that leftovers day is never overwritten, and leaves the one-day
+     edits behind: they belonged to that day. If the app was not opened for a
+     while this moves on as many weeks as it takes to reach today. */
+  moveOn: (el) => {
+    const keep = el.dataset.keep === "1";
+    const start = state.db.planStart;
+    if (!start) return;
+    const weeks = Math.max(1, Math.floor(daysBetween(start, today()) / WEEK));
+    const before = state.db.plan;
+    let repeated = 0;
     commit((db) => {
-      db.planStart = start;
-      if (!kept) {
-        db.plan = Array.from({ length: db.plan.length }, () => ({
-          breakfast: [null, null], lunch: [null, null], dinner: [null, null],
-        }));
+      const next = shiftPlan(db.plan, weeks * WEEK).plan;
+      if (keep) {
+        for (let i = 0; i < WEEK; i += 1) {
+          for (const slot of SLOTS) {
+            const was = slotPair(before[i], slot.key);
+            const now = slotPair(next[i], slot.key);
+            const filled = [now[0] || was[0], now[1] || was[1]];
+            repeated += filled.filter(Boolean).length - now.filter(Boolean).length;
+            next[i][slot.key] = filled;
+          }
+        }
       }
+      db.plan = next;
+      db.planStart = localDay(planDate(start, weeks * WEEK));
       touchPlan(db);
     });
-    const last = planDate(start, state.db.plan.length - 1);
-    const nice = (d) => (d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "");
+    state.showPast = false;
     flash(
       "ok",
-      `The fortnight now runs ${nice(planDate(start, 0))} to ${nice(last)}${
-        kept ? ", with the same meals on it" : ", with nothing on it yet"
-      }. Nothing has been counted for it, so the List tab will ask.`
+      `Moved on to the week of ${longDate(planDate(state.db.planStart, 0))}.${
+        repeated ? ` ${repeated} meal${repeated === 1 ? "" : "s"} repeated from the last one.` : ""
+      }`
     );
+  },
+
+  togglePast: () => {
+    state.showPast = !state.showPast;
+    draw();
   },
 
   copyLog: async () => {
@@ -4911,7 +4887,7 @@ const actions = {
       touchPlan(db);
     });
   },
-  /* Moving the start of the fortnight moves what date every day of it falls
+  /* Moving the start of the week moves what date every day of it falls
      on, so the plan slides the other way to keep each meal on the day it was
      chosen for. Without this, nudging the start by one day served Wednesday's
      dinner on Thursday and nobody was told. */
@@ -4938,35 +4914,63 @@ const actions = {
       lost
         ? `Started ${by}. Meals kept their dates, so ${lost} planned meal${
             lost === 1 ? " that now falls" : "s that now fall"
-          } outside the fortnight ${lost === 1 ? "has" : "have"} gone.`
+          } outside the plan ${lost === 1 ? "has" : "have"} gone.`
         : `Started ${by}. Every meal kept the date you planned it for.`
     );
   },
   setBudget: (el) => commit((db) => { db.budget = Number(el.value) || 0; }),
   fillSlot: (el) => {
     const slot = el.dataset.slot;
-    const first = (state.db.plan[0] && state.db.plan[0][slot]) || [null, null];
-    if (!first[0] && !first[1]) {
-      flash("err", `Set day one's ${slot} first, then this copies it across.`);
+    // this week, from today: the days that have gone are not touched
+    const from = Math.min(state.calc.firstDay, WEEK);
+    const days = Array.from({ length: WEEK - from }, (_, k) => from + k);
+    const source = days.find((i) => slotPair(state.db.plan[i], slot).some(Boolean));
+    if (source === undefined) {
+      flash("err", `Set a ${slot} first, then this copies it across the rest of the week.`);
       return;
     }
+    const first = slotPair(state.db.plan[source], slot);
     commit((db) => {
-      db.plan.forEach((day) => {
-        if (!day) return;
-        const pair = Array.isArray(day[slot]) ? day[slot] : [null, null];
+      for (const i of days) {
+        const day = db.plan[i];
+        if (!day) continue;
+        const pair = slotPair(day, slot);
         // only the empty places, so a day you have already decided is safe
         day[slot] = [pair[0] || first[0], pair[1] || first[1]];
-      });
+      }
       touchPlan(db);
     });
   },
 
   /* ---- one day, edited on the fly ---- */
 
-  openDay: (el) => setSheet({ kind: "day", idx: Number(el.dataset.idx) }),
+  openDay: (el) => setSheet({ kind: "day", idx: Number(el.dataset.idx), open: {}, split: {} }),
+  toggleDayFold: (el) => {
+    const open = state.sheet.open || {};
+    setSheet({ ...state.sheet, open: { ...open, [el.dataset.key]: !open[el.dataset.key] } });
+  },
+  splitSlot: (el) =>
+    setSheet({ ...state.sheet, split: { ...(state.sheet.split || {}), [el.dataset.key]: true } }),
+  // give the second person the first one's choice, loose edit and all, and show it once again
+  joinSlot: (el) => {
+    state.sheet = { ...state.sheet, split: { ...(state.sheet.split || {}), [el.dataset.key]: false } };
+    actions.copyDayCell({ dataset: { id: el.dataset.id, key: el.dataset.key, which: "0" } });
+  },
 
-  // the meal dropdown for one person's slot. Choosing one replaces any loose
-  // edit that was standing in for it.
+  // one choice for both of you, which replaces any loose edit standing in for it
+  setDaySlotBoth: (el) =>
+    commit((db) => {
+      const day = db.plan[Number(el.dataset.id)];
+      if (!day) return;
+      const slot = el.dataset.key;
+      day[slot] = [el.value || null, el.value || null];
+      clearOverride(day, slot, 0);
+      clearOverride(day, slot, 1);
+      touchPlan(db);
+    }),
+
+  // the meal dropdown for one person's slot, when the two of you differ
+  // (setDaySlotBoth below is the usual one)
   setDaySlot: (el) =>
     commit((db) => {
       const idx = Number(el.dataset.id);
@@ -5007,18 +5011,14 @@ const actions = {
   addDayIng: (el) =>
     commit((db) => {
       if (!db.ingredients.length) return;
-      const items = dayItemsMutable(db, Number(el.dataset.id), el.dataset.key, Number(el.dataset.which) || 0);
-      if (!items) return;
-      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
+      for (const who of bothOf(el)) {
+        const items = dayItemsMutable(db, Number(el.dataset.id), el.dataset.key, who);
+        if (!items) continue;
+        items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
+      }
       touchPlan(db);
     }),
-  /* ---- the week in view, writing a meal in, swapping two days ---- */
-
-  planWeek: (el) => {
-    state.planWeek = Math.max(0, Math.min(1, Number(el.dataset.w)));
-    state.swapFrom = null;
-    draw();
-  },
+  /* ---- writing a meal in, swapping two days ---- */
 
   /* A meal that was never set up. It goes on the day as plain words: it costs
      nothing and asks for nothing, which is exactly right for a takeaway, a
@@ -5090,6 +5090,12 @@ const actions = {
     });
   },
 
+  // from inside a day: close it, then a tap on another day swaps the two
+  startSwap: (el) => {
+    state.swapFrom = Number(el.dataset.idx);
+    setSheet(null);
+  },
+
   cancelSwap: () => {
     state.swapFrom = null;
     draw();
@@ -5107,9 +5113,10 @@ const actions = {
     commit((db) => {
       const idx = Number(el.dataset.id);
       const slot = el.dataset.key;
-      const items = dayItemsMutable(db, idx, slot, Number(el.dataset.which) || 0);
-      if (!items) return;
-      items.splice(Number(el.dataset.i), 1);
+      for (const who of bothOf(el)) {
+        const items = dayItemsMutable(db, idx, slot, who);
+        if (items) items.splice(Number(el.dataset.i), 1);
+      }
       if (slot === "extra") tidyExtras(db.plan[idx]);
       touchPlan(db);
     }),
@@ -5136,7 +5143,7 @@ const actions = {
     commit((db) => {
       const day = db.plan[Number(el.dataset.id)];
       if (!day) return;
-      clearOverride(day, el.dataset.key, Number(el.dataset.which) || 0);
+      for (const who of bothOf(el)) clearOverride(day, el.dataset.key, who);
       touchPlan(db);
     }),
 
@@ -5162,7 +5169,7 @@ const actions = {
       editMeal(db, base.id, (m) => {
         m.items = ov.items.map(cloneItem);
       });
-      clearOverride(db.plan[idx], slot, who);
+      for (const w of bothOf(el)) clearOverride(db.plan[idx], slot, w);
       touchPlan(db);
     });
     flash("ok", `${base.name} updated everywhere it is used.`);
@@ -5193,9 +5200,11 @@ const actions = {
       db.meals.push({ id, name, items: ov.items.map(cloneItem), updatedAt: new Date().toISOString() });
       const d = db.plan[idx];
       const fs = Array.isArray(d[slot]) ? [...d[slot]] : [null, null];
-      fs[who] = id;
+      for (const w of bothOf(el)) {
+        fs[w] = id;
+        clearOverride(d, slot, w);
+      }
       d[slot] = fs;
-      clearOverride(d, slot, who);
       touchPlan(db);
     });
     flash("ok", `Saved "${name}" as a meal and put it on this day.`);
@@ -5203,13 +5212,14 @@ const actions = {
 
   clearPlan: async () => {
     const yes = await confirmDialog({
-      title: "Clear both weeks?",
+      title: "Clear the plan?",
       text: "Every planned meal, edit and extra goes. The meals themselves are kept.",
       ok: "Clear the plan",
     });
     if (!yes) return;
+    setSheet(null);
     commit((db) => {
-      db.plan = Array.from({ length: 14 }, () => ({
+      db.plan = Array.from({ length: PLAN_DAYS }, () => ({
         breakfast: [null, null], lunch: [null, null], dinner: [null, null],
       }));
       touchPlan(db);
@@ -5730,8 +5740,6 @@ root.addEventListener("keydown", (e) => {
     state.settings = await loadSettings();
     applyTheme(state.settings.theme);
     applyAccent(state.settings.accent);
-    // open the Plan on the week that today falls in
-    state.planWeek = daysBetween(state.db.planStart, today()) >= 7 ? 1 : 0;
     draw();
     checkForChanges();
   } catch (err) {

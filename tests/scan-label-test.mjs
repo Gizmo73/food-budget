@@ -18,7 +18,7 @@ p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 // two of one ingredient: one whose label has been read, one whose has not
 await p.evaluate(async () => {
@@ -41,9 +41,9 @@ await p.evaluate(async () => {
     schema: 9, ingredients: [milk], meals: [], plan: [],
     people: ["Lee", "Sam"], planStart: "",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 const scan = async (code) => {

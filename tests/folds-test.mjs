@@ -20,13 +20,13 @@ const openFirstProduct = async (page) => {
 };
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)), true);
-  location.reload();
 }, readFileSync(FIXTURE, "utf8"));
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- add a meal is at the top ---");
@@ -89,7 +89,7 @@ ok(elsewhere === true, "nutrition is open on the next item too, so it is set onc
 
 console.log("\n--- and it survives a reload ---");
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 await p.click('[data-act="tab"][data-tab="items"]');
 await p.waitForTimeout(300);

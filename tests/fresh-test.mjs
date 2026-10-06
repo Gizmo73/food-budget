@@ -7,7 +7,7 @@ const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + 
 
 console.log("--- install, then change the app on the server ---");
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(() => navigator.serviceWorker.ready);
 await p.waitForTimeout(600);
 ok(await p.evaluate(() => !!navigator.serviceWorker.controller), "the worker is in charge");
@@ -25,7 +25,7 @@ writeFileSync(appPath, original.replace(
 let first = "";
 try {
   await p.reload();
-  await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+  await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
   await p.waitForTimeout(400);
   first = await p.evaluate(() => document.querySelector(".masthead").textContent.trim());
   console.log("   after one reload:", JSON.stringify(first));
@@ -37,7 +37,7 @@ try {
 console.log("\n--- and it still works with no signal ---");
 await ctx.setOffline(true);
 await p.reload();
-const booted = await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 20000 })
+const booted = await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 20000 })
   .then(() => true).catch(() => false);
 ok(booted, "the app opens offline from the cache");
 const offlineTitle = await p.evaluate(() => document.querySelector(".masthead h1").textContent.trim());
@@ -47,7 +47,7 @@ await ctx.setOffline(false);
 
 console.log("\n--- the version is readable in settings ---");
 await p.reload();
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(800);
 await p.evaluate(() => document.querySelector('[data-act="openSettings"]').click());
 await p.waitForTimeout(500);

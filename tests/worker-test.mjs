@@ -93,10 +93,10 @@ console.log("\n--- a new file arriving over a slow connection ---");
 
 // still works with no network
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await ctx.setOffline(true);
 await p.reload();
-const booted = await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 }).then(() => true).catch(() => false);
+const booted = await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 }).then(() => true).catch(() => false);
 ok(booted, "and the app still opens with no signal");
 await ctx.setOffline(false);
 

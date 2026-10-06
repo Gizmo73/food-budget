@@ -29,7 +29,7 @@ await p.route("**generativelanguage.googleapis.com/**", (r) =>
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 // One ingredient already kept, so folding has something to fold into.
 await p.evaluate(async () => {
@@ -42,9 +42,9 @@ await p.evaluate(async () => {
   })];
   await store.saveSettings({ ...(await store.loadSettings()), provider: "gemini", geminiKey: "k", warnOnLeave: false });
   await store.saveDb(store.migrate({ schema: 7, ingredients: [milk], meals: [], plan: [], people: ["Lee", "Sam"] }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(300);
 
 console.log("--- reading a receipt ---");

@@ -18,7 +18,7 @@ const openFirstProduct = async (page) => {
 };
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 await p.evaluate(async () => {
   const s = await import("./lib/store.js");
@@ -43,9 +43,9 @@ await p.evaluate(async () => {
     meals: [{ id: "cereal", name: "Cereal", items: [{ ingredientId: "arla", productId: "", portions: 0.5 }] }],
     plan, people: ["Lee", "Sam"], planStart: "",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- the control ---");

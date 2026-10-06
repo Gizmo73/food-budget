@@ -75,13 +75,13 @@ await pinClock(ctx, "2026-10-06T09:00:00");
 const p = await ctx.newPage();
 const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 
-const booted = () => p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+const booted = () => p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 async function load(dbJson) {
   await p.evaluate(async (json) => {
     const s = await import("./lib/store.js");
     await s.saveDb(s.migrate(JSON.parse(json)), true);
-    location.reload();
   }, JSON.stringify(dbJson));
+  await p.reload();
   await booted();
   await p.waitForTimeout(300);
 }
@@ -102,22 +102,30 @@ ok(await p.$eval('[data-act="openStocktake"]', (e) => !e.disabled), "the stock c
 console.log("\n--- the plan ---");
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(300);
-const rows = await p.$$eval(".dayblock", (els) => els.map((e) => ({
+const names = () => p.$$eval(".dayblock", (els) => els.map((e) => ({
   name: e.querySelector(".dname").textContent.replace(/\s+/g, " ").trim(),
   past: e.dataset.past === "1",
   cost: e.querySelector(".cost").textContent.trim(),
 })));
-console.log("   ", JSON.stringify(rows.slice(0, 5)));
-ok(rows.filter((r) => r.past).length === 3, "the three days gone are marked");
-ok(rows[3].name.startsWith("Tuesday") && /Today/.test(rows[3].name) && !rows[3].past, "today is named, and not dimmed");
+let rows = await names();
+console.log("   ", JSON.stringify(rows.slice(0, 3)));
+ok(rows[0].name.startsWith("Tuesday") && /Today/.test(rows[0].name), "the plan opens on today");
+ok(rows.length === 5, `the four days left of the week and the Saturday after it (${rows.length})`);
+ok(rows.every((r) => !r.past), "with nothing from the days gone in the way");
+const fold = await p.$eval(".foldlink", (e) => e.textContent.replace(/\s+/g, " ").trim());
+ok(/Earlier this week \(3\)/.test(fold), `the three days gone are folded away (${fold})`);
+await p.click(".foldlink");
+await p.waitForTimeout(200);
+rows = await names();
+ok(rows.length === 8 && rows.slice(0, 3).every((r) => r.past), "unfolded they are there, and dimmed");
 ok(rows[0].cost !== "" && rows[0].cost === rows[3].cost, `a day gone keeps its cost on the plan (${rows[0].cost})`);
+ok(/Sat/.test(rows[7].name) && /leftovers/.test(rows[7].name), `the last row is the Saturday, for leftovers (${rows[7].name})`);
 
-console.log("\n--- the plan opens on the week that today is in ---");
+console.log("\n--- once the week is over ---");
 await load(build({ start: "2026-09-26", days: [0] }));
 await p.click('[data-act="tab"][data-tab="plan"]');
 await p.waitForTimeout(200);
-const range = await p.$eval(".weeknav .grow div", (e) => e.textContent.trim());
-ok(/^3 Oct/.test(range), `ten days in, the second week is showing (${range})`);
+ok(/A new week has started/.test(await p.$eval(".banner", (e) => e.textContent)), "the plan says a new week has started");
 await p.click('[data-act="tab"][data-tab="list"]');
 await p.waitForTimeout(200);
 ok((await p.$$(".ticket")).length === 0, "and nothing is on the list for a plan that is only history");
@@ -126,7 +134,7 @@ ok(await p.$eval('[data-act="openStocktake"]', (e) => e.disabled), "the stock ch
 console.log("\n--- a plan that has run out ---");
 await load(build({ start: "2026-09-12" }));
 const over = await p.$eval(".wrap", (w) => w.textContent.replace(/\s+/g, " "));
-ok(/Every day of this plan has passed/.test(over), "the list says the plan has run out, rather than looking broken");
+ok(/The week on the plan has finished/.test(over), "the list says the plan has run out, rather than looking broken");
 
 console.log("\npage errors:", errs.length ? errs : "none");
 if (errs.length) fail.push("page errors");

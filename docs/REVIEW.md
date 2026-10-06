@@ -212,8 +212,9 @@ last. [VISION.md](VISION.md) is the destination; this is the route.
 3. Today is marked; days that have gone fold under *Earlier this week*.
 4. Names, week start and budget move into *Plan settings*.
 5. **A day opens on its meal pickers**, one per slot for *Both* of you, with
-   *Split* when you differ. *Write a meal in*, *Swap* and *We had something else*
-   live inside the day. Changing what is in a meal is folded away per slot.
+   *Split* when you differ. *Write a meal in* and *Swap* live inside the day, and
+   cooking something else is just choosing another meal there. Changing what is in
+   a meal is folded away per slot, and acts on both of you when the slot is shared.
 6. **Food folds into Plan**: a calories line per day and a *Nutrition* toggle.
    Four tabs: List, Plan, Meals, Items. The pager bars go.
 
@@ -276,7 +277,7 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
 |---|---|
 | Phase 0 | Shipped, PR #5 |
 | A. Foundations | Built: dialogs, undo toasts, spacing utilities, B9, unused parameters |
-| B. The week | Not started |
+| B. The week | Built: one week plus the leftovers Saturday, Move on, Both/Split day sheet, Food folded into Plan, four tabs |
 | C. The list and the shop | Not started |
 | D. Editing and polish | Not started |
 | Back button blank page | Guard should prevent it; needs confirming on the phone |

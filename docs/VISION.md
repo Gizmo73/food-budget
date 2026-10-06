@@ -149,14 +149,15 @@ One flow, three steps, each skippable, never blocking the list.
   leftover day is never overwritten. It replaces *Start the next fortnight*, the
   date-picker rollover, and *Clear both weeks* beside it.
 - **A day opens on its meal pickers**, one per slot for *Both* of you. *Split* is
-  there for the day you differ. *Write a meal in*, *Swap* and **We had something
-  else** are inside the day, and changing what is in a meal is folded away. We
-  had something else swaps a slot for another meal or *not cooking* in two taps, and
-  changes the list; stock is your check's job.
+  there for the day you differ. *Write a meal in* and *Swap* are inside the day, and
+  changing what is in a meal is folded away. Cooking something else than planned is
+  just choosing another meal there, two taps from the Plan, and it changes the list;
+  what it leaves in the cupboard is your stock check's job.
 - **Food is folded in.** A calories line per day, and a *Nutrition* toggle for the
   protein, carbs and fat figures, with a mark where an item has no label yet.
   Targets per person are a later option.
-- **Plan settings** (one row away): names, the day the week starts, the budget.
+- **Week settings** (one button away): names, the day the week starts, the budget,
+  and clearing the plan.
 
 ### Meals
 

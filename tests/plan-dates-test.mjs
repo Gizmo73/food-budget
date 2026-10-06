@@ -108,7 +108,7 @@ console.log("\n--- and through the app's own date box ---");
   p.on("pageerror", (e) => { console.log("  pageerror: " + e.message); fail.push("pageerror"); });
 
   await p.goto(`${BASE}/index.html`);
-  await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+  await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
   await p.evaluate(async () => {
     const store = await import("./lib/store.js");
     const mk = (id, name) => {
@@ -131,9 +131,9 @@ console.log("\n--- and through the app's own date box ---");
       ],
       plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
     }));
-    location.reload();
   });
-  await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+  await p.reload();
+  await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
   await p.waitForTimeout(300);
 
   await p.click('[data-act="tab"][data-tab="plan"]');
@@ -155,6 +155,10 @@ console.log("\n--- and through the app's own date box ---");
           })
           .filter((t) => t && t !== "\u2014" && !/extra/.test(t) && !/nothing planned/.test(t)),
       })).filter((d) => d.meals.length));
+
+  // the start date lives in the plan's settings
+  await p.click('[data-act="openPlanSettings"]');
+  await p.waitForSelector('[data-act="setPlanStart"]');
 
   const before = await onScreen();
   console.log("   before:", JSON.stringify(before));
@@ -182,7 +186,7 @@ console.log("\n--- and through the app's own date box ---");
   ok(!after.some((d) => /Thursday 6 Aug/.test(d.day) && d.meals.includes("Bolognese")),
     "rather than sliding onto the Thursday");
   ok(!after.some((d) => d.meals.includes("Fry Up")),
-    "the Monday breakfast is gone, since Monday is no longer in the fortnight");
+    "the Monday breakfast is gone, since Monday is no longer in the plan");
   ok(/1 planned meal that now falls outside/.test(said), `and it says so, in English (${said})`);
 
   // and the stored plan agrees with the screen

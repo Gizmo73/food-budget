@@ -77,7 +77,7 @@ The QR code is generated on the device by `lib/qr.js`, written for this app rath
 | Meals | The union |
 | Meal plan | Taken whole from whichever device saved last |
 
-The meal plan is the one thing that cannot merge sensibly, since two different fortnights are not combinable. If you both plan meals, agree who owns the plan.
+The meal plan is the one thing that cannot merge sensibly, since two different weeks are not combinable. If you both plan meals, agree who owns the plan.
 
 Opening the app checks the database and merges anything new automatically, naming who it came from. Turn that off under Settings and you get a banner offering the merge instead. Leaving the app or switching away saves your changes, which is the only reliable moment to do it on a phone; desktop browsers additionally warn before you close a tab with unsaved work.
 
@@ -133,7 +133,7 @@ Each meal says whether you could cook it tonight without shopping, and names wha
 
 Two decisions inside that:
 
-- **A meal is judged on its own, not against the fortnight.** Two meals may each be makeable while sharing the last portion of mince between them. "Can I cook this one now" is the question being asked when you are standing in the kitchen; worrying about the fortnight as a whole is the shopping list's job.
+- **A meal is judged on its own, not against the week.** Two meals may each be makeable while sharing the last portion of mince between them. "Can I cook this one now" is the question being asked when you are standing in the kitchen; worrying about the week as a whole is the shopping list's job.
 - **A meal with nothing in it cannot be made.** Vacuously true is the wrong answer: it would put every half-written meal at the top of a list of things you can cook tonight.
 
 A line naming one specific product can only be met by that product's own stock. A line asking for the ingredient in general can be met by any of it, which is what pooling stock across shops is for.
@@ -142,11 +142,15 @@ The meal you are editing is never filtered away, since having it vanish because 
 
 ## The plan, and who is eating
 
-Breakfast, lunch and dinner are **six choices a day**, one per person. **Tap a day** to open it: a card with those six dropdowns, and under each the meal's own items laid out to change. The **`=`** beside a slot gives the second person the first one's choice, which is most dinners.
+The plan is **one week, Saturday to Friday**, and the Saturday after it, which is where Friday's leftovers get eaten. It is stored as fourteen days so that nothing is lost and an older copy of the app still merges, but only those eight are shown.
+
+**Tap a day** to open it. It opens on one meal picker for each of breakfast, lunch and dinner, set for **both** of you at once, since most days are. **Split** gives each person their own picker for the day you differ, and **Same for both** gives the second person the first one's choice and folds it back to one. A day where you are the same reads once on the plan, headed *Both*.
+
+Under each meal, **Change what's in it** opens the meal's own items to change, for both of you or for the one person, depending on how the slot is set. **Write a meal in** and **Swap with another day** are in the day too.
 
 **Portions on a meal are for one person.** Plan it for both and it counts twice.
 
-Set a **start date** at the top and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so a fortnight starting on a Thursday says Thursday.
+Set the day the week **starts** under **Week settings** and every row shows the date it falls on, which is what tells you whether a use-by will still hold when that evening comes round. The weekday comes from the date, so the plan says what day it is. Today is marked, and days that have gone fold away under *Earlier this week*. **Week settings** also holds the names, the weekly **budget** and **Clear the plan**.
 
 Migrating an older plan halves every meal's portions and puts each planned meal in both slots. Totals come out identical while the number changes meaning from a household's serving to one person's.
 
@@ -164,16 +168,16 @@ Choosing a different meal from the dropdown drops the loose edit, since you have
 
 ### Extras: single things outside a meal
 
-Each person's day also has an **extras** list, for the odd thing eaten that is not part of a set meal — a couple of apples, a bag of crisps. Extras are logged per person, so they count toward that person's calories on the Food tab as well as the shopping list and stock, exactly as a meal's items do. They are not a meal, so they do not add to the "meals planned" count, but a day with only extras on it still counts as one that person ate on.
+Each person's day also has an **extras** list, for the odd thing eaten that is not part of a set meal — a couple of apples, a bag of crisps. Extras are logged per person, so they count toward that person's calories on the Plan as well as the shopping list and stock, exactly as a meal's items do. They are not a meal, so they do not add to the "meals planned" count, but a day with only extras on it still counts as one that person ate on.
 
-A day's loose edits and extras are part of the plan, so they travel with it: they survive a save and reload, ride along when you roll the fortnight over keeping its meals, and come across on a merge with whichever device's plan is the more recent.
+A day's loose edits and extras are part of the plan, so they travel with it: they survive a save and reload, ride along when a week is moved on, and come across on a merge with whichever device's plan is the more recent.
 
 ### The list is for today onward
 
 The shopping list, the stock check and each item's "needs" figure count meals on
 **today and later**, so last week's dinners never have to be deleted to keep the
 list honest. A day that has gone stays on the plan, dimmed, with its cost and
-calories still on the Plan and Food tabs; it just asks the shops for nothing. The
+calories still on the Plan; it just asks the shops for nothing. The
 List says how many earlier days it left out, and the Plan marks today and opens
 on the week that holds it.
 
@@ -237,6 +241,8 @@ Portions per pack is what the whole shopping engine runs on — stock is counted
 Neither is stored twice. The derived side is shown as a sentence under the boxes, so the two can never drift apart.
 
 ## Calories and macros
+
+They show on the Plan: switch **Nutrition** on at the foot of it and every day gets a line of calories and macros, with an average a day beneath. A day shared by both of you reads once, as *Each*.
 
 Every **product** carries four figures: calories, protein, carbs and fat. They live on the product rather than the ingredient, because Tesco Finest cheddar and the value block are not the same food.
 
@@ -358,7 +364,7 @@ thing that empties a cupboard, and nobody is going to open the app to record a
 biscuit. So the app does not pretend to track what leaves. It asks once, at the
 point where asking is worth it.
 
-**Stock check**, at the top of the List tab, lists the things this fortnight's
+**Stock check**, at the top of the List tab, lists the things this week's
 plan needs and nothing else, A to Z. Each says what the plan asks for, whether
 that is covered, when it was last counted, and how the figure reads in packs as
 well as portions. Correct the ones that are wrong; tap **Right** on the ones
@@ -375,21 +381,26 @@ and the old rule was that the higher figure survived.
 
 Finishing says what it did: *"6 counted. The list is £4.20 more, at £38.15."*
 
-### Starting the next one
+### Moving on a week
 
-**Start the next fortnight**, at the foot of the Plan tab, moves the dates on.
-It offers the day after the current fortnight ended, says what the new one will
-run, and asks one question: keep the meals already planned, or start empty.
-Keeping them is the default, since breakfast and lunch usually repeat.
+Once the week is over the Plan says **A new week has started** and offers two ways
+to move on: **repeat meals** or **empty**. Either slides the plan back seven days,
+so the Saturday after the week becomes the first day of the new one and keeps what
+was planned on it, including a meal written in for Friday's leftovers.
 
-This is not the same as correcting the start date, and the app treats them
-differently on purpose. Correcting the date slides the plan so a meal keeps the
-day you chose it for. Rolling over moves the plan onto the new fortnight
-instead. Doing both through one date box would mean guessing which you meant.
+Repeating copies the week that has just finished into the new week's *empty* places
+only, so the leftovers day is never overwritten, and it leaves the one-day edits
+behind, since they belonged to that day. If the app was not opened for a while it
+moves on as many weeks as it takes to reach today.
 
-Stock is left alone: what is in the cupboard did not change because the
-calendar did. But nothing has been *counted* for the new fortnight, so the
-stock check on the List tab starts asking again by itself.
+This is not the same as correcting the start date under **Week settings**. Correcting
+the date slides the plan so a meal keeps the day you chose it for; moving on moves the
+plan onto the new week instead. Doing both through one date box would mean guessing
+which you meant.
+
+Stock is left alone: what is in the cupboard did not change because the calendar
+did. But nothing has been *counted* for the new week, so the stock check on the List
+tab starts asking again by itself.
 
 ## Adding things by hand
 
@@ -595,10 +606,10 @@ artifact.
 
 ## Known limits
 
-- Moving the start of the fortnight slides the plan the other way, so a meal
-  planned for Wednesday stays on Wednesday. Days pushed outside the fortnight
+- Correcting the start of the week slides the plan the other way, so a meal
+  planned for Wednesday stays on Wednesday. Days pushed outside the plan
   are gone, and the app says how many rather than dropping them quietly.
-- Each day has breakfast, lunch and dinner. Breakfast and lunch usually repeat, so the Plan tab has a **Repeat** button per slot that copies day one into every empty day of that slot.
+- Each day has breakfast, lunch and dinner. Breakfast and lunch usually repeat, so the Plan tab has a **Repeat** button per slot that copies the first planned day from today into the empty days of this week.
 - The app does not suggest buying more to reach a multibuy threshold. It shows the offer terms on the line and leaves the decision to you.
 - Pack sizes are assumed stable. If a product shrinks, update Portions per pack by hand.
 - Two receipt lines with the same name become two separate items, which is usually right for two different tuna tins. Rename one if you would rather merge them.

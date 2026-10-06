@@ -29,7 +29,7 @@ await p.route("**generativelanguage.googleapis.com/**", (r) =>
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(async () => {
   const store = await import("./lib/store.js");
   const cod = store.newIngredient("Tesco", "Cod");
@@ -43,9 +43,9 @@ await p.evaluate(async () => {
     schema: 9, ingredients: [cod], meals: [], plan: [],
     people: ["Lee", "Sam"], planStart: "",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 console.log("--- reading the label ---");

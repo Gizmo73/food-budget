@@ -79,7 +79,7 @@ p.on("console", (m) => m.type() === "error" && fail.push("console: " + m.text())
 
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.evaluate(async () => {
   const store = await import("./lib/store.js");
   const mk = (id, name, per, stock) => {
@@ -102,9 +102,9 @@ await p.evaluate(async () => {
       { ingredientId: "mince", portions: 1 }, { ingredientId: "pasta", portions: 0.5 }] }],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 const totalNow = () => p.$eval(".till .big", (e) => e.textContent.trim());
@@ -193,9 +193,9 @@ await p.evaluate(async () => {
   const db = await store.loadDb();
   db.plan = db.plan.map(() => ({ breakfast: [null, null], lunch: [null, null], dinner: [null, null] }));
   await store.saveDb(db);
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 const off = await p.$eval('[data-act="openStocktake"]', (e) => e.disabled);
 ok(off, "with nothing planned there is nothing to count, and the button says so");

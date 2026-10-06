@@ -19,7 +19,7 @@ const openFirstProduct = async (page) => {
 };
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 console.log("--- viewport and zoom ---");
 const meta = await p.$eval('meta[name="viewport"]', (e) => e.content);
@@ -55,9 +55,9 @@ await p.evaluate(async () => {
     meals: [{ id: "m1", name: "Toast", items: [{ ingredientId: "bread", portions: 1 }] }],
     plan, people: ["Lee", "Sam"], planStart: "2026-08-03",
   }));
-  location.reload();
 });
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(400);
 
 const smallOn = async (label) => {
@@ -68,7 +68,7 @@ const smallOn = async (label) => {
   ok(small.length === 0, `${label}: no control under 16px${small.length ? " — " + JSON.stringify(small) : ""}`);
 };
 
-for (const tab of ["list", "plan", "food", "meals", "items"]) {
+for (const tab of ["list", "plan", "meals", "items"]) {
   await p.click(`[data-act="tab"][data-tab="${tab}"]`);
   await p.waitForTimeout(250);
   await smallOn(tab);

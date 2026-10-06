@@ -10,16 +10,16 @@ p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 const fail = []; const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
 await p.addInitScript((t) => localStorage.setItem("fs-theme", t), TH);
 await p.goto(`${BASE}/index.html`);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 
 // your real backup, so the list is as long as it is in practice
 const backup = readFileSync(FIXTURE, "utf8");
 await p.evaluate(async (json) => {
   const s = await import("./lib/store.js");
   await s.saveDb(s.migrate(JSON.parse(json)));
-  location.reload();
 }, backup);
-await p.waitForFunction(() => document.getElementById("app").dataset.booted === "1", null, { timeout: 15000 });
+await p.reload();
+await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 await p.waitForTimeout(500);
 
 console.log("--- a stray tap must not throw a receipt away ---");
