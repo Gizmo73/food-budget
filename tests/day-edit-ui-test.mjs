@@ -1,7 +1,7 @@
 /* The day popout: tap a day, swap an ingredient for that day only, log an
    extra, and save a loose edit off as its own meal. Drives the real UI so the
    handlers and the fork-on-edit are exercised end to end. */
-import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer, pick } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: 2, colorScheme: "dark" });
@@ -67,9 +67,9 @@ await p.waitForTimeout(300);
 await p.click('[data-act="toggleDayFold"][data-key="dinner"]');
 await p.waitForTimeout(200);
 // the dinner cell shows beef then potato; swap the potato (i=1) for new potatoes
-const swapSel = '[data-act="setDayIng"][data-id="0"][data-key="dinner"][data-which="0"][data-i="1"]';
+const swapSel = '[data-act="pickDayIng"][data-id="0"][data-key="dinner"][data-which="0"][data-i="1"]';
 await p.waitForSelector(swapSel, { timeout: 5000 });
-await p.selectOption(swapSel, "newpot");
+await pick(p, swapSel, "newpot");
 await p.waitForTimeout(400);
 
 let db = await readDb();
@@ -82,9 +82,7 @@ ok(JSON.stringify(db.baseItems) === JSON.stringify(["beef", "potato"]),
 console.log("\n--- log an extra for the first person ---");
 await p.click('[data-act="toggleDayFold"][data-key="extras"]');
 await p.waitForTimeout(200);
-await p.click('[data-act="addExtra"][data-id="0"][data-which="0"]');
-await p.waitForTimeout(400);
-await p.selectOption('[data-act="setDayIng"][data-id="0"][data-key="extra"][data-which="0"][data-i="0"]', "apple");
+await pick(p, '[data-act="addExtra"][data-id="0"][data-which="0"]', "apple");
 await p.waitForTimeout(400);
 db = await readDb();
 ok(db.extrasP0.includes("apple"), `an apple is logged as an extra (${JSON.stringify(db.extrasP0)})`);

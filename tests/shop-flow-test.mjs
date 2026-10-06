@@ -5,7 +5,7 @@
    the list but the trolley and what is still to get always add up to the shop. A
    shop left open from another day is over. A top-up can go straight into stock,
    and something new can be scanned without a price, which the receipt fills in. */
-import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer, pick } from "./browser.mjs";
 
 const b = await browser();
 const ctx = await b.newContext({ viewport: { width: 390, height: 700 }, colorScheme: "dark", isMobile: true, hasTouch: true });
@@ -210,7 +210,7 @@ await p.click('[data-act="openScan"]');
 await p.fill('[data-cam="manual"]', "5099999999999");
 await p.click('[data-cam="useManual"]');
 await p.waitForSelector('[data-act="saveScan"]');
-await p.selectOption('[data-act="setScanTarget"]', "mince");
+await pick(p, '[data-act="pickScanTarget"]', "mince");
 await p.waitForTimeout(250);
 const priceBox = await p.$eval('[data-act="setScanPrice"]', (e) => e.value);
 ok(priceBox === "3", `the sheet shows the price it has (${priceBox})`);

@@ -59,6 +59,7 @@ What someone actually does, and where it snags. Numbers are screen-heights on a
 | B6 | List total | The budget bar compares *what is left to buy* with the weekly budget. Fine when the list covers the week, misleading once it covers only the days remaining (see decisions). |
 | B8 | `lib/store.js` `storeNames` | Still read the old `sources` field, so it returned `[]` for every list. The shop suggestions on the Items tab and the scan sheet were empty, and a typed shop name could never fold onto the spelling already in your data, which the README promises. Found while building the add sheet, which needs the list. |
 | B9 | `manifest.webmanifest` | The description still says "Test build: one ingredient, several shops. Separate data from the live app." It is what an install prompt shows. |
+| B10 | `patchMealItem` | Switching a meal line between portions and grams, or typing grams, changed the meal without stamping `updatedAt`, so a merge could keep the other phone's older copy. Fixed in D with the shared line editor. |
 | B7 | Native `prompt()` ×4 and `confirm()` ×6 | A new shop name, "what are you eating", a meal name, and every destructive confirm. Native dialogs break the app's look, show the page URL in some browsers and are suppressed after repeats in Safari. |
 
 ### Redundancy and dead code
@@ -236,7 +237,9 @@ last. [VISION.md](VISION.md) is the destination; this is the route.
 
 1. One **item-line editor** for meals and days, and one fuzzy **item picker**
    replacing the native `<select>` in meal lines, day lines, receipt targets and
-   scan targets.
+   scan targets. Choosing among things you own goes through it; the short fixed
+   lists (offer kind, pack unit) stay native, since four known options gain
+   nothing from a search.
 2. Items: price, stock and shop up front, the rest folded; the thin **+** goes.
 3. Settings in three groups: Sync, Appearance, About.
 4. One word per level (*item*, *product*, *pack*, *week*, *shop*), 44px targets,
@@ -279,5 +282,5 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
 | A. Foundations | Built: dialogs, undo toasts, spacing utilities, B9, unused parameters |
 | B. The week | Built: one week plus the leftovers Saturday, Move on, Both/Split day sheet, Food folded into Plan, four tabs |
 | C. The list and the shop | Built: pinned total and budget, Go shopping with the trolley, Bought, scan in the add sheet, optional price |
-| D. Editing and polish | Not started |
+| D. Editing and polish | In progress. Built: one item picker (items, meals, products, receipt and scan targets, Move) and one line editor for meals and days, B10. Still to do: Items tab, Settings groups, words and 44px targets, inline-style sweep, README |
 | Back button blank page | Guard should prevent it; needs confirming on the phone |

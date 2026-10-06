@@ -1,7 +1,7 @@
 /* The real thing: two browsers, one fake shared file, driven through the app's
    own buttons. The unit test proves the merge rules; this proves the app
    actually stamps what it changes and sends it. */
-import { browser, BASE, SHOTS, pinClock, answer } from "./browser.mjs";
+import { browser, BASE, SHOTS, pinClock, answer, pick } from "./browser.mjs";
 
 const fail = [];
 const ok = (c, m) => { console.log((c ? "PASS  " : "FAIL  ") + m); if (!c) fail.push(m); };
@@ -136,18 +136,15 @@ await lee.p.fill('[data-act="setMealName"]', "Bolognese, the good one");
 await lee.p.evaluate(() => document.querySelector('[data-act="setMealName"]').blur());
 await lee.p.waitForTimeout(400);
 // add an ingredient to it
-await lee.p.click('[data-act="addMealIng"]');
+// Milk, since Beans is thrown out below and would take the new line with it
+await pick(lee.p, '[data-act="addMealIng"]', "milk");
 await lee.p.waitForTimeout(400);
 // plan a day: tap the day open, then pick a dinner in the popout
 await lee.p.click('[data-act="tab"][data-tab="plan"]');
 await lee.p.waitForTimeout(300);
 await lee.p.click('[data-act="openDay"][data-idx="0"]');
 await lee.p.waitForTimeout(300);
-await lee.p.evaluate(() => {
-  const sel = document.querySelector('[data-act="setDaySlotBoth"][data-id="0"][data-key="dinner"]');
-  sel.value = "bol";
-  sel.dispatchEvent(new Event("change", { bubbles: true }));
-});
+await pick(lee.p, '[data-act="pickDaySlotBoth"][data-id="0"][data-key="dinner"]', "bol");
 await lee.p.waitForTimeout(400);
 await lee.p.click('[data-act="closeSheet"]');
 await lee.p.waitForTimeout(200);

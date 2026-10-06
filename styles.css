@@ -278,6 +278,22 @@ a:hover { color:var(--ink); }
 .pickrow .shop { display:block; font-size:16px; font-weight:500; margin-bottom:2px; }
 .pickrow .detail { display:block; font-size:13px; font-weight:400; color:var(--ink-2); }
 .pickrow:active { background:var(--surface-3); }
+.pickrow.on { border-color:var(--accent); }
+
+/* The field that opens the picker, where a select used to be. */
+.pickbtn {
+  display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0; min-height:44px;
+  text-align:left; cursor:pointer; font:inherit;
+}
+.pickbtn span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pickbtn i { color:var(--ink-2); }
+
+/* A fixed height, so the sheet does not jump about as the search narrows what
+   is in it, with the search kept still and only the rows scrolling. */
+.pickscrim { z-index:65; }
+.picker { display:flex; flex-direction:column; height:80vh; max-height:640px; }
+.picker.short { height:auto; }
+.picker .pickrows { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
 
 .card.editing { box-shadow:0 0 0 1px var(--accent); }
 
@@ -298,10 +314,6 @@ a:hover { color:var(--ink); }
 .subcard:not(.shut) > .prodhead { border-bottom:1px solid var(--divider); margin-bottom:8px; }
 
 .prodacts { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-.prodacts .move {
-  width:auto; flex:1 1 130px; min-width:0; padding:0 11px; min-height:36px;
-  border-radius:var(--r-m); background:var(--surface-2); border-color:var(--outline);
-}
 
 /* ------------------------------- folds --------------------------------- */
 .fold {
@@ -400,6 +412,7 @@ button.head { text-align:left; display:flex; align-items:center; gap:8px; }
 .fb.has-pin .toast { bottom:calc(var(--tabs) + 100px + env(safe-area-inset-bottom)); }
 
 /* Spacing is set here, in steps, rather than typed afresh into each template. */
+.ta-r { text-align:right; } .noshrink { flex:0 0 auto; }
 .mt-4 { margin-top:4px; } .mt-8 { margin-top:8px; } .mt-12 { margin-top:12px; } .mt-16 { margin-top:16px; }
 .ml-6 { margin-left:6px; } .fw4 { font-weight:400; } .fw5 { font-weight:500; }
 .mb-4 { margin-bottom:4px; } .mb-8 { margin-bottom:8px; } .mb-12 { margin-bottom:12px; } .mb-16 { margin-bottom:16px; }

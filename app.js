@@ -21,7 +21,7 @@ import {
   NUTRIENTS, PER100, emptyNutrition, addNutrition, hasNutrition, gramsPerPortion,
   labelToPer100, labelSizing,
   portionsPer, productNutrition, itemPortions, itemProduct, itemIsGrams,
-  neededPortions, dayOverride, planItems, dayExtras,
+  neededPortions, dayOverride, planItems, dayExtras, fuzzyScore,
 } from "./lib/calc.js";
 import { startScan, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
@@ -280,6 +280,110 @@ function closeDialog(answer) {
 const dialogNo = () => closeDialog(state.dialog && state.dialog.input ? null : false);
 const dialogYes = () => closeDialog(state.dialog && state.dialog.input ? state.dialog.input.value : true);
 
+/* Choosing from a list is one control everywhere: a search box over the rows and
+   a tap on the one wanted, in a layer above whatever is open. It resolves to the
+   id picked, "" for the row that means none or any, or null if it was dismissed,
+   so an action reads straight down like a question does. A short list skips the
+   search. No native <select> is left to scroll through a hundred items. */
+const PICK_SEARCH_FROM = 8;
+
+function openPicker(spec) {
+  return new Promise((resolve) => {
+    state.picker = { query: "", ...spec, resolve };
+    draw();
+  });
+}
+
+function closePicker(answer) {
+  const p = state.picker;
+  if (!p) return;
+  state.picker = null;
+  draw();
+  p.resolve(answer);
+}
+
+// lead rows are the ways out that are not one of your items, such as "ignore" or "something new"
+const pickItem = ({ current = "", title = "Choose an item", lead = [], exclude = "" } = {}) =>
+  openPicker({ kind: "item", title, current, lead, exclude });
+const pickMeal = ({ current = "", title = "Choose a meal" } = {}) =>
+  openPicker({ kind: "meal", title, current, none: "Nothing" });
+// options are { id, name, detail } and the first may be the "any" row, whose id is ""
+const pickOne = ({ options, current = "", title }) => openPicker({ kind: "list", title, current, options });
+
+function pickerRows(p) {
+  const q = (p.query || "").trim();
+  const ranked = (list, text) =>
+    q
+      ? list
+          .map((x) => ({ x, score: fuzzyScore(q, text(x)) }))
+          .filter((r) => r.score > 0.12)
+          .sort((a, b) => b.score - a.score)
+          .map((r) => r.x)
+      : list;
+
+  if (p.kind === "item") {
+    const mine = (q ? searchItems(q, state.db.ingredients) : ingredientsAZ()).filter((ing) => ing.id !== p.exclude);
+    return (p.lead || []).concat(
+      mine.map((ing) => {
+        const c = chooseProduct(ing);
+        return {
+          id: ing.id,
+          name: ing.name,
+          detail: c ? `${c.store || "No shop yet"} · £${money(c.pricePerPack)} a pack` : "Nothing to buy yet",
+        };
+      })
+    );
+  }
+  if (p.kind === "meal") {
+    const meals = state.db.meals.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const byId = Object.fromEntries(state.db.ingredients.map((i) => [i.id, i]));
+    return [{ id: "", name: p.none, detail: "" }].concat(
+      ranked(meals, (m) => m.name).map((m) => ({
+        id: m.id,
+        name: m.name,
+        detail: `£${money(mealCost(m, byId))} a serving`,
+      }))
+    );
+  }
+  return ranked(p.options, (o) => o.name);
+}
+
+// the part that follows the typing, redrawn alone so the keyboard stays up
+function pickerLive(p) {
+  const rows = pickerRows(p);
+  if (!rows.length) return `<p class="muted">Nothing matches &ldquo;${esc((p.query || "").trim())}&rdquo;.</p>`;
+  return rows
+    .map(
+      (r) => `<button class="pickrow subcard${r.id === p.current ? " on" : ""}" data-act="pickChoose"
+        data-value="${esc(r.id)}"><span class="shop">${esc(r.name)}</span>${
+        r.detail ? `<span class="detail">${esc(r.detail)}</span>` : ""
+      }</button>`
+    )
+    .join("");
+}
+
+function viewPicker() {
+  const p = state.picker;
+  if (!p) return "";
+  const searchable = p.kind !== "list" || p.options.length >= PICK_SEARCH_FROM;
+  return `<div class="scrim pickscrim" data-pickdismiss="1"><div class="sheet picker${searchable ? "" : " short"}" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="row mb-12"><h2 id="picker-title" class="grow">${esc(p.title)}</h2>
+      <button class="btn small ghost" data-act="pickCancel">Cancel</button></div>
+    ${
+      searchable
+        ? `<div class="search"><span class="mag">&#9906;</span>
+            <input class="inp" type="search" value="${esc(p.query)}" placeholder="Search" data-act="setPickerQuery"
+              data-field="name" autocomplete="off" aria-label="Search"></div>`
+        : ""
+    }
+    <div class="pickrows" id="picker-live">${pickerLive(p)}</div>
+  </div></div>`;
+}
+
+// a field that opens the picker, in the place a select used to be
+const pickBtn = (text, attrs, label = "") =>
+  `<button class="inp pickbtn" ${attrs}${label ? ` aria-label="${esc(label)}"` : ""}><span>${esc(text)}</span><i class="ph ph-caret-down"></i></button>`;
+
 /* The undo offered after something routine. The closure puts things back the
    way they were, and the toast goes by itself so it never piles up. */
 let toastTimer = null;
@@ -452,14 +556,33 @@ function renameProduct(ing, product, changes) {
    it points at, since deciding what to change usually means knowing how big a
    portion of that product is. */
 function patchMealItem(mealId, index, changes) {
-  commit((db) => {
-    const meal = db.meals.find((m) => m.id === mealId);
-    const it = meal && meal.items[index];
-    if (!it) return;
-    const ing = db.ingredients.find((i) => i.id === it.ingredientId) || null;
-    Object.assign(it, changes(it, ing) || {});
-  });
+  commit((db) =>
+    editMeal(db, mealId, (meal) => {
+      const it = meal.items[index];
+      if (!it) return;
+      const ing = db.ingredients.find((i) => i.id === it.ingredientId) || null;
+      Object.assign(it, changes(it, ing) || {});
+    })
+  );
 }
+
+/* Switching a line between portions and grams seeds the empty side from the
+   other, so the amount does not vanish. */
+function switchBy(it, ing, to) {
+  const by = to === "grams" ? "grams" : "portions";
+  const changes = { by };
+  const per = ing ? gramsPerPortion(itemProduct(ing, it)) : 0;
+  if (by === "grams" && !(Number(it.grams) > 0) && per > 0)
+    changes.grams = Math.round((Number(it.portions) || 0) * per);
+  if (by === "portions" && !(Number(it.portions) > 0) && per > 0)
+    changes.portions = Math.round(((Number(it.grams) || 0) / per) * 100) / 100;
+  return changes;
+}
+
+const mealItemAt = (el) => {
+  const meal = state.db.meals.find((m) => m.id === el.dataset.id);
+  return (meal && meal.items[Number(el.dataset.i)]) || null;
+};
 
 /* Edit one product. The ingredient's own stamp moves too, because changing
    what the Aldi one costs is a change to the ingredient as far as sharing is
@@ -547,6 +670,7 @@ function render() {
     viewTabs(),
     viewSheet(),
     viewToast(),
+    viewPicker(),
     viewDialog(),
   ].join("");
 
@@ -585,6 +709,14 @@ function render() {
     dialogBox.select();
   }
 
+  // the picker's search takes the cursor once, on opening
+  const pickBox = state.picker ? root.querySelector(".picker input") : null;
+  const pickFresh = !!pickBox && !state.picker.focused;
+  if (pickFresh) {
+    state.picker.focused = true;
+    pickBox.focus();
+  }
+
   if (state.reveal) {
     const card = root.querySelector(`[data-scroll="${state.reveal}"]`);
     if (card) {
@@ -599,7 +731,7 @@ function render() {
     return;
   }
 
-  if (focusKey && !dialogFresh) {
+  if (focusKey && !dialogFresh && !pickFresh) {
     const again = [...root.querySelectorAll("[data-act]")].find((el) => fieldKey(el) === focusKey);
     if (again) {
       /* preventScroll, or restoring focus drags the page to wherever the
@@ -1063,6 +1195,17 @@ function tidyExtras(day) {
 /* Change one item in a day cell (meal edit or extra), forking the base meal
    into a loose override first if it has not been touched yet. Mirrors how a
    meal's own items are patched, so a swap on the day behaves the same. */
+const slotTitle = (el) => (SLOTS.find((x) => x.key === el.dataset.key) || { label: "Meal" }).label;
+
+// the line a day control points at, as the sheet drew it
+const dayItemAt = (el) => {
+  const day = state.db.plan[Number(el.dataset.id)];
+  if (!day) return null;
+  const who = Number(el.dataset.which) || 0;
+  const items = el.dataset.key === "extra" ? dayExtras(day, who) : planItems(day, el.dataset.key, who, mealsById());
+  return items[Number(el.dataset.i)] || null;
+};
+
 function editDayItem(el, mutate) {
   const idx = Number(el.dataset.id);
   const slot = el.dataset.key;
@@ -1084,84 +1227,78 @@ function editDayItem(el, mutate) {
 const dloc = (idx, slot, who, i) =>
   `data-id="${idx}" data-key="${slot}" data-which="${who}"${i === undefined ? "" : ` data-i="${i}"`}`;
 
-const mealPickerOptions = (selected) =>
-  [`<option value="">— none —</option>`]
-    .concat(
-      state.db.meals
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map(
-          (m) => `<option value="${m.id}"${m.id === selected ? " selected" : ""}>${esc(m.name)}</option>`
-        )
-    )
-    .join("");
-
-const ingPickerOptions = (selected) =>
-  ingredientsAZ()
-    .map((i) => `<option value="${i.id}"${i.id === selected ? " selected" : ""}>${esc(i.name)}</option>`)
-    .join("");
-
-const productPickerOptions = (ing, selected) => {
+/* The products an item can be bought as, for the picker. The first row is the
+   usual answer: any of it will do and the list buys the cheapest. */
+function productChoices(ing, anyText = "Any") {
   const cheapest = chooseProduct(ing);
   return [
-    `<option value=""${selected ? "" : " selected"}>Any${
-      cheapest ? ` (now ${esc(cheapest.name || cheapest.store || "cheapest")})` : ""
-    }</option>`,
-  ]
-    .concat(
-      productsOf(ing).map(
-        (p) =>
-          `<option value="${esc(p.id)}"${p.id === selected ? " selected" : ""}>${esc(
-            p.name || "Unnamed"
-          )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
-      )
-    )
-    .join("");
+    {
+      id: "",
+      name: cheapest ? `${anyText} (now ${cheapest.name || cheapest.store || "cheapest"})` : anyText,
+      detail: "The list buys the cheapest",
+    },
+  ].concat(
+    productsOf(ing).map((p) => ({
+      id: p.id,
+      name: p.name || "Unnamed",
+      detail: `${p.store ? `at ${p.store} · ` : ""}£${money(p.pricePerPack)} a pack`,
+    }))
+  );
+}
+
+/* One line of a meal, or of what a day changes: which item, how much, which
+   product. The meal editor and the day sheet are this one editor pointed at
+   different places, so a fix to one is a fix to both. */
+const MEAL_LINE = {
+  ing: "pickMealIng", product: "pickMealProduct", by: "setMealBy",
+  grams: "setMealGrams", portions: "setMealPortions", del: "delMealIng",
+};
+const DAY_LINE = {
+  ing: "pickDayIng", product: "pickDayProduct", by: "setDayBy",
+  grams: "setDayGrams", portions: "setDayPortions", del: "delDayIng",
 };
 
-/* One editable line, used for both a meal's items and the extras. slot is the
-   real slot key, or "extra" for the loose day list. Editing any of these forks
-   the base meal into a loose override first (see dayItemsMutable). */
-function dayItemRow(idx, slot, who, it, i, byId, both = false) {
-  const ing = byId[it.ingredientId];
+function itemLine(it, ing, at, acts) {
   const grams = itemIsGrams(it);
   const product = ing ? itemProduct(ing, it) : null;
   const per = gramsPerPortion(product);
   const unit = (product && product.packUnit) === "ml" ? "ml" : "g";
   const named = it.productId && ing ? productById(ing, it.productId) : null;
-  const at = dloc(idx, slot, who, i) + (both ? ' data-both="1"' : "");
   const sum = grams
     ? per > 0
       ? `${trim2(Number(it.grams) || 0)}${unit} is ${trim2(itemPortions(ing, it))} portions of ${trim2(per)}${unit}`
-      : `Set a pack size and portion so the list can turn ${unit} into packs`
+      : `Set a pack size and portion on ${esc((product && product.name) || (ing && ing.name) || "this")} so the list can turn ${unit} into packs`
     : `${trim2(Number(it.portions) || 0)} portion${
         Math.abs((Number(it.portions) || 0) - 1) < 0.001 ? "" : "s"
       }${per > 0 ? ` of ${trim2(per)}${unit}` : ""}`;
+  const cheapest = ing ? chooseProduct(ing) : null;
+  const which = named
+    ? `${named.name || "Unnamed"}${named.store ? ` at ${named.store}` : ""}`
+    : `Any${cheapest ? ` (now ${cheapest.name || cheapest.store || "cheapest"})` : ""}`;
 
-  return `<div class="subcard" style="margin-bottom:6px">
-    <div class="row" style="margin-bottom:6px">
-      <select class="inp grow" data-act="setDayIng" ${at}>${ingPickerOptions(it.ingredientId)}</select>
-      <button class="btn small danger" data-act="delDayIng" ${at} aria-label="Remove">×</button>
+  return `<div class="subcard">
+    <div class="row mb-8">
+      ${pickBtn(ing ? ing.name : "Choose an item", `data-act="${acts.ing}" ${at}`, "Change the item")}
+      <button class="btn small danger" data-act="${acts.del}" ${at} aria-label="Remove">&times;</button>
     </div>
-    <div class="row" style="margin-bottom:6px">
-      <div class="seg" style="flex:0 0 auto">
-        <button data-act="setDayBy" ${at} data-by="portions" data-on="${grams ? 0 : 1}">Portions</button>
-        <button data-act="setDayBy" ${at} data-by="grams" data-on="${grams ? 1 : 0}">${unit}</button>
+    <div class="row mb-8">
+      <div class="seg noshrink">
+        <button data-act="${acts.by}" ${at} data-by="portions" data-on="${grams ? 0 : 1}">Portions</button>
+        <button data-act="${acts.by}" ${at} data-by="grams" data-on="${grams ? 1 : 0}">${unit}</button>
       </div>
       ${
         grams
-          ? `<input class="inp mono grow" style="text-align:right" type="number" step="1" min="0"
-              value="${trim2(Number(it.grams) || 0)}" data-act="setDayGrams" ${at} aria-label="${unit}">`
-          : `<input class="inp mono grow" style="text-align:right" type="number" step="0.05" min="0"
-              value="${it.portions}" data-act="setDayPortions" ${at} aria-label="Portions each">`
+          ? `<input class="inp mono grow ta-r" type="number" step="1" min="0"
+              value="${trim2(Number(it.grams) || 0)}" data-act="${acts.grams}" ${at}
+              aria-label="${unit} of ${esc((ing && ing.name) || "it")}">`
+          : `<input class="inp mono grow ta-r" type="number" step="0.05" min="0"
+              value="${it.portions}" data-act="${acts.portions}" ${at} aria-label="Portions each">`
       }
     </div>
-    <select class="inp" data-act="setDayProduct" ${at}>${ing ? productPickerOptions(ing, it.productId) : ""}</select>
-    <p class="why" style="margin:4px 0 0">${sum}. ${
+    ${ing ? pickBtn(which, `data-act="${acts.product}" ${at}`, "Change the product") : ""}
+    <p class="why mt-4">${sum}. ${
     named
-      ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
-          ing.name
-        )} in.`
+      ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(ing.name)} in.`
       : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
   }</p>
   </div>`;
@@ -1178,7 +1315,7 @@ function cellItems(idx, slot, who, byId, byMeal, both) {
   const at = dloc(idx, slot.key, who) + (both ? ' data-both="1"' : "");
 
   const rows =
-    items.map((it, i) => dayItemRow(idx, slot.key, who, it, i, byId, both)).join("") ||
+    items.map((it, i) => itemLine(it, byId[it.ingredientId], dloc(idx, slot.key, who, i) + (both ? ' data-both="1"' : ""), DAY_LINE)).join("") ||
     '<p class="muted mb-8">No items: this meal is empty for today.</p>';
 
   const actions = ov
@@ -1230,8 +1367,12 @@ function sheetDay(s) {
     const shared = sameCell(day, slot.key) && !split[slot.key];
     const present = [0, 1].some((w) => pair[w] || dayOverride(day, slot.key, w));
     const edited = [0, 1].some((w) => dayOverride(day, slot.key, w));
-    const choose = (who, both) => `<select class="inp grow" data-act="${both ? "setDaySlotBoth" : "setDaySlot"}"
-        ${dloc(idx, slot.key, who)}>${mealPickerOptions(pair[who])}</select>`;
+    const choose = (who, both) =>
+      pickBtn(
+        pair[who] && byMeal[pair[who]] ? byMeal[pair[who]].name : "Choose a meal",
+        `data-act="${both ? "pickDaySlotBoth" : "pickDaySlot"}" ${dloc(idx, slot.key, who)}`,
+        `${slot.label} meal`
+      );
 
     const pickers = shared
       ? choose(0, true)
@@ -1283,7 +1424,7 @@ function sheetDay(s) {
             [0, 1]
               .map(
                 (w) => `<div class="eyebrow mb-4 mt-8">${esc(people[w])}</div>
-                  ${dayExtras(day, w).map((it, i) => dayItemRow(idx, "extra", w, it, i, byId)).join("")}
+                  ${dayExtras(day, w).map((it, i) => itemLine(it, byId[it.ingredientId], dloc(idx, "extra", w, i), DAY_LINE)).join("")}
                   <button class="btn small tonal wide" data-act="addExtra" data-id="${idx}" data-which="${w}"${
                   state.db.ingredients.length ? "" : " disabled"
                 }>Add an extra</button>`
@@ -1575,93 +1716,8 @@ function viewMeals() {
         </div></section>`;
       }
 
-      const picker = (selected) =>
-        ingredientsAZ()
-          .map((i) => `<option value="${i.id}"${i.id === selected ? " selected" : ""}>${esc(i.name)}</option>`)
-          .join("");
-
-      /* Which one, under that ingredient. Blank is the useful default: the
-         meal wants cheddar, and whichever cheddar is cheapest will do. Naming
-         one is for when the recipe really does mean that jar. */
-      const which = (ing, selected) => {
-        const options = productsOf(ing);
-        const cheapest = chooseProduct(ing);
-        return [
-          `<option value=""${selected ? "" : " selected"}>Any${
-            cheapest ? ` (now ${cheapest.name || cheapest.store || "cheapest"})` : ""
-          }</option>`,
-        ]
-          .concat(
-            options.map(
-              (p) =>
-                `<option value="${p.id}"${p.id === selected ? " selected" : ""}>${esc(
-                  p.name || "Unnamed"
-                )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
-            )
-          )
-          .join("");
-      };
-
       const rows = meal.items
-        .map((it, i) => {
-          const ing = byId[it.ingredientId];
-          const named = it.productId && ing ? productById(ing, it.productId) : null;
-          const grams = itemIsGrams(it);
-          const product = ing ? itemProduct(ing, it) : null;
-          const per = gramsPerPortion(product);
-          const unit = (product && product.packUnit) === "ml" ? "ml" : "g";
-
-          /* Written in grams, the line still has to become portions for the
-             shopping list, and that needs a portion size on the product. Say
-             so here rather than letting the line quietly count as nothing. */
-          const sum = grams
-            ? per > 0
-              ? `${trim2(Number(it.grams) || 0)}${unit} is ${trim2(
-                  itemPortions(ing, it)
-                )} portions of ${trim2(per)}${unit}`
-              : `Set a pack size and portion on ${esc(
-                  (product && product.name) || (ing && ing.name) || "this"
-                )} so the list can turn ${unit} into packs`
-            : `${trim2(Number(it.portions) || 0)} portion${
-                Math.abs((Number(it.portions) || 0) - 1) < 0.001 ? "" : "s"
-              }${per > 0 ? ` of ${trim2(per)}${unit}` : ""}`;
-
-          return `<div class="subcard">
-        <div class="row" style="margin-bottom:6px">
-          <select class="inp grow" data-act="setMealIng" data-id="${meal.id}" data-i="${i}">${picker(
-            it.ingredientId
-          )}</select>
-          <button class="btn small danger" data-act="delMealIng" data-id="${meal.id}" data-i="${i}" aria-label="Remove">×</button>
-        </div>
-        <div class="row" style="margin-bottom:6px">
-          <div class="seg" style="flex:0 0 auto">
-            <button data-act="setMealBy" data-id="${meal.id}" data-i="${i}" data-by="portions"
-              data-on="${grams ? 0 : 1}">Portions</button>
-            <button data-act="setMealBy" data-id="${meal.id}" data-i="${i}" data-by="grams"
-              data-on="${grams ? 1 : 0}">${unit}</button>
-          </div>
-          ${
-            grams
-              ? `<input class="inp mono grow" style="text-align:right" type="number" step="1" min="0"
-                  value="${trim2(Number(it.grams) || 0)}" data-act="setMealGrams" data-id="${meal.id}"
-                  data-i="${i}" aria-label="${unit} of ${esc((ing && ing.name) || "it")} in this meal">`
-              : `<input class="inp mono grow" style="text-align:right" type="number" step="0.05" min="0"
-                  value="${it.portions}" data-act="setMealPortions" data-id="${meal.id}"
-                  data-i="${i}" aria-label="Portions each">`
-          }
-        </div>
-        <select class="inp" data-act="setMealProduct" data-id="${meal.id}" data-i="${i}">${
-            ing ? which(ing, it.productId) : ""
-          }</select>
-        <p class="why" style="margin:4px 0 0">${sum}. ${
-            named
-              ? `Only ${esc(named.name || "this one")} will do, so it goes on the list even with other ${esc(
-                  ing.name
-                )} in.`
-              : `Any ${esc((ing && ing.name) || "of it")} in the house counts, and the list buys the cheapest.`
-          }</p>
-      </div>`;
-        })
+        .map((it, i) => itemLine(it, byId[it.ingredientId], `data-id="${meal.id}" data-i="${i}"`, MEAL_LINE))
         .join("");
 
       return `<section class="card" data-scroll="${meal.id}">
@@ -1760,30 +1816,16 @@ function offerEditor(subject, acts) {
   </div>`;
 }
 
-/* Filing a product under a different ingredient. The ingredient is the
-   category a meal asks for, so something recorded as its own kind of thing
-   when it is really one of the milks gets corrected here rather than deleted
-   and retyped. Hidden when there is nowhere to move it to. */
+/* Filing a product under a different item. The item is the category a meal
+   asks for, so something recorded as its own kind of thing when it is really
+   one of the milks gets corrected here rather than deleted and retyped. Hidden
+   when there is nowhere to move it to. */
 function moveControl(ing, product) {
-  const others = state.db.ingredients.filter((i) => i.id !== ing.id);
-  if (!others.length) return "";
+  if (state.db.ingredients.length < 2) return "";
   const last = productsOf(ing).length === 1;
-
-  /* No font-size here on purpose: anything under 16px makes Safari zoom the
-     page in the moment it is tapped. The label stays short for the same
-     reason a select cannot be trusted with a long one, since the widest
-     option decides how much room it demands from the row. */
-  return `<select class="inp move" data-act="moveProduct" data-id="${ing.id}"
-      data-product="${esc(product.id)}"
-      title="${last ? `Moving this leaves ${esc(ing.name)} empty, so it goes too` : "File this one under a different ingredient"}"
-      aria-label="File ${esc(product.name || "this")} under a different ingredient">
-      <option value="" selected>Move to&hellip;</option>
-      ${others
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((i) => `<option value="${i.id}">${esc(i.name)}</option>`)
-        .join("")}
-    </select>`;
+  return `<button class="btn small tonal" data-act="pickMove" data-id="${ing.id}" data-product="${esc(product.id)}"
+      title="${last ? `Moving this leaves ${esc(ing.name)} empty, so it goes too` : "File this one under a different item"}"
+      aria-label="File ${esc(product.name || "this")} under a different item">Move to&hellip;</button>`;
 }
 
 /* A section of the product editor that can be folded away.
@@ -2578,34 +2620,17 @@ function sheetReceipt(s) {
 
     /* Which one of that kind, at this shop. Blank is not offered: a receipt
        line is always a specific thing you actually bought. */
-    const which = (r) => {
-      const ing = ingredient(r.targetId);
-      if (!ing) return "";
-      return [
-        `<option value="__new__"${r.productId === "__new__" ? " selected" : ""}>Something new</option>`,
-      ]
-        .concat(
-          productsOf(ing).map(
-            (p) =>
-              `<option value="${p.id}"${p.id === r.productId ? " selected" : ""}>${esc(
-                p.name || "Unnamed"
-              )}${p.store ? ` at ${esc(p.store)}` : ""}</option>`
-          )
-        )
-        .join("");
+    const targetText = (r) => {
+      if (r.targetId === "__new__") return "Add as a new item";
+      const ing = r.targetId ? ingredient(r.targetId) : null;
+      return ing ? `${ing.name} (now £${money((chooseProduct(ing) || {}).pricePerPack)})` : "Ignore this line";
     };
-
-    const picker = (sel) =>
-      [`<option value=""${sel ? "" : " selected"}>Ignore this line</option>`,
-       `<option value="__new__"${sel === "__new__" ? " selected" : ""}>+ Add as a new item</option>`]
-        .concat(
-          ingredientsAZ().map(
-            (i) => `<option value="${i.id}"${i.id === sel ? " selected" : ""}>${esc(i.name)} (now £${money(
-              (chooseProduct(i) || {}).pricePerPack
-            )})</option>`
-          )
-        )
-        .join("");
+    const productText = (r) => {
+      if (r.productId === "__new__") return "Something new";
+      const ing = ingredient(r.targetId);
+      const prod = ing ? productById(ing, r.productId) : null;
+      return prod ? `${prod.name || "Unnamed"}${prod.store ? ` at ${prod.store}` : ""}` : "Something new";
+    };
 
     /* The ingredients you already keep, offered to the new-item name box.
        Typing one of these files the new product under it instead of starting
@@ -2626,12 +2651,10 @@ function sheetReceipt(s) {
           <input class="inp mono" style="width:76px;text-align:right;padding:5px 7px" type="number" step="0.01"
             value="${r.price}" data-act="setRowPrice" data-i="${i}" aria-label="Unit price">
         </div>
-        <select class="inp" style="margin-top:5px" data-act="setRowTarget" data-i="${i}">${picker(r.targetId)}</select>
+        <div class="mt-4">${pickBtn(targetText(r), `data-act="pickRowTarget" data-i="${i}"`, "What this line is")}</div>
         ${
           r.targetId && r.targetId !== "__new__"
-            ? `<select class="inp" style="margin-top:5px" data-act="setRowProduct" data-i="${i}">${which(
-                r
-              )}</select>`
+            ? `<div class="mt-4">${pickBtn(productText(r), `data-act="pickRowProduct" data-i="${i}"`, "Which one")}</div>`
             : ""
         }
         ${
@@ -2778,26 +2801,13 @@ function sheetScanned(s) {
   const here = known && s.productId ? productById(known, s.productId) : null;
   const making = !known || s.productId === "__new__";
 
-  const kinds = [`<option value=""${s.targetId ? "" : " selected"}>A new ingredient</option>`]
-    .concat(
-      ingredientsAZ().map(
-        (i) => `<option value="${i.id}"${i.id === s.targetId ? " selected" : ""}>${esc(i.name)}</option>`
-      )
-    )
-    .join("");
-
-  const whichOnes = known
-    ? [`<option value="__new__"${s.productId === "__new__" ? " selected" : ""}>Something new</option>`]
-        .concat(
-          productsOf(known).map(
-            (p) =>
-              `<option value="${p.id}"${p.id === s.productId ? " selected" : ""}>${esc(
-                p.name || "Unnamed"
-              )}${p.store ? ` at ${esc(p.store)}` : ""} &middot; £${money(p.pricePerPack)}</option>`
-          )
-        )
-        .join("")
-    : "";
+  const productText = (p) =>
+    `${p.name || "Unnamed"}${p.store ? ` at ${p.store}` : ""} · £${money(p.pricePerPack)}`;
+  const whichText = !known
+    ? ""
+    : here
+    ? productText(here)
+    : "Something new";
 
   const was = here ? Number(here.pricePerPack) || 0 : 0;
   const delta =
@@ -2830,12 +2840,12 @@ function sheetScanned(s) {
       <input class="inp code" value="${esc(s.code)}" data-act="setScanCode"></label>
 
     <label class="field" style="margin-bottom:8px"><span class="eyebrow">This is a kind of</span>
-      <select class="inp" data-act="setScanTarget">${kinds}</select></label>
+      ${pickBtn(known ? known.name : "A new item", 'data-act="pickScanTarget"', "What kind of thing this is")}</label>
 
     ${
       known
         ? `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Which one</span>
-             <select class="inp" data-act="setScanProduct">${whichOnes}</select></label>`
+             ${pickBtn(whichText, 'data-act="pickScanProduct"', "Which one")}</label>`
         : `<label class="field" style="margin-bottom:8px"><span class="eyebrow">Call the ingredient</span>
              <input class="inp" value="${esc(s.name)}" placeholder="Cheddar" data-act="setScanName"></label>`
     }
@@ -4085,6 +4095,11 @@ async function pushNow() {
 const actions = {
   dialogYes,
   dialogNo,
+  pickChoose: (el) => closePicker(el.dataset.value),
+  pickCancel: () => closePicker(null),
+  setPickerQuery: (el) => {
+    if (state.picker) state.picker.query = el.value;
+  },
   setDialogValue: (el) => {
     if (state.dialog && state.dialog.input) state.dialog.input.value = el.value;
   },
@@ -4266,17 +4281,36 @@ const actions = {
     });
   },
 
-  setScanTarget: (el) => {
-    const hit = el.value ? ingredient(el.value) : null;
+  pickScanTarget: async () => {
+    const id = await pickItem({
+      title: "What kind of thing is it?",
+      current: state.sheet.targetId || "",
+      lead: [{ id: "", name: "A new item", detail: "Not one you keep yet" }],
+    });
+    if (id === null) return;
+    const hit = id ? ingredient(id) : null;
     // pull that shop's price and offer in, so you edit what it really has
     setSheet({
       ...scanState(state.sheet.code, hit, { chose: true, store: state.sheet.store }),
       bought: state.sheet.bought,
     });
   },
-  setScanProduct: (el) => {
+  pickScanProduct: async () => {
     const hit = state.sheet.targetId ? ingredient(state.sheet.targetId) : null;
-    if (el.value === "__new__") {
+    if (!hit) return;
+    const value = await pickOne({
+      title: `Which ${hit.name}?`,
+      current: state.sheet.productId,
+      options: [{ id: "__new__", name: "Something new", detail: "Another kind, bought as its own product" }].concat(
+        productsOf(hit).map((p) => ({
+          id: p.id,
+          name: p.name || "Unnamed",
+          detail: `${p.store ? `at ${p.store} · ` : ""}£${money(p.pricePerPack)} a pack`,
+        }))
+      ),
+    });
+    if (value === null) return;
+    if (value === "__new__") {
       /* Another kind of the same thing. Keep what has been typed and drop the
          price, since the price on screen belongs to a different product. */
       setSheet({ ...state.sheet, productId: "__new__", price: "", offer: null });
@@ -4284,7 +4318,7 @@ const actions = {
     }
     // an existing one: load its shop, price and pack size, so you edit what it has
     setSheet({
-      ...scanState(state.sheet.code, hit, { productId: el.value }),
+      ...scanState(state.sheet.code, hit, { productId: value }),
       name: state.sheet.name,
       bought: state.sheet.bought,
     });
@@ -4828,22 +4862,7 @@ const actions = {
     patchProduct(el.dataset.id, el.dataset.product, changes);
   },
 
-  setMealBy: (el) => {
-    const by = el.dataset.by === "grams" ? "grams" : "portions";
-    patchMealItem(el.dataset.id, Number(el.dataset.i), (it, ing) => {
-      const changes = { by };
-      // seed the empty side from the other, so the amount does not vanish
-      if (by === "grams" && !(Number(it.grams) > 0)) {
-        const per = gramsPerPortion(itemProduct(ing, it));
-        if (per > 0) changes.grams = Math.round((Number(it.portions) || 0) * per);
-      }
-      if (by === "portions" && !(Number(it.portions) > 0)) {
-        const per = gramsPerPortion(itemProduct(ing, it));
-        if (per > 0) changes.portions = Math.round(((Number(it.grams) || 0) / per) * 100) / 100;
-      }
-      return changes;
-    });
-  },
+  setMealBy: (el) => patchMealItem(el.dataset.id, Number(el.dataset.i), (it, ing) => switchBy(it, ing, el.dataset.by)),
 
   setMealGrams: (el) =>
     patchMealItem(el.dataset.id, Number(el.dataset.i), () => ({
@@ -4872,8 +4891,8 @@ const actions = {
     flash("ok", "Copied. Set the shop and its price on the new one.");
   },
 
-  moveProduct: (el) => {
-    const toId = el.value;
+  pickMove: async (el) => {
+    const toId = await pickItem({ title: "File it under", exclude: el.dataset.id });
     if (!toId) return;
     let done = null;
     forgetOpenProduct();
@@ -5063,32 +5082,38 @@ const actions = {
   },
 
   // one choice for both of you, which replaces any loose edit standing in for it
-  setDaySlotBoth: (el) =>
+  pickDaySlotBoth: async (el) => {
+    const day = state.db.plan[Number(el.dataset.id)];
+    const id = await pickMeal({ current: day ? slotPair(day, el.dataset.key)[0] || "" : "", title: slotTitle(el) });
+    if (id === null) return;
     commit((db) => {
-      const day = db.plan[Number(el.dataset.id)];
-      if (!day) return;
+      const d = db.plan[Number(el.dataset.id)];
+      if (!d) return;
       const slot = el.dataset.key;
-      day[slot] = [el.value || null, el.value || null];
-      clearOverride(day, slot, 0);
-      clearOverride(day, slot, 1);
+      d[slot] = [id || null, id || null];
+      clearOverride(d, slot, 0);
+      clearOverride(d, slot, 1);
       touchPlan(db);
-    }),
+    });
+  },
 
-  // the meal dropdown for one person's slot, when the two of you differ
-  // (setDaySlotBoth below is the usual one)
-  setDaySlot: (el) =>
+  // one person's meal, when the two of you differ
+  pickDaySlot: async (el) => {
+    const who = Number(el.dataset.which) || 0;
+    const day = state.db.plan[Number(el.dataset.id)];
+    const id = await pickMeal({ current: day ? slotPair(day, el.dataset.key)[who] || "" : "", title: slotTitle(el) });
+    if (id === null) return;
     commit((db) => {
-      const idx = Number(el.dataset.id);
-      const day = db.plan[idx];
-      if (!day) return;
+      const d = db.plan[Number(el.dataset.id)];
+      if (!d) return;
       const slot = el.dataset.key;
-      const who = Number(el.dataset.which) || 0;
-      const forSlot = Array.isArray(day[slot]) ? [...day[slot]] : [null, null];
-      forSlot[who] = el.value || null;
-      day[slot] = forSlot;
-      clearOverride(day, slot, who);
+      const forSlot = Array.isArray(d[slot]) ? [...d[slot]] : [null, null];
+      forSlot[who] = id || null;
+      d[slot] = forSlot;
+      clearOverride(d, slot, who);
       touchPlan(db);
-    }),
+    });
+  },
 
   // give the other person the same slot, loose edit and all
   copyDayCell: (el) =>
@@ -5113,16 +5138,17 @@ const actions = {
       touchPlan(db);
     }),
 
-  addDayIng: (el) =>
+  addDayIng: async (el) => {
+    const id = await pickItem({ title: "Add an item" });
+    if (!id) return;
     commit((db) => {
-      if (!db.ingredients.length) return;
       for (const who of bothOf(el)) {
         const items = dayItemsMutable(db, Number(el.dataset.id), el.dataset.key, who);
-        if (!items) continue;
-        items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
+        if (items) items.push({ ingredientId: id, productId: "", portions: 1, by: "portions", grams: 0 });
       }
       touchPlan(db);
-    }),
+    });
+  },
   /* ---- writing a meal in, swapping two days ---- */
 
   /* A meal that was never set up. It goes on the day as plain words: it costs
@@ -5206,14 +5232,16 @@ const actions = {
     draw();
   },
 
-  addExtra: (el) =>
+  addExtra: async (el) => {
+    const id = await pickItem({ title: "Add an extra" });
+    if (!id) return;
     commit((db) => {
-      if (!db.ingredients.length) return;
       const items = dayItemsMutable(db, Number(el.dataset.id), "extra", Number(el.dataset.which) || 0);
       if (!items) return;
-      items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1, by: "portions", grams: 0 });
+      items.push({ ingredientId: id, productId: "", portions: 1, by: "portions", grams: 0 });
       touchPlan(db);
-    }),
+    });
+  },
   delDayIng: (el) =>
     commit((db) => {
       const idx = Number(el.dataset.id);
@@ -5225,23 +5253,22 @@ const actions = {
       if (slot === "extra") tidyExtras(db.plan[idx]);
       touchPlan(db);
     }),
-  setDayIng: (el) => editDayItem(el, () => ({ ingredientId: el.value, productId: "" })),
-  setDayProduct: (el) => editDayItem(el, () => ({ productId: el.value || "" })),
+  pickDayIng: async (el) => {
+    const it = dayItemAt(el);
+    const id = await pickItem({ current: it ? it.ingredientId : "" });
+    // a product of the old item means nothing under the new one
+    if (id) editDayItem(el, () => ({ ingredientId: id, productId: "" }));
+  },
+  pickDayProduct: async (el) => {
+    const it = dayItemAt(el);
+    const ing = it ? ingredient(it.ingredientId) : null;
+    if (!ing) return;
+    const id = await pickOne({ title: `Which ${ing.name}?`, options: productChoices(ing), current: it.productId || "" });
+    if (id !== null) editDayItem(el, () => ({ productId: id }));
+  },
   setDayPortions: (el) => editDayItem(el, () => ({ portions: Number(el.value) || 0 })),
   setDayGrams: (el) => editDayItem(el, () => ({ grams: Math.max(0, Number(el.value) || 0) })),
-  setDayBy: (el) => {
-    const by = el.dataset.by === "grams" ? "grams" : "portions";
-    editDayItem(el, (it, ing) => {
-      const changes = { by };
-      // seed the empty side from the other, so the amount does not vanish
-      const per = gramsPerPortion(itemProduct(ing, it));
-      if (by === "grams" && !(Number(it.grams) > 0) && per > 0)
-        changes.grams = Math.round((Number(it.portions) || 0) * per);
-      if (by === "portions" && !(Number(it.portions) > 0) && per > 0)
-        changes.portions = Math.round(((Number(it.grams) || 0) / per) * 100) / 100;
-      return changes;
-    });
-  },
+  setDayBy: (el) => editDayItem(el, (it, ing) => switchBy(it, ing, el.dataset.by)),
 
   // drop the loose edit: back to the base meal, or empty if it never had one
   revertCell: (el) =>
@@ -5444,32 +5471,26 @@ const actions = {
   },
   setMealName: (el) =>
     commit((db) => editMeal(db, el.dataset.id, (m) => { m.name = el.value; })),
-  addMealIng: (el) =>
-    commit((db) =>
-      // blank product: any of that ingredient will do, which is the usual case
-      editMeal(db, el.dataset.id, (m) =>
-        m.items.push({ ingredientId: db.ingredients[0].id, productId: "", portions: 1 })
-      )
-    ),
+  addMealIng: async (el) => {
+    const id = await pickItem({ title: "Add an item" });
+    // blank product: any of that item will do, which is the usual case
+    if (id) commit((db) => editMeal(db, el.dataset.id, (m) => m.items.push({ ingredientId: id, productId: "", portions: 1 })));
+  },
   delMealIng: (el) =>
     commit((db) => editMeal(db, el.dataset.id, (m) => m.items.splice(Number(el.dataset.i), 1))),
-  setMealIng: (el) =>
-    commit((db) =>
-      editMeal(db, el.dataset.id, (m) => {
-        // a product of the old ingredient means nothing under the new one
-        m.items[Number(el.dataset.i)] = {
-          ...m.items[Number(el.dataset.i)],
-          ingredientId: el.value,
-          productId: "",
-        };
-      })
-    ),
-  setMealProduct: (el) =>
-    commit((db) =>
-      editMeal(db, el.dataset.id, (m) => {
-        m.items[Number(el.dataset.i)].productId = el.value || "";
-      })
-    ),
+  pickMealIng: async (el) => {
+    const it = mealItemAt(el);
+    const id = await pickItem({ current: it ? it.ingredientId : "" });
+    // a product of the old item means nothing under the new one
+    if (id) patchMealItem(el.dataset.id, Number(el.dataset.i), () => ({ ingredientId: id, productId: "" }));
+  },
+  pickMealProduct: async (el) => {
+    const it = mealItemAt(el);
+    const ing = it ? ingredient(it.ingredientId) : null;
+    if (!ing) return;
+    const id = await pickOne({ title: `Which ${ing.name}?`, options: productChoices(ing), current: it.productId || "" });
+    if (id !== null) patchMealItem(el.dataset.id, Number(el.dataset.i), () => ({ productId: id }));
+  },
   setMealPortions: (el) =>
     commit((db) =>
       editMeal(db, el.dataset.id, (m) => {
@@ -5502,21 +5523,30 @@ const actions = {
     rows[Number(el.dataset.i)] = { ...rows[Number(el.dataset.i)], price: Number(el.value) || 0 };
     setSheet({ ...state.sheet, rows });
   },
-  setRowTarget: (el) => {
-    const rows = state.sheet.rows.slice();
+  pickRowTarget: async (el) => {
     const i = Number(el.dataset.i);
+    const value = await pickItem({
+      title: "What is this line?",
+      current: state.sheet.rows[i].targetId,
+      lead: [
+        { id: "", name: "Ignore this line", detail: "Not something to track" },
+        { id: "__new__", name: "Add as a new item", detail: "A kind of thing you do not keep yet" },
+      ],
+    });
+    if (value === null) return;
+    const rows = state.sheet.rows.slice();
     // Portions are a different size on a different item, so a figure typed
     // against the old target must not carry over to the new one.
-    const ing = el.value && el.value !== "__new__" ? ingredient(el.value) : null;
+    const ing = value && value !== "__new__" ? ingredient(value) : null;
     rows[i] = {
       ...rows[i],
-      targetId: el.value,
+      targetId: value,
       // pick the likeliest one of that kind at this shop, or something new
       productId: ing
         ? (resolveProduct(ing, state.sheet.store, rows[i].raw) || {}).id || "__new__"
         : "",
-      use: !!el.value,
-      why: el.value ? "you chose it" : "ignored",
+      use: !!value,
+      why: value ? "you chose it" : "ignored",
       stockAdd: 0,
       stockTouched: false,
     };
@@ -5553,10 +5583,24 @@ const actions = {
     // many portions the line puts into stock
     setSheet({ ...state.sheet, rows });
   },
-  setRowProduct: (el) => {
-    const rows = state.sheet.rows.slice();
+  pickRowProduct: async (el) => {
     const i = Number(el.dataset.i);
-    rows[i] = { ...rows[i], productId: el.value, stockAdd: 0, stockTouched: false };
+    const ing = ingredient(state.sheet.rows[i].targetId);
+    if (!ing) return;
+    const value = await pickOne({
+      title: `Which ${ing.name}?`,
+      current: state.sheet.rows[i].productId,
+      options: [{ id: "__new__", name: "Something new", detail: "Another kind, bought as its own product" }].concat(
+        productsOf(ing).map((p) => ({
+          id: p.id,
+          name: p.name || "Unnamed",
+          detail: `${p.store ? `at ${p.store} · ` : ""}£${money(p.pricePerPack)} a pack`,
+        }))
+      ),
+    });
+    if (value === null) return;
+    const rows = state.sheet.rows.slice();
+    rows[i] = { ...rows[i], productId: value, stockAdd: 0, stockTouched: false };
     // a different one may have been priced since this receipt was printed
     setSheet({ ...state.sheet, rows: refreshRows(rows, state.sheet.date) });
   },
@@ -5703,6 +5747,7 @@ const FROM_SETTINGS = ["invite", "join", "help"];
 
 function goBack() {
   if (state.dialog) return dialogNo();
+  if (state.picker) return closePicker(null);
   if (cam) return closeCamera();
   const s = state.sheet;
   if (s) return s.kind && FROM_SETTINGS.includes(s.kind) ? actions.openSettings() : setSheet(null);
@@ -5795,7 +5840,8 @@ root.addEventListener("click", (e) => {
      twenty lines of review that a thumb landing on the edge used to discard
      without a word. Close is always in the corner. */
   if (e.target.classList && e.target.classList.contains("scrim")) {
-    if (e.target.dataset.dismiss === "1") setSheet(null);
+    if (e.target.dataset.pickdismiss === "1") closePicker(null);
+    else if (e.target.dataset.dismiss === "1") setSheet(null);
     return;
   }
   if (e.target.closest("[data-stop]") && e.target.closest(".scrim") && !e.target.closest("[data-act]")) return;
@@ -5813,6 +5859,12 @@ root.addEventListener("input", (e) => {
      redraws the results, so tapping a button straight after typing is never
      met by a page that has been rebuilt underneath the finger. */
   if (t.dataset && t.dataset.act === "setDialogValue") return actions.setDialogValue(t);
+  if (t.dataset && t.dataset.act === "setPickerQuery") {
+    actions.setPickerQuery(t);
+    const live = root.querySelector("#picker-live");
+    if (live) live.innerHTML = pickerLive(state.picker);
+    return;
+  }
   const s = state.sheet;
   if (!s || s.kind !== "add") return;
   const act = t.dataset && t.dataset.act;

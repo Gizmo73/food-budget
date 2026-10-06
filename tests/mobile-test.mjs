@@ -1,4 +1,4 @@
-import { browser, BASE, SHOTS } from "./browser.mjs";
+import { browser, BASE, SHOTS, pick } from "./browser.mjs";
 const TH = process.env.FS_THEME || "dark";
 const b = await browser();
 // a small phone on purpose: 360px is where a crushed row shows up
@@ -113,12 +113,12 @@ const footer = await p.evaluate(() => {
     const r = e.getBoundingClientRect();
     return { what: e.dataset.act || e.tagName, w: Math.round(r.width), h: Math.round(r.height) };
   });
-  const sel = acts.querySelector("select");
+  const sel = acts.querySelector('[data-act="pickMove"]');
   return {
     kids,
     rowWidth: Math.round(acts.getBoundingClientRect().width),
-    placeholder: sel.options[0].textContent.trim(),
-    selFont: parseFloat(getComputedStyle(sel).fontSize),
+    placeholder: sel.textContent.trim(),
+    selTag: sel.tagName,
     why: document.querySelectorAll(".why").length,
     bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
@@ -127,7 +127,7 @@ console.log("  ", JSON.stringify(footer, null, 1));
 ok(footer.kids.every((k) => k.w >= 60), `nothing is crushed: ${JSON.stringify(footer.kids.map((k) => k.w))}`);
 ok(footer.kids.every((k) => k.h <= 48), `and nothing is stacked into a column: heights ${JSON.stringify(footer.kids.map((k) => k.h))}`);
 ok(footer.placeholder === "Move to…", `the picker label is short (${footer.placeholder})`);
-ok(footer.selFont >= 16, `and 16px, so tapping it will not zoom (${footer.selFont})`);
+ok(footer.selTag === "BUTTON", `and a button, which no phone zooms the page for (${footer.selTag})`);
 ok(footer.bodyOverflow <= 0, `the page does not scroll sideways (${footer.bodyOverflow}px of overflow)`);
 
 await p.evaluate(() => document.querySelector(".prodacts").scrollIntoView({ block: "center" }));
@@ -135,7 +135,7 @@ await p.waitForTimeout(200);
 await p.screenshot({ path: `${SHOTS}/footer-${TH}.png` });
 
 console.log("\n--- and it still moves ---");
-await p.selectOption('[data-act="moveProduct"]', "milk");
+await pick(p, '[data-act="pickMove"]', "milk");
 await p.waitForTimeout(600);
 const moved = await p.evaluate(async () => {
   const s = await import("./lib/store.js");

@@ -102,8 +102,10 @@ await p.waitForTimeout(400);
 // the meal pickers live inside a day's popout now
 await p.click('[data-act="openDay"][data-idx="0"]');
 await p.waitForTimeout(300);
-const opts = await p.$$eval('[data-act="setDaySlotBoth"]', (e) =>
-  [...e[0].options].slice(1).map((o) => o.textContent.trim()));
+await p.click('[data-act="pickDaySlotBoth"]');
+await p.waitForSelector(".picker");
+const opts = (await p.$$eval(".picker .pickrow .shop", (els) => els.map((e) => e.textContent.trim()))).slice(1);
+await p.click('[data-act="pickCancel"]');
 // close the day popout so it does not sit over the tab bar
 await p.evaluate(() => document.querySelector('[data-act="closeSheet"]')?.click());
 await p.waitForTimeout(200);
