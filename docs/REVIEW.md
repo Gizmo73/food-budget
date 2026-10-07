@@ -262,20 +262,29 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
    day. The window is eight days; the fortnight goes.
 4. **Settled: Food folds into Plan**; four tabs.
 5. **Back button.** *Reported 2026-10-06:* back gives a completely blank page in
-   the app's background colour. A guard keeps an entry in front of the one back
-   would fall to, but it only runs when the page reports it is an app. *Reported
-   again 2026-10-07:* still blank. The guard now also runs in the other app
-   display modes and for a launch from the Android app shell, and lays its entry
-   down again whenever it is missing. It cannot be reproduced without an Android
-   install, so **Settings → About → Back button** records what the page saw
-   (display mode, whether the guard is on, how it was loaded, each press and what
-   it did) and keeps it across closing the app. After the next blank page,
-   reopen the app and copy the trail.
+   the app's background colour. *Reported again 2026-10-07:* still blank, on
+   Firefox for Android, on the first Back right after opening. **Cause:** Firefox
+   will only go back to a history entry the user has interacted with
+   (`browser.navigation.requireUserInteraction`: going back needs an earlier entry
+   that was tapped, and skips the others). The first guard laid its entries at
+   load, before any tap, so Back skipped them and the entry behind them and fell
+   to the blank page the app is launched from, which is also why the very first
+   report happened before any guard existed. **Now:** the guard waits for the
+   first real tap on the page, which marks the page's own entry as touched, and
+   only then puts an entry in front of it; it leaves the original entry's state
+   alone, and puts its entry back whenever it is missing. **What it cannot do:**
+   before that first tap no page can guard Back in Firefox, so Back pressed with
+   no tap at all still goes to the blank page. **Settings → About → Back button**
+   records the display mode, whether the guard is waiting or laid, and each press,
+   so a case that still goes wrong can be read off afterwards.
 6. **Settled: the week rolls over by a banner and one tap**, not automatically,
    because the plan is shared between devices and a silent edit on opening would
    be hard to explain.
 7. **Settled: hand-adding is the add sheet only.** The by-hand counts on the Items
    tab went; adding from the List is what is wanted.
+8. **Settled: the app is called Weekly Shop.** On screen, in the install name and in
+   the copied logs. The database and cache names keep the old name so no phone
+   loses its data.
 
 ## Status
 

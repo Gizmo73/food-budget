@@ -1,6 +1,6 @@
 {
-  "name": "Fortnight Shop",
-  "short_name": "Shop",
+  "name": "Weekly Shop",
+  "short_name": "Weekly Shop",
   "description": "A weekly meal planner and food shopping budget: plan the week, check the cupboard, shop to a cap.",
   "start_url": "./",
   "scope": "./",

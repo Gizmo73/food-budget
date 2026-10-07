@@ -31,6 +31,12 @@ async function open(installed, mode = "standalone") {
   await p.evaluate(() => { window.__alive = true; });
   return p;
 }
+/* The guard waits for the first real tap on the page, so a test that wants it
+   laid down taps the heading (which does nothing) and lets it settle. */
+async function tap(p) {
+  await p.tap("header.masthead h1");
+  await p.waitForTimeout(250);
+}
 const here = (p) => p.evaluate(() => ({
   alive: window.__alive === true,
   url: location.pathname,
@@ -45,7 +51,10 @@ const back = async (p) => { await p.goBack(); await p.waitForTimeout(250); retur
 console.log("--- installed ---");
 let p = await open(true);
 let s = await here(p);
-ok(s.guard === "app", "an entry is held in front of the app's own");
+ok(!s.guard, "before the page has been tapped nothing is added, and the browser's own back applies");
+await tap(p);
+s = await here(p);
+ok(s.guard === "app", "the first tap lays an entry down in front of the app's own");
 
 await p.click('[data-act="openSettings"]');
 await p.waitForTimeout(200);
@@ -101,8 +110,9 @@ ok((await p.evaluate(() => history.length)) === len, "reloading does not stack u
 console.log("\n--- what it records, for reading afterwards ---");
 const trail = await p.evaluate(() => JSON.parse(localStorage.getItem("fs-nav-log") || "[]"));
 console.log("   ", JSON.stringify(trail.slice(0, 3)));
-ok(trail[0] && trail[0].what === "opened" && trail[0].guard === "on" && trail[0].mode === "standalone",
-  "it notes how it was opened and that the guard is on");
+ok(trail[0] && trail[0].what === "opened" && trail[0].guard === "waiting for a tap" && trail[0].mode === "standalone",
+  "it notes how it was opened and that the guard is waiting for a tap");
+ok(trail.some((e) => e.what === "guarded" && e.after), "and when the tap laid it down");
 ok(trail.some((e) => e.what === "back" && e.did === "sheet"), "and each back press, with what it did");
 ok(trail.some((e) => e.what === "back" && e.did === "nothing"), "including the ones it absorbed");
 await p.click('[data-act="openSettings"]');
@@ -111,7 +121,7 @@ await p.click('.foldhead[data-kind="back"]');
 await p.waitForTimeout(400);
 const shown = await p.$eval(".sheet", (e) => e.textContent.replace(/\s+/g, " "));
 ok(/Back button/.test(shown) && /Display mode standalone/.test(shown), "Settings, About shows what the page sees");
-ok(/landed base/.test(shown) && /did sheet/.test(shown), "and the trail of presses");
+ok(/landed original/.test(shown) && /did sheet/.test(shown), "and the trail of presses");
 await p.click('[data-act="clearNav"]');
 ok((await p.evaluate(() => JSON.parse(localStorage.getItem("fs-nav-log") || "[]"))).length === 0, "Clear empties it");
 await p.click('[data-act="closeSheet"]');
@@ -126,9 +136,11 @@ await p.context().close();
 
 console.log("\n--- other ways of being installed ---");
 p = await open(true, "minimal-ui");
+await tap(p);
 ok((await here(p)).guard === "app", "minimal-ui is the app too");
 await p.context().close();
 p = await open(true, "fullscreen");
+await tap(p);
 ok((await here(p)).guard === "app", "and so is fullscreen");
 await p.context().close();
 
