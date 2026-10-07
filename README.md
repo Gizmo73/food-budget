@@ -1,10 +1,8 @@
-# Fortnight Shop
+# Weekly Shop
 
 A meal planner and food budget for UK shopping, built around one week at a time. Static site, no build step, no server. Prices come from receipts and barcodes rather than scraping, so nothing breaks when a supermarket changes its website.
 
 The maths started as a spreadsheet and is unchanged: the portions the week needs, minus the portions in stock, rounded up to whole packs, grouped by shop.
-
-(The name is older than the app's idea of a week. Renaming it touches only the title, the install name and a few labels; the storage names stay as they are so nobody loses data.)
 
 ## The week
 
@@ -212,7 +210,7 @@ The plan cannot merge sensibly, since two different weeks are not combinable, so
 
 **Phones.** The page is pinned at 1:1 and pinch zoom is refused (viewport meta, `touch-action: manipulation`, and refusing `gesturestart` on iOS, since no one alone is enough). **No text box or select is under 16px**, because Safari zooms the page when you tap a smaller one and does not zoom back. **Nothing tappable is under 44px** either way, and a test walks the screens asserting it.
 
-**Back.** In the installed app the back gesture never leaves it: it closes the picker, the camera, then the sheet on top (a sheet opened from Settings returns to Settings), then goes to the List, and past that is absorbed. A browser cannot switch the button off, only keep an entry in front of the one it would fall to, so this is done only when running as an app (any display mode but a browser tab, or a launch from the Android app shell); in a browser tab back is how you leave. The entry is laid down again whenever it is missing, and **Settings → About → Back button** keeps a trail of what the page saw on each press, which survives closing the app, so a blank page after Back can be read off afterwards.
+**Back.** In the installed app the back gesture never leaves it: it closes the picker, the camera, then the sheet on top (a sheet opened from Settings returns to Settings), then goes to the List, and past that is absorbed. A browser cannot switch the button off, only keep an entry in front of the one it would fall to, so this is done only when running as an app (any display mode but a browser tab, or a launch from the Android app shell); in a browser tab back is how you leave. **The guard waits for the first tap on the page.** Firefox only goes back to an entry the page was tapped on, and skips the rest, so an entry laid down at load, before any tap, makes Back fall straight through to the blank page the app was launched from; before that first tap the browser's own back applies. The entry is then laid down again whenever it is missing, and **Settings → About → Back button** keeps a trail of what the page saw on each press, which survives closing the app, so a blank page after Back can be read off afterwards.
 
 **Folds.** Open sections are remembered by kind, not by product: open nutrition on one item and it is open on all of them. A folded section still shows a summary (*4 a pack, 142g each*, *3 for £8*), and renders nothing at all, so a long editor is genuinely shorter to scroll.
 
@@ -264,6 +262,7 @@ Every push runs the suite on GitHub Actions (`.github/workflows/test.yml`).
 
 ### Notes
 
+- **The old name stays in storage.** The app was first called Fortnight Shop, so the database is `fortnight-shop` and the offline caches start `fortnight-shop-v`. Only what is on screen says Weekly Shop: renaming the storage would leave every phone with an empty database.
 - **Bump `CACHE` in `sw.js`** whenever you change a file, or the service worker keeps serving the old copy.
 - **Scanning needs HTTPS**, which Pages gives you.
 - **Barcode decoding** uses the browser's own `BarcodeDetector` where it exists (Chromium). Firefox and Safari lazily load a vendored wasm decoder from `lib/vendor/` on first scan: a one-off megabyte, cached afterwards, with no third-party requests.

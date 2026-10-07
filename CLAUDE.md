@@ -1,4 +1,4 @@
-# Fortnight Shop
+# Weekly Shop
 
 A weekly meal planner and shopping list. Static files with no build step:
 `index.html`, `app.js`, `styles.css`, `sw.js` and `lib/`, served straight from
@@ -55,5 +55,8 @@ screenshots and is ignored by git.
 - **Nothing tappable under 44px.** `tests/targets-test.mjs` walks the screens.
 - **Tests that plan from a fixed date pin the browser clock** with `pinClock`, and
   answer the app's questions with `answer` (both in `tests/browser.mjs`).
+- **The old name stays in storage.** The database is `fortnight-shop` and the caches
+  start `fortnight-shop-v`. Renaming either would leave every phone with an empty
+  database or an unswept cache; only what is on screen says Weekly Shop.
 - **`sw.js` caches the app shell.** Adding a file the app loads means adding it
   to `SHELL` and bumping `CACHE`, or phones will run a half-old set of files.

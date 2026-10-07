@@ -18,8 +18,8 @@ ok(await p.evaluate(() => !!navigator.serviceWorker.controller), "the worker is 
 const appPath = new URL("../app.js", import.meta.url).pathname;
 const original = readFileSync(appPath, "utf8");
 writeFileSync(appPath, original.replace(
-  '<p class="eyebrow">Fortnight Shop</p>',
-  '<p class="eyebrow">Fortnight Shop DEPLOYED</p>'
+  '<p class="eyebrow">Weekly Shop</p>',
+  '<p class="eyebrow">Weekly Shop DEPLOYED</p>'
 ));
 
 let first = "";

@@ -6,8 +6,9 @@
    anything changes, so a phone with no signal is not left on a half old and
    half new set of files. */
 
+// still the app's first name: the sweep below finds old caches by it
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}46`;
+const CACHE = `${PREFIX}47`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will

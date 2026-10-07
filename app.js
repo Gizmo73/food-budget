@@ -1,4 +1,4 @@
-/* Fortnight Shop.
+/* Weekly Shop.
    No framework and no build step, so this file can be edited on a phone and
    pushed straight to Pages. Rendering is a full innerHTML rebuild; inputs are
    uncontrolled and commit on "change" (blur or Enter), so a rebuild never
@@ -789,7 +789,7 @@ function viewMasthead() {
   const tab = TABS[state.tab] || TABS.list;
   return `<header class="masthead"><div class="row">
     <div class="grow">
-      <p class="eyebrow">Fortnight Shop</p>
+      <p class="eyebrow">Weekly Shop</p>
       <h1>${tab.title}</h1>
     </div>
     <button class="btn icon" data-act="openSettings" aria-label="Settings"><i class="ph ph-gear"></i></button>
@@ -3106,7 +3106,11 @@ function sheetSettings(s) {
   const backBox = fold(
     "back",
     "Back button",
-    inApp() ? "running as an app, guard on" : "running in a browser tab, guard off",
+    !inApp()
+      ? "running in a browser tab, guard off"
+      : history.state && history.state.fs === "app"
+      ? "running as an app, guard on"
+      : "running as an app, guard waiting for a tap",
     `<p class="muted mt-0 mb-8">Display mode <strong>${esc(displayMode())}</strong>. ${history.length} history entr${
       history.length === 1 ? "y" : "ies"
     }, and you are on the <strong>${esc((history.state && history.state.fs) || "original")}</strong> one.</p>
@@ -5784,7 +5788,7 @@ const navDetail = (e) =>
 
 const navText = () =>
   [
-    "Fortnight Shop back-button trail",
+    "Weekly Shop back-button trail",
     build.version ? `app ${build.version}` : "",
     `taken ${new Date().toISOString()}`,
     navigator.userAgent,
@@ -5813,12 +5817,25 @@ const inApp = () => {
   );
 };
 
+/* Back is only guarded once the page has been tapped. Firefox (and Chrome in
+   part) will not go back to a history entry the user never interacted with:
+   going back from a page needs an earlier entry that was touched, and skips the
+   ones that were not. An entry laid down at load, before any tap, is skipped,
+   and so is the entry it was laid behind, so Back fell straight through to the
+   blank page the app was launched from. So the entry waits for the first real
+   tap on the page, which marks the page's own entry as touched, and is then put
+   in front of it. Before that first tap the browser's own back applies.
+
+   The entry is put back whenever it is missing, because every Back that lands
+   on the original entry has to find a new one in front of it. */
 function installBackGuard() {
   const guarded = inApp() && !!history.pushState;
   const nav = performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+  const laid = () => !!history.state && history.state.fs === "app";
+  const touched = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
   navNote("opened", {
     mode: displayMode(),
-    guard: guarded ? "on" : "off",
+    guard: !guarded ? "off" : laid() ? "on" : "waiting for a tap",
     loaded: nav ? nav.type : "?",
     from: (document.referrer || "").slice(0, 40),
   });
@@ -5826,17 +5843,32 @@ function installBackGuard() {
   window.addEventListener("pagehide", (e) => navNote("hidden", { kept: e.persisted }));
   if (!guarded) return;
 
-  // a reload keeps the entry it was on, so only lay the pair down once
-  if (!history.state || history.state.fs !== "app") {
-    history.replaceState({ fs: "base" }, "");
-    history.pushState({ fs: "app" }, "");
-  }
-  // the entry in front of the one back would fall to, put back whenever it is missing
+  let armed = laid();
   const keep = () => {
-    if (!history.state || history.state.fs !== "app") history.pushState({ fs: "app" }, "");
+    if (armed && !laid()) history.pushState({ fs: "app" }, "");
   };
+  const arm = (why) => {
+    if (armed && laid()) return;
+    armed = true;
+    // a beat, so the tap is on record against the entry it happened on before this one is made
+    setTimeout(() => {
+      keep();
+      navNote("guarded", { after: why });
+    }, 60);
+  };
+
+  if (!armed) {
+    const TAPS = ["pointerup", "touchend", "mouseup", "click", "keydown"];
+    const onTap = (e) => {
+      for (const t of TAPS) window.removeEventListener(t, onTap, true);
+      arm(e.type);
+    };
+    for (const t of TAPS) window.addEventListener(t, onTap, true);
+    if (touched) arm("an earlier tap");
+  }
+
   window.addEventListener("popstate", () => {
-    const landed = (history.state && history.state.fs) || "-";
+    const landed = history.state && history.state.fs ? history.state.fs : "original";
     const did = goBack();
     keep();
     navNote("back", { landed, did });

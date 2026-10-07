@@ -30,8 +30,8 @@ const look = await p.evaluate(() => ({
   tabs: [...document.querySelectorAll('[data-act="tab"]')].map((e) => e.dataset.tab),
 }));
 console.log("  ", JSON.stringify(look));
-ok(look.title === "Fortnight Shop", `title is clean (${look.title})`);
-ok(look.eyebrow === "Fortnight Shop", `no test badge (${look.eyebrow})`);
+ok(look.title === "Weekly Shop", `title is clean (${look.title})`);
+ok(look.eyebrow === "Weekly Shop", `no test badge (${look.eyebrow})`);
 ok(!/separate data/.test(look.sub), "no warning about separate data");
 ok(look.tabs.join(",") === "list,plan,meals,items", `all four tabs present (${look.tabs.join(",")})`);
 
