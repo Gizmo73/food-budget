@@ -262,17 +262,20 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
    day. The window is eight days; the fortnight goes.
 4. **Settled: Food folds into Plan**; four tabs.
 5. **Back button.** *Reported 2026-10-06:* back gives a completely blank page in
-   the app's background colour. That is the signature of the browser's empty
-   starting page, not of the app: the installed app has no entry behind it, back
-   falls onto that, and no page is there to run code, which is why only closing and
-   reopening helps. The guard keeps an entry in front of it. Please check after
-   updating that *Settings → About → Install this app* says "Installed. You are running it
-   as its own app" (the condition the guard runs under) and that back from the
-   List does nothing. If it still goes blank I would widen the condition.
-6. **Open: how the week rolls over.** I propose a banner and one tap, not an
-   automatic change, because the plan is shared between devices and a silent edit
-   on opening would be hard to explain. Say if you would rather it just happened
-   on Saturday.
+   the app's background colour. A guard keeps an entry in front of the one back
+   would fall to, but it only runs when the page reports it is an app. *Reported
+   again 2026-10-07:* still blank. The guard now also runs in the other app
+   display modes and for a launch from the Android app shell, and lays its entry
+   down again whenever it is missing. It cannot be reproduced without an Android
+   install, so **Settings → About → Back button** records what the page saw
+   (display mode, whether the guard is on, how it was loaded, each press and what
+   it did) and keeps it across closing the app. After the next blank page,
+   reopen the app and copy the trail.
+6. **Settled: the week rolls over by a banner and one tap**, not automatically,
+   because the plan is shared between devices and a silent edit on opening would
+   be hard to explain.
+7. **Settled: hand-adding is the add sheet only.** The by-hand counts on the Items
+   tab went; adding from the List is what is wanted.
 
 ## Status
 
