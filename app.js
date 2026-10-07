@@ -3099,7 +3099,38 @@ function sheetSettings(s) {
     } This is kept on this device, like the theme, so you and anyone
     sharing the list can each have your own.</p>`;
 
-  const about = `${installBox}${problemBox}${version}`;
+  /* What the page sees of Back. A blank page after it cannot be diagnosed from
+     outside, and the trail survives closing the app, so it can be read after
+     the next time it goes wrong. */
+  const trail = navEntries().slice().reverse();
+  const backBox = fold(
+    "back",
+    "Back button",
+    inApp() ? "running as an app, guard on" : "running in a browser tab, guard off",
+    `<p class="muted mt-0 mb-8">Display mode <strong>${esc(displayMode())}</strong>. ${history.length} history entr${
+      history.length === 1 ? "y" : "ies"
+    }, and you are on the <strong>${esc((history.state && history.state.fs) || "original")}</strong> one.</p>
+    ${
+      trail.length
+        ? trail
+            .slice(0, 14)
+            .map(
+              (e) => `<div class="logrow">
+                <div class="row"><span class="grow fw6">${esc(e.what)}</span>
+                  <span class="muted num">${esc(ukTime(e.at))}</span></div>
+                <div class="why num">${esc(navDetail(e))}</div>
+              </div>`
+            )
+            .join("")
+        : `<p class="muted">Nothing recorded yet.</p>`
+    }
+    <div class="row gap-8 mt-8">
+      <button class="btn tonal grow" data-act="copyNav">Copy the trail</button>
+      <button class="btn ghost" data-act="clearNav">Clear</button>
+    </div>`
+  );
+
+  const about = `${installBox}${backBox}${problemBox}${version}`;
 
   const group = s.group === "look" || s.group === "about" ? s.group : "sync";
   const tab = (key, label) =>
@@ -4146,6 +4177,23 @@ const actions = {
   },
   clearLog: () => {
     clearLog();
+    draw();
+  },
+  copyNav: async () => {
+    const text = navText();
+    try {
+      await navigator.clipboard.writeText(text);
+      flash("ok", "Copied. Paste it wherever it needs reading.");
+    } catch (err) {
+      setSheet({ ...state.sheet, msg: text, err: false });
+    }
+  },
+  clearNav: () => {
+    try {
+      localStorage.removeItem(NAV_KEY);
+    } catch (err) {
+      /* nothing useful to do about a storage that will not forget */
+    }
     draw();
   },
 
@@ -5693,25 +5741,109 @@ const actions = {
 const FROM_SETTINGS = ["invite", "join", "help"];
 
 function goBack() {
-  if (state.dialog) return dialogNo();
-  if (state.picker) return closePicker(null);
-  if (cam) return closeCamera();
+  if (state.dialog) { dialogNo(); return "dialog"; }
+  if (state.picker) { closePicker(null); return "picker"; }
+  if (cam) { closeCamera(); return "camera"; }
   const s = state.sheet;
-  if (s) return s.kind && FROM_SETTINGS.includes(s.kind) ? actions.openSettings() : setSheet(null);
-  if (state.tab !== "list") goToTab("list", -1);
+  if (s) {
+    if (s.kind && FROM_SETTINGS.includes(s.kind)) actions.openSettings();
+    else setSheet(null);
+    return "sheet";
+  }
+  if (state.tab !== "list") { goToTab("list", -1); return "tab"; }
+  return "nothing";
 }
 
+/* What the page can see of its own history, kept as a short trail in
+   localStorage so that a blank page after Back can be read off afterwards, once
+   the app has been opened again. Best effort, like the problem log. */
+const NAV_KEY = "fs-nav-log";
+const navEntries = () => {
+  try {
+    const all = JSON.parse(localStorage.getItem(NAV_KEY) || "[]");
+    return Array.isArray(all) ? all : [];
+  } catch (err) {
+    return [];
+  }
+};
+function navNote(what, extra = {}) {
+  try {
+    const entry = { at: new Date().toISOString(), what, entries: history.length, entry: (history.state && history.state.fs) || "-", ...extra };
+    localStorage.setItem(NAV_KEY, JSON.stringify([...navEntries(), entry].slice(-40)));
+  } catch (err) {
+    /* nothing useful to do about a storage that will not remember */
+  }
+}
+
+// everything on a trail entry but its time and name, as one line
+const navDetail = (e) =>
+  Object.entries(e)
+    .filter(([k]) => k !== "at" && k !== "what")
+    .map(([k, v]) => `${k} ${v === "" ? "-" : v}`)
+    .join(" \u00b7 ");
+
+const navText = () =>
+  [
+    "Fortnight Shop back-button trail",
+    build.version ? `app ${build.version}` : "",
+    `taken ${new Date().toISOString()}`,
+    navigator.userAgent,
+    `display mode ${displayMode()}, ${history.length} history entries`,
+    "",
+    ...navEntries().reverse().map((e) => `${e.at}  ${e.what}  ${navDetail(e)}`),
+  ]
+    .filter((l, i) => i !== 1 || l)
+    .join("\n");
+
+const displayMode = () => {
+  if (!window.matchMedia) return "unknown";
+  const modes = ["standalone", "fullscreen", "minimal-ui", "window-controls-overlay", "browser"];
+  return modes.find((m) => window.matchMedia(`(display-mode: ${m})`).matches) || "unknown";
+};
+
+/* Running as an app rather than in a tab. Chrome says "standalone" for an
+   install, but another display mode, or a launch from the Android app shell
+   (which shows as the referrer), is the same app under a different word. */
+const inApp = () => {
+  const mode = displayMode();
+  return (
+    (mode !== "browser" && mode !== "unknown") ||
+    window.navigator.standalone === true ||
+    (document.referrer || "").startsWith("android-app://")
+  );
+};
+
 function installBackGuard() {
-  if (!standalone() || !history.pushState) return;
+  const guarded = inApp() && !!history.pushState;
+  const nav = performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+  navNote("opened", {
+    mode: displayMode(),
+    guard: guarded ? "on" : "off",
+    loaded: nav ? nav.type : "?",
+    from: (document.referrer || "").slice(0, 40),
+  });
+  window.addEventListener("pageshow", (e) => navNote("shown", { restored: e.persisted }));
+  window.addEventListener("pagehide", (e) => navNote("hidden", { kept: e.persisted }));
+  if (!guarded) return;
+
   // a reload keeps the entry it was on, so only lay the pair down once
   if (!history.state || history.state.fs !== "app") {
     history.replaceState({ fs: "base" }, "");
     history.pushState({ fs: "app" }, "");
   }
-  window.addEventListener("popstate", () => {
-    goBack();
-    // put the entry back, so the next back is caught the same way
+  // the entry in front of the one back would fall to, put back whenever it is missing
+  const keep = () => {
     if (!history.state || history.state.fs !== "app") history.pushState({ fs: "app" }, "");
+  };
+  window.addEventListener("popstate", () => {
+    const landed = (history.state && history.state.fs) || "-";
+    const did = goBack();
+    keep();
+    navNote("back", { landed, did });
+  });
+  window.addEventListener("pageshow", keep);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") keep();
   });
 }
 

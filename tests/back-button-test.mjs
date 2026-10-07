@@ -10,20 +10,21 @@ const errs = [];
 
 /* Playwright cannot switch display-mode, so say so to the page the way a
    browser would. */
-const asInstalled = () => {
+const asInstalled = (mode) => {
   const real = window.matchMedia.bind(window);
   window.matchMedia = (q) => {
     const m = real(q);
-    if (/display-mode:\s*standalone/.test(q)) Object.defineProperty(m, "matches", { value: true });
+    const hit = /display-mode:\s*([a-z-]+)/.exec(q);
+    if (hit) Object.defineProperty(m, "matches", { value: hit[1] === mode });
     return m;
   };
 };
 
-async function open(installed) {
+async function open(installed, mode = "standalone") {
   const ctx = await b.newContext({ viewport: { width: 390, height: 820 }, isMobile: true, hasTouch: true });
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errs.push(e.message));
-  if (installed) await p.addInitScript(asInstalled);
+  if (installed) await p.addInitScript(asInstalled, mode);
   await p.goto("about:blank");
   await p.goto(`${BASE}/index.html`);
   await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
@@ -96,6 +97,39 @@ const len = await p.evaluate(() => history.length);
 await p.reload();
 await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
 ok((await p.evaluate(() => history.length)) === len, "reloading does not stack up more entries each time");
+
+console.log("\n--- what it records, for reading afterwards ---");
+const trail = await p.evaluate(() => JSON.parse(localStorage.getItem("fs-nav-log") || "[]"));
+console.log("   ", JSON.stringify(trail.slice(0, 3)));
+ok(trail[0] && trail[0].what === "opened" && trail[0].guard === "on" && trail[0].mode === "standalone",
+  "it notes how it was opened and that the guard is on");
+ok(trail.some((e) => e.what === "back" && e.did === "sheet"), "and each back press, with what it did");
+ok(trail.some((e) => e.what === "back" && e.did === "nothing"), "including the ones it absorbed");
+await p.click('[data-act="openSettings"]');
+await p.click('[data-act="setSettingsGroup"][data-group="about"]');
+await p.click('.foldhead[data-kind="back"]');
+await p.waitForTimeout(400);
+const shown = await p.$eval(".sheet", (e) => e.textContent.replace(/\s+/g, " "));
+ok(/Back button/.test(shown) && /Display mode standalone/.test(shown), "Settings, About shows what the page sees");
+ok(/landed base/.test(shown) && /did sheet/.test(shown), "and the trail of presses");
+await p.click('[data-act="clearNav"]');
+ok((await p.evaluate(() => JSON.parse(localStorage.getItem("fs-nav-log") || "[]"))).length === 0, "Clear empties it");
+await p.click('[data-act="closeSheet"]');
+
+console.log("\n--- the entry is put back if it goes missing ---");
+await p.evaluate(() => {
+  history.replaceState({}, "");
+  document.dispatchEvent(new Event("visibilitychange"));
+});
+ok((await here(p)).guard === "app", "coming back to the app lays the entry down again");
+await p.context().close();
+
+console.log("\n--- other ways of being installed ---");
+p = await open(true, "minimal-ui");
+ok((await here(p)).guard === "app", "minimal-ui is the app too");
+await p.context().close();
+p = await open(true, "fullscreen");
+ok((await here(p)).guard === "app", "and so is fullscreen");
 await p.context().close();
 
 console.log("\n--- an ordinary browser tab ---");
