@@ -277,6 +277,9 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
    no tap at all still goes to the blank page. **Settings → About → Back button**
    records the display mode, whether the guard is waiting or laid, and each press,
    so a case that still goes wrong can be read off afterwards.
+   *Confirmed 2026-10-08:* after a tap it works as wanted (Back closes a sheet or
+   popup instead of leaving), and that is how it is used. A browser leave-site
+   prompt was considered and rejected: Firefox shows it only after a tap too.
 6. **Settled: the week rolls over by a banner and one tap**, not automatically,
    because the plan is shared between devices and a silent edit on opening would
    be hard to explain.
@@ -295,4 +298,4 @@ a cheapest-shop total, calorie targets, recently used items in the add sheet.
 | B. The week | Built: one week plus the leftovers Saturday, Move on, Both/Split day sheet, Food folded into Plan, four tabs |
 | C. The list and the shop | Built: pinned total and budget, Go shopping with the trolley, Bought, scan in the add sheet, optional price |
 | D. Editing and polish | Built: one item picker (items, meals, products, receipt and scan targets, Move) and one line editor for meals and days, B10; the Items tab (shop, price and stock up front, the rest folded, an item's only product open, no plus of its own), Settings in Sync / Appearance / About, *item* and *shop* for what was *ingredient* and *store* on screen, 44px targets with a test that walks the screens, the inline styles swept into spacing utilities (four data-driven ones remain), and the README rewritten around the weekly loop |
-| Back button blank page | Guard should prevent it; needs confirming on the phone |
+| Back button blank page | Confirmed working on Firefox for Android (2026-10-08) once the page has been tapped, which is the real use: Back closes a sheet while editing. Back with no tap at all is still Firefox's own, and cannot be guarded |
