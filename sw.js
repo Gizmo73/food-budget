@@ -8,7 +8,7 @@
 
 // still the app's first name: the sweep below finds old caches by it
 const PREFIX = "fortnight-shop-v";
-const CACHE = `${PREFIX}47`;
+const CACHE = `${PREFIX}48`;
 
 /* The test build that used to live in ./next/ is gone, promoted to be this
    one. Its caches are still on any phone that opened it, and nothing will
@@ -31,6 +31,7 @@ const SHELL = [
   "./lib/scan.js",
   "./lib/qr.js",
   "./lib/vision.js",
+  "./lib/foodfacts.js",
   "./lib/sync.js",
   "./lib/log.js",
   "./lib/vendor/fonts/inter-latin-var.woff2",

@@ -25,7 +25,8 @@ import {
 } from "./lib/calc.js";
 import { startScan, QR_FORMATS } from "./lib/scan.js";
 import { qrSvg } from "./lib/qr.js";
-import { readReceipt, readNutrition } from "./lib/vision.js";
+import { readReceipt, readNutrition, providerName } from "./lib/vision.js";
+import { lookupBarcode } from "./lib/foodfacts.js";
 import { pull, push } from "./lib/sync.js";
 import { note, entries as logEntries, clearLog, logText } from "./lib/log.js";
 
@@ -405,7 +406,54 @@ function toast(text, undo = null) {
 function askForLabel(id, productId) {
   const product = productOf(id, productId);
   if (!product || hasNutrition(product)) return;
-  setSheet({ kind: "labelAsk", id, productId });
+  /* A barcode is a free lookup before it is a photograph. Only when that
+     comes back empty is the camera worth asking for. */
+  if ((product.barcodes || []).length) lookupLabel(id, productId, true);
+  else setSheet({ kind: "labelAsk", id, productId });
+}
+
+/* The same sheet a photographed label fills, filled from Open Food Facts.
+   Asked after a scan, a miss quietly becomes the offer to photograph it;
+   asked by hand, it says so and offers the camera. */
+async function lookupLabel(id, productId, afterScan = false) {
+  const product = productOf(id, productId);
+  if (!product) return;
+  const ticket = {};
+  setSheet({ kind: "label", id, productId, busy: true, lookup: true, ticket, err: "" });
+  let out = null;
+  for (const code of product.barcodes || []) {
+    out = await lookupBarcode(code);
+    if (out) break;
+  }
+  // closed, or replaced by something else, while the lookup was out
+  if (!state.sheet || state.sheet.ticket !== ticket) return;
+
+  const read = out && labelToPer100(out);
+  if (!read) {
+    if (afterScan) setSheet({ kind: "labelAsk", id, productId, missed: true });
+    else setSheet({ kind: "label", id, productId, busy: false, err: "Open Food Facts has no nutrition for this barcode. A photo of the label will do it." });
+    return;
+  }
+  setSheet({
+    kind: "label",
+    id,
+    productId,
+    busy: false,
+    err: "",
+    out,
+    values: read.values,
+    why: "Open Food Facts, which shoppers fill in, so check it against the pack",
+    warn: !!read.warn,
+    sizing: labelSizing(out, productOf(id, productId)),
+  });
+}
+
+/* A second key quietly doing the work is worth knowing about, or the first
+   one could be dead for months before anybody noticed. */
+function saidFallback(out) {
+  if (out && out.fellBackFrom) {
+    toast(`${providerName(out.fellBackFrom)} could not read it, so ${providerName(out.via)} did.`);
+  }
 }
 
 /* Which of an ingredient's products is unfolded. It lives on the open sheet so
@@ -1883,6 +1931,12 @@ function nutritionEditor(ing, product) {
     summary,
     `<div class="mb-8 row">
       <span class="eyebrow grow">Per 100${unit}, as the label prints it</span>
+      ${
+        (product.barcodes || []).length
+          ? `<button class="btn small tonal" data-act="lookupLabel" data-id="${ing.id}"
+        data-product="${esc(product.id)}">Look up</button>`
+          : ""
+      }
       <button class="btn small tonal" data-act="shootLabel" data-id="${ing.id}"
         data-product="${esc(product.id)}">Scan the label</button>
     </div>
@@ -2386,7 +2440,11 @@ function sheetLabelAsk(s) {
   return shell(
     "Photograph the label?",
     `${esc(product.name || ing.name)} has no calories or macros recorded.`,
-    `<p class="mt-0 muted">You have it in your hand now. Later means finding it
+    `${
+      s.missed
+        ? `<p class="mt-0 muted">Open Food Facts does not know this barcode, or could not be reached.</p>`
+        : ""
+    }<p class="mt-0 muted">You have it in your hand now. Later means finding it
      again or reading the figures off a website, so this is the cheap moment.</p>
      ${
        sized
@@ -2941,24 +2999,28 @@ function sheetSettings(s) {
       <input class="inp code" type="password" value="${esc(set.token)}" placeholder="github_pat_…"
         data-act="setSetting" data-key="token"></label>
 
-    <h3>Receipt reading</h3>
+    <h3>Receipt and label reading</h3>
+    <span class="d-block mb-8 eyebrow">Try first</span>
     <div class="mb-12 row">
       <label class="row grow"><input type="radio" name="prov" value="gemini" data-act="setProvider"${on("gemini")}> Gemini</label>
       <label class="row grow"><input type="radio" name="prov" value="anthropic" data-act="setProvider"${on("anthropic")}> Claude</label>
     </div>
-    ${
-      set.provider === "anthropic"
-        ? `<label class="mb-12 field"><span class="eyebrow">Anthropic key</span>
-            <input class="inp code" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
-              data-act="setSetting" data-key="anthropicKey"></label>
-           <label class="mb-12 field"><span class="eyebrow">Model</span>
-            <input class="inp mono" value="${esc(set.anthropicModel)}" data-act="setSetting" data-key="anthropicModel"></label>`
-        : `<label class="mb-12 field"><span class="eyebrow">Gemini key</span>
-            <input class="inp code" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
-              data-act="setSetting" data-key="geminiKey"></label>
-           <label class="mb-12 field"><span class="eyebrow">Model</span>
-            <input class="inp mono" value="${esc(set.geminiModel)}" data-act="setSetting" data-key="geminiModel"></label>`
-    }
+    <div class="mb-12 grid2">
+      <label class="field"><span class="eyebrow">Gemini key</span>
+        <input class="inp code" type="password" value="${esc(set.geminiKey)}" placeholder="AIza…"
+          data-act="setSetting" data-key="geminiKey"></label>
+      <label class="field"><span class="eyebrow">Gemini model</span>
+        <input class="inp mono" value="${esc(set.geminiModel)}" data-act="setSetting" data-key="geminiModel"></label>
+    </div>
+    <div class="mb-12 grid2">
+      <label class="field"><span class="eyebrow">Anthropic key</span>
+        <input class="inp code" type="password" value="${esc(set.anthropicKey)}" placeholder="sk-ant-…"
+          data-act="setSetting" data-key="anthropicKey"></label>
+      <label class="field"><span class="eyebrow">Claude model</span>
+        <input class="inp mono" value="${esc(set.anthropicModel)}" data-act="setSetting" data-key="anthropicModel"></label>
+    </div>
+    <p class="mt-0 muted">When the first is busy or down, the other is tried, if it has a key.
+      Scanned barcodes are looked up on Open Food Facts before any of this, which needs no key.</p>
 
     <h3>Manual backup</h3>
     <textarea class="inp code" data-act="setBackup" spellcheck="false">${esc(backupJson(state.db))}</textarea>
@@ -3624,6 +3686,7 @@ async function shootLabel(id, productId) {
   filePicker(async (file) => {
     try {
       const out = await readNutrition(state.settings, file);
+      saidFallback(out);
       const read = labelToPer100(out);
       setSheet({
         kind: "label",
@@ -3655,7 +3718,9 @@ function sheetLabel(s) {
 
   const inner = [];
   if (s.err) inner.push(`<div class="err">${esc(s.err)}</div>`);
-  if (s.busy) inner.push(`<p class="muted">Reading the label\u2026</p>`);
+  if (s.busy) {
+    inner.push(`<p class="muted">${s.lookup ? "Looking up the barcode" : "Reading the label"}\u2026</p>`);
+  }
 
   if (s.values) {
     const out = s.out || {};
@@ -3734,7 +3799,7 @@ function sheetLabel(s) {
       )}</button>
       <button class="btn tonal" data-act="shootLabel" data-id="${s.id}" data-product="${esc(
       s.productId
-    )}">Retake</button>
+    )}">${s.out && s.out.source === "off" ? "Photo instead" : "Retake"}</button>
     </div>`);
   } else if (!s.busy) {
     inner.push(`<button class="btn solid wide" data-act="shootLabel" data-id="${s.id}"
@@ -3743,7 +3808,7 @@ function sheetLabel(s) {
 
   return shell(
     "Nutrition label",
-    `Point the camera at the panel on ${esc(product.name || ing.name)}${
+    `${s.lookup || (s.out && s.out.source === "off") ? "Looked up by barcode for" : "Point the camera at the panel on"} ${esc(product.name || ing.name)}${
       product.store ? ` from ${esc(product.store)}` : ""
     }. Figures are stored exactly as the label prints them, per 100g or 100ml.`,
     inner.join("")
@@ -3755,6 +3820,7 @@ async function shootReceipt() {
     setSheet({ ...state.sheet, busy: true, err: "" });
     try {
       const out = await readReceipt(state.settings, file);
+      saidFallback(out);
       // an unreadable date falls back to today, which flags nothing as old
       const date = out.date || today();
       const store = canonicalStore(out.store, storeNames(state.db.ingredients));
@@ -4806,6 +4872,7 @@ const actions = {
     });
   },
   shootLabel: (el) => shootLabel(el.dataset.id, el.dataset.product),
+  lookupLabel: (el) => lookupLabel(el.dataset.id, el.dataset.product),
 
   toggleLabelSize: (el) => setSheet({ ...state.sheet, useSize: el.checked }),
 

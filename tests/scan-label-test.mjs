@@ -16,6 +16,11 @@ const p = await ctx.newPage();
 const errs = [];
 p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
 
+// Open Food Facts does not know these made-up barcodes, so the photo is offered
+await p.route("**world.openfoodfacts.org/**", (r) =>
+  r.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ status: 0 }) })
+);
+
 await p.addInitScript(() => localStorage.setItem("fs-theme", "dark"));
 await p.goto(`${BASE}/index.html`);
 await p.waitForFunction(() => document.getElementById("app")?.dataset.booted === "1", null, { timeout: 15000 });
